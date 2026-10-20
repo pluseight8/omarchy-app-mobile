@@ -27,13 +27,19 @@ jobs:
         with:
           packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018
 
+      - name: Set up Python for Qt installer
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.14'
+
       - name: Export Android toolchain paths
         run: |
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Install Qt for Android
-        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        # Keep the same pinned Qt installer path as CI.
+        uses: jurplel/install-qt-action/action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
           version: 6.11.2
           host: linux
