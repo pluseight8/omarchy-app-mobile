@@ -30,7 +30,7 @@ jobs:
           host: linux
           target: desktop
           arch: gcc_64
-          modules: qtquickcontrols2 qtshadertools
+          modules: qtshadertools
           cache: true
 
       - name: Configure, build, and test
@@ -89,7 +89,7 @@ jobs:
           host: linux
           target: android
           arch: android_arm64_v8a
-          modules: qtquickcontrols2 qtshadertools
+          modules: qtshadertools
           cache: true
 
       - name: Build APK

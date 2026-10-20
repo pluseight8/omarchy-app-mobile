@@ -45,7 +45,7 @@ jobs:
           host: linux
           target: android
           arch: android_arm64_v8a
-          modules: qtquickcontrols2 qtshadertools
+          modules: qtshadertools
           cache: true
 
       - name: Build release APK
