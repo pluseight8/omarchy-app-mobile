@@ -1,0 +1,14 @@
+/build/
+/cmake-build-*/
+/.cache/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.pem
+*.key
+.env
+.env.local
+.env.*.local
+__pycache__/
+*.py[cod]

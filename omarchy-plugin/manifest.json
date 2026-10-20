@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "org.pluseight.omaapp",
+  "name": "OmaApp",
+  "version": "0.1.0",
+  "author": "OmaApp contributors",
+  "description": "OmaApp status widget for the Omarchy shell",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "OmaApp",
+    "description": "Shows OmaApp pairing status",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

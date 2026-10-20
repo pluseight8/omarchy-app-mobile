@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">OmaApp mark</title>
+  <desc id="desc">A phone and desktop display connected by a shared rounded line.</desc>
+  <rect width="96" height="96" rx="22" fill="#101315"/>
+  <rect x="16" y="22" width="39" height="49" rx="8" fill="none" stroke="#cacccc" stroke-width="3"/>
+  <rect x="49" y="34" width="32" height="27" rx="5" fill="#101315" stroke="#cacccc" stroke-width="3"/>
+  <path d="M59 68h12M65 61v7" fill="none" stroke="#cacccc" stroke-width="3" stroke-linecap="round"/>
+  <path d="M28 62h15" fill="none" stroke="#707880" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="35.5" cy="63" r="1.8" fill="#cacccc"/>
+  <path d="M46 47h7" fill="none" stroke="#cacccc" stroke-width="3" stroke-linecap="round"/>
+</svg>

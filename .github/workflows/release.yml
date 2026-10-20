@@ -1,0 +1,109 @@
+name: Signed Android Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  release:
+    name: Build, sign, and publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018
+
+      - name: Export Android toolchain paths
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install Qt for Android
+        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: 6.11.2
+          host: linux
+          target: android
+          arch: android_arm64_v8a
+          modules: qtquickcontrols2 qtshadertools
+          cache: true
+
+      - name: Build release APK
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'Expected a stable version tag such as v1.2.3.\n' >&2
+            exit 1
+          fi
+          version="${RELEASE_TAG#v}"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          cmake --build build/android --target apk --parallel 2
+
+      - name: Sign and verify APK
+        env:
+          OMAAPP_KEYSTORE_BASE64: ${{ secrets.OMAAPP_KEYSTORE_BASE64 }}
+          OMAAPP_KEY_ALIAS: ${{ secrets.OMAAPP_KEY_ALIAS }}
+          OMAAPP_KEYSTORE_PASSWORD: ${{ secrets.OMAAPP_KEYSTORE_PASSWORD }}
+          OMAAPP_KEY_PASSWORD: ${{ secrets.OMAAPP_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ -z "$OMAAPP_KEYSTORE_BASE64" || -z "$OMAAPP_KEY_ALIAS" || -z "$OMAAPP_KEYSTORE_PASSWORD" || -z "$OMAAPP_KEY_PASSWORD" ]]; then
+            printf 'Release signing secrets are not configured; no APK will be published.\n' >&2
+            exit 1
+          fi
+          apk_source="$(find build/android -type f -name '*.apk' -print -quit)"
+          if [[ -z "$apk_source" ]]; then
+            printf 'Qt did not produce an APK.\n' >&2
+            exit 1
+          fi
+          mkdir -p dist
+          unsigned_apk="dist/unsigned.apk"
+          aligned_apk="dist/aligned.apk"
+          signed_apk="dist/OmaApp-$RELEASE_TAG-arm64-v8a.apk"
+          printf '%s' "$OMAAPP_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/omaapp-release.jks"
+          chmod 600 "$RUNNER_TEMP/omaapp-release.jks"
+          cp "$apk_source" "$unsigned_apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/zipalign" -p -f 4 "$unsigned_apk" "$aligned_apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" sign \
+            --ks "$RUNNER_TEMP/omaapp-release.jks" \
+            --ks-key-alias "$OMAAPP_KEY_ALIAS" \
+            --ks-pass env:OMAAPP_KEYSTORE_PASSWORD \
+            --key-pass env:OMAAPP_KEY_PASSWORD \
+            --out "$signed_apk" "$aligned_apk"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$signed_apk"
+          rm -f "$unsigned_apk" "$aligned_apk" "$RUNNER_TEMP/omaapp-release.jks"
+
+      - name: Package plugin and checksums
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          plugin_archive="dist/OmaApp-Omarchy-Plugin-$RELEASE_TAG.tar.gz"
+          tar -czf "$plugin_archive" -C omarchy-plugin .
+          sha256sum "dist/OmaApp-$RELEASE_TAG-arm64-v8a.apk" "$plugin_archive" > dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            "dist/OmaApp-$RELEASE_TAG-arm64-v8a.apk" \
+            "dist/OmaApp-Omarchy-Plugin-$RELEASE_TAG.tar.gz" \
+            dist/SHA256SUMS.txt \
+            --title "OmaApp $RELEASE_TAG" \
+            --generate-notes
