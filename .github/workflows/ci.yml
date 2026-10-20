@@ -154,7 +154,7 @@ jobs:
           cmake --build build/android-emulator --target apk --parallel 2
 
       - name: Boot emulator, install OmaApp, and select it as HOME
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           export ANDROID_USER_HOME="$RUNNER_TEMP/omaapp-user"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
@@ -164,8 +164,16 @@ jobs:
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | tee avds.txt
           grep -F 'Name: omaapp-smoke' avds.txt
-          "$ANDROID_SDK_ROOT/emulator/emulator" -avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -wipe-data &
-          timeout 120s adb wait-for-device
+          if [[ -e /dev/kvm ]]; then
+            sudo chmod a+rw /dev/kvm
+          fi
+          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -wipe-data)
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo 'KVM is unavailable; using software CPU emulation.'
+            emulator_args+=(-accel off)
+          fi
+          "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" &
+          timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
             if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
               break
