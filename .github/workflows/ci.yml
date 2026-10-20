@@ -205,10 +205,13 @@ jobs:
           adb logcat -d -t 10000 > restarted-logcat.txt
           grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
           grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
+          mkdir -p android-smoke
+          adb exec-out screencap -p > android-smoke/launcher-before-tap.png
           adb shell input tap 58 500
           sleep 3
+          adb exec-out screencap -p > android-smoke/launcher-after-tap.png
           adb shell dumpsys activity activities > launched-app.txt
-          resumed_activity="$(tr -d '\r' < launched-app.txt | grep 'mResumedActivity' | head -n 1)"
+          resumed_activity="$(tr -d '\r' < launched-app.txt | grep -E 'mResumedActivity|topResumedActivity|^[[:space:]]*Resumed:' | head -n 1)"
           printf '%s\n' "$resumed_activity"
           if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
             printf 'Tapping the first launcher entry did not open another app.\n' >&2
@@ -224,3 +227,12 @@ jobs:
           fi
           adb shell pm clear app.omaapp
           python3 scripts/ci/android_pairing_smoke.py
+
+      - name: Upload Android smoke screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: OmaApp-android-smoke-screenshots
+          path: android-smoke/*.png
+          if-no-files-found: warn
+          retention-days: 7
