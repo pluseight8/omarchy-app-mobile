@@ -17,6 +17,13 @@ import java.nio.charset.StandardCharsets;
 public final class PairingTestInstrumentation extends Instrumentation {
     private static final long PAIRING_TIMEOUT_MILLIS = 60_000L;
     private static final long REVOCATION_TIMEOUT_MILLIS = 20_000L;
+    private Bundle testArguments = new Bundle();
+
+    @Override
+    public void onCreate(Bundle arguments) {
+        super.onCreate(arguments);
+        testArguments = arguments == null ? new Bundle() : new Bundle(arguments);
+    }
 
     @Override
     public void onStart() {
@@ -28,25 +35,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
 
-            Bundle arguments = getArguments();
-            String encodedQr = arguments.getString("qr64", "");
+            String encodedQr = testArguments.getString("qr64", "");
             if (encodedQr.isEmpty() || encodedQr.length() > 4096) {
                 throw new IllegalArgumentException("A bounded pairing QR payload is required.");
             }
             String qr = new String(Base64.decode(encodedQr, Base64.NO_WRAP), StandardCharsets.UTF_8);
             PairingBridge.beginPairing(context, qr);
 
-            String expectedTheme = arguments.getString("expectedTheme", "");
+            String expectedTheme = testArguments.getString("expectedTheme", "");
             JSONObject connected = awaitTheme(context, expectedTheme, PAIRING_TIMEOUT_MILLIS, false);
             report("paired", connected);
 
-            String updatedTheme = arguments.getString("updatedTheme", "");
+            String updatedTheme = testArguments.getString("updatedTheme", "");
             if (!updatedTheme.isEmpty()) {
                 JSONObject updated = awaitTheme(context, updatedTheme, PAIRING_TIMEOUT_MILLIS, true);
                 report("theme_updated", updated);
             }
 
-            if (arguments.getBoolean("revoke", false)) {
+            if (testArguments.getBoolean("revoke", false)) {
                 PairingBridge.revoke(context);
                 awaitRevocation(context);
                 result.putString("stage", "revoked");

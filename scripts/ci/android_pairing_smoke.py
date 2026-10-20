@@ -143,6 +143,14 @@ def main() -> int:
             process.kill()
         return_code = process.wait(timeout=5)
         reader.join(timeout=1)
+        while True:
+            try:
+                line = output_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line:
+                output.append(line)
+                print(line.rstrip())
         combined = "".join(output)
         if return_code != 0:
             raise RuntimeError(f"Android pairing instrumentation exited {return_code}:\n{combined}")
