@@ -155,8 +155,11 @@ jobs:
       - name: Boot emulator, install OmaApp, and select it as HOME
         timeout-minutes: 12
         run: |
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/omaapp-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd
           "$ANDROID_SDK_ROOT/emulator/emulator" -avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -wipe-data &
           adb wait-for-device
           for attempt in $(seq 1 120); do
