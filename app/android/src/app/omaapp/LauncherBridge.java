@@ -91,7 +91,8 @@ public final class LauncherBridge {
         if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()) {
             return "";
         }
-        long updatedAt = activity.applicationInfo == null ? 0 : activity.applicationInfo.lastUpdateTime;
+        long updatedAt = activity.applicationInfo == null || activity.applicationInfo.sourceDir == null
+                ? 0 : new File(activity.applicationInfo.sourceDir).lastModified();
         String cacheKey = activity.packageName + "/" + activity.name + "/" + updatedAt;
         String fileName = Integer.toUnsignedString(cacheKey.hashCode(), 16) + ".png";
         File iconFile = new File(cacheDirectory, fileName);
