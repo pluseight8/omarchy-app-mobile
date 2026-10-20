@@ -69,7 +69,7 @@ if(ANDROID)
 endif()
 
 include(CTest)
-if(BUILD_TESTING)
+if(BUILD_TESTING AND NOT ANDROID)
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
     qt_add_executable(geometry_tests
         shared/geometry/tests/tst_geometry.cpp
