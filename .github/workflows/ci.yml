@@ -195,8 +195,25 @@ jobs:
           grep -F 'app.omaapp' role.txt
           grep -F 'app.omaapp' activities.txt
           adb shell pidof app.omaapp
-          adb shell input swipe 58 410 58 410 1200
+          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
+          mkdir -p "$smoke_artifacts"
+          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
+          test -s "$smoke_artifacts/launcher-before-pin.png"
+          adb shell uiautomator dump --compressed /sdcard/omaapp-before-pin.xml || true
+          adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
+          pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml" || true)"
+          printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
+          if [[ -n "$pin_target" ]]; then
+            read -r pin_x pin_y <<< "$pin_target"
+          else
+            echo 'No accessible app button found; using the first grid-cell center for long press.'
+            pin_x=58
+            pin_y=410
+          fi
+          printf 'Long-pressing launcher app at %s,%s\n' "$pin_x" "$pin_y"
+          adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
           sleep 2
+          adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
           adb logcat -d -t 5000 > pinned-logcat.txt
           grep -E 'OmaApp: pinned app count [1-9][0-9]*' pinned-logcat.txt
           adb shell am force-stop app.omaapp
@@ -205,26 +222,11 @@ jobs:
           adb logcat -d -t 10000 > restarted-logcat.txt
           grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
           grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
-          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
-          mkdir -p "$smoke_artifacts"
-          adb shell screencap -p /sdcard/omaapp-before-tap.png
-          adb pull /sdcard/omaapp-before-tap.png "$smoke_artifacts/launcher-before-tap.png"
-          adb shell uiautomator dump --compressed /sdcard/omaapp-window.xml || true
-          adb pull /sdcard/omaapp-window.xml "$smoke_artifacts/window.xml" || true
-          python3 - "$smoke_artifacts/window.xml" <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-
-          path = Path(sys.argv[1])
-          if path.is_file():
-              for node in ET.parse(path).getroot().iter("node"):
-                  label = node.attrib.get("content-desc") or node.attrib.get("text")
-                  if label:
-                      print("UI node:", label[:100], node.attrib.get("bounds", ""),
-                            "clickable=" + node.attrib.get("clickable", ""))
-          PY
-          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window.xml" || true)"
+          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
+          test -s "$smoke_artifacts/launcher-before-tap.png"
+          adb shell uiautomator dump --compressed /sdcard/omaapp-after-restart.xml || true
+          adb pull /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml" || true
+          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml" || true)"
           printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
           if [[ -n "$tap_target" ]]; then
             read -r tap_x tap_y <<< "$tap_target"
@@ -233,7 +235,6 @@ jobs:
             tap_x=58
             tap_y=500
           fi
-          find "$smoke_artifacts" -maxdepth 1 -type f -printf '%f %s bytes\n'
           printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
           adb shell input tap "$tap_x" "$tap_y"
           sleep 3
