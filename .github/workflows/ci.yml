@@ -197,7 +197,9 @@ jobs:
           adb shell dumpsys activity activities > activities.txt
           adb shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME > resolved-home.txt 2>&1 || true
           adb shell dumpsys window windows > windows.txt
-          adb shell pidof app.omaapp > app-pid.txt || true
+          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          test -n "$app_pid"
+          printf '%s\n' "$app_pid" > app-pid.txt
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
@@ -214,12 +216,15 @@ jobs:
           adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
           sleep 2
           adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
-          adb logcat -d -v threadtime -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+          adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
           grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
           adb shell am force-stop app.omaapp
           adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
           sleep 8
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
+          restarted_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          test -n "$restarted_pid"
+          printf '%s\n' "$restarted_pid" > "$smoke_artifacts/restarted-pid.txt"
+          adb logcat -d -v threadtime --pid="$restarted_pid" -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
           grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' "$smoke_artifacts/restarted-logcat.txt"
           grep -E 'OmaApp: cached launcher icon for ' "$smoke_artifacts/restarted-logcat.txt"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
@@ -232,7 +237,7 @@ jobs:
           printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
           adb shell input tap "$tap_x" "$tap_y"
           sleep 3
-          adb logcat -d -v threadtime -t 5000 > "$smoke_artifacts/launch-logcat.txt"
+          adb logcat -d -v threadtime --pid="$restarted_pid" -t 5000 > "$smoke_artifacts/launch-logcat.txt"
           grep -E 'OmaApp: launch activity ' "$smoke_artifacts/launch-logcat.txt" || true
           adb shell screencap -p /sdcard/omaapp-after-tap.png
           adb pull /sdcard/omaapp-after-tap.png "$smoke_artifacts/launcher-after-tap.png"
@@ -247,7 +252,8 @@ jobs:
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           sleep 2
           adb shell pidof app.omaapp
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/final-logcat.txt"
+          final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          adb logcat -d -v threadtime --pid="$final_pid" -t 10000 > "$smoke_artifacts/final-logcat.txt"
           grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' "$smoke_artifacts/final-logcat.txt"
           if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed' "$smoke_artifacts/final-logcat.txt"; then
             exit 1
