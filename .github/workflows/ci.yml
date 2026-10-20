@@ -205,14 +205,28 @@ jobs:
           adb logcat -d -t 10000 > restarted-logcat.txt
           grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
           grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
-          mkdir -p android-smoke
-          adb exec-out screencap -p > android-smoke/launcher-before-tap.png
-          adb shell input tap 58 500
+          mkdir -p build/android-emulator/smoke
+          adb exec-out screencap -p > build/android-emulator/smoke/launcher-before-tap.png
+          test -s build/android-emulator/smoke/launcher-before-tap.png
+          adb shell uiautomator dump --compressed /sdcard/omaapp-window.xml
+          adb pull /sdcard/omaapp-window.xml build/android-emulator/smoke/window.xml
+          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py build/android-emulator/smoke/window.xml || true)"
+          if [[ -n "$tap_target" ]]; then
+            read -r tap_x tap_y <<< "$tap_target"
+          else
+            echo 'No accessible app button in the view hierarchy; using the first grid-cell center.'
+            tap_x=58
+            tap_y=500
+          fi
+          printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
+          adb shell input tap "$tap_x" "$tap_y"
           sleep 3
-          adb exec-out screencap -p > android-smoke/launcher-after-tap.png
+          adb exec-out screencap -p > build/android-emulator/smoke/launcher-after-tap.png
+          test -s build/android-emulator/smoke/launcher-after-tap.png
           adb shell dumpsys activity activities > launched-app.txt
           resumed_activity="$(tr -d '\r' < launched-app.txt | grep -E 'mResumedActivity|topResumedActivity|^[[:space:]]*Resumed:' | head -n 1)"
           printf '%s\n' "$resumed_activity"
+          printf '%s\n' "$resumed_activity" > build/android-emulator/smoke/resumed-activity.txt
           if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
             printf 'Tapping the first launcher entry did not open another app.\n' >&2
             exit 1
@@ -233,6 +247,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OmaApp-android-smoke-screenshots
-          path: android-smoke/*.png
+          path: build/android-emulator/smoke/
           if-no-files-found: warn
           retention-days: 7
