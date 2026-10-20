@@ -46,6 +46,7 @@ jobs:
           target: android
           arch: android_arm64_v8a
           modules: qtshadertools
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
       - name: Build release APK

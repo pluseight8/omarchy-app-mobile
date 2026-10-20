@@ -4,7 +4,7 @@
 #include <QList>
 #include <QString>
 
-class LauncherModel final : public QAbstractListModel
+class LauncherModel : public QAbstractListModel
 {
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
