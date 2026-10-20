@@ -10,7 +10,10 @@
 - [x] Add an x86_64 emulator smoke check for APK install, app enumeration, launching an app, and selecting OmaApp as HOME.
 - [x] Build the pairing/theme-sync implementation for arm64 and desktop in GitHub Actions (`2630521`).
 - [x] Add lazy-loaded Android app icons, persistent pinned launcher activities, and refresh control; local C++ compile, QML lint/format, and plugin tests pass.
-- [ ] Review the current emulator smoke result for installation, launch, app enumeration, app launch, HOME selection, icon loading, and pinned-app persistence.
+- [x] Review emulator run `39490160786`: APK installation, HOME selection, 8-app enumeration, icon caching, pin persistence across process restart, app launch, and return to HOME all passed before pairing smoke.
+- [x] Add persisted app folders with create, rename, add/remove installed apps, and delete actions; local Qt model tests and QML lint pass.
+- [ ] Verify folder creation, app membership, and folder persistence in the Android emulator smoke job.
+- [ ] Verify the CI Android pairing harness completes TLS pairing, theme/geometry/wallpaper sync, reconnect, and revocation.
 - [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
 
 ## Secure Omarchy pairing and live theme sync
@@ -27,12 +30,12 @@
 
 ## Remaining product work
 
-- [ ] Port Omalauncher home pages, folders, gestures, OWL widgets, editor, shortcuts, and settings, keeping required notices.
+- [ ] Port Omalauncher home pages, configurable gestures, OWL widgets, editor, shortcuts, and settings, keeping required notices.
 - [ ] Add visual comparisons for the Hyprland shader's gradients, transforms, and color handling.
 - [ ] Add permissioned clipboard, file, media, notification, workspace, terminal, desktop, and command features in reviewed slices.
 - [ ] Configure the owner's release-signing secrets; publish and verify the first signed Pre-release and update-over-install.
 
 ## Environment limits at this checkpoint
 
-- This workspace has no CMake, JDK, Android SDK, Android emulator, or attached device; `adb` is installed.
+- This workspace has no CMake, JDK, Android SDK, Android emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed.
 - Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.

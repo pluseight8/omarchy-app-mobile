@@ -15,6 +15,16 @@ ApplicationWindow {
     color: Theme.background
 
     property int selectedPage: 0
+    property string selectedFolderId: ""
+    property string selectedFolderName: ""
+    property string deletingFolderId: ""
+
+    function openFolder(folderId, folderName) {
+        selectedFolderId = folderId
+        selectedFolderName = folderName
+        renameFolderField.text = folderName
+        folderDialog.open()
+    }
 
     LauncherModel {
         id: launcher
@@ -148,6 +158,257 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: createFolderDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
+        title: qsTr("Create folder")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            const folderName = newFolderField.text.trim()
+            const folderId = launcher.createFolder(folderName)
+            if (folderId.length === 0) {
+                folderCreationError.visible = true
+                open()
+                return
+            }
+            folderCreationError.visible = false
+            newFolderField.clear()
+            window.openFolder(folderId, folderName)
+        }
+        onRejected: {
+            newFolderField.clear()
+            folderCreationError.visible = false
+        }
+
+        ColumnLayout {
+            width: parent.width
+            spacing: 8
+
+            TextField {
+                id: newFolderField
+                Layout.fillWidth: true
+                maximumLength: 40
+                placeholderText: qsTr("Folder name")
+                Accessible.name: qsTr("New folder name")
+                onTextChanged: folderCreationError.visible = false
+            }
+
+            Label {
+                id: folderCreationError
+                Layout.fillWidth: true
+                visible: false
+                text: qsTr("Choose a unique name. You can create up to 24 folders.")
+                color: Theme.urgent
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    Dialog {
+        id: folderDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 440)
+        height: Math.min(window.height - 72, 560)
+        title: selectedFolderName
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                TextField {
+                    id: renameFolderField
+                    Layout.fillWidth: true
+                    maximumLength: 40
+                    placeholderText: qsTr("Folder name")
+                    Accessible.name: qsTr("Folder name")
+                    onTextChanged: renameFolderError.visible = false
+                }
+                Button {
+                    text: qsTr("Save")
+                    Accessible.name: qsTr("Rename folder")
+                    onClicked: {
+                        if (launcher.renameFolder(selectedFolderId, renameFolderField.text)) {
+                            selectedFolderName = renameFolderField.text.trim()
+                        } else {
+                            renameFolderError.visible = true
+                        }
+                    }
+                }
+            }
+
+            Label {
+                id: renameFolderError
+                Layout.fillWidth: true
+                visible: false
+                text: qsTr("Choose a unique folder name.")
+                color: Theme.urgent
+                wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: qsTr("Apps")
+                    color: Theme.foreground
+                    font.weight: Font.DemiBold
+                }
+                Item { Layout.fillWidth: true }
+                Button {
+                    text: qsTr("Add apps")
+                    Accessible.name: qsTr("Add apps to %1").arg(selectedFolderName)
+                    onClicked: {
+                        folderAppSearch.clear()
+                        addFolderAppsDialog.open()
+                    }
+                }
+            }
+
+            ListView {
+                id: folderAppsList
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 4
+                model: {
+                    const exists = launcher.folders.some(folder => folder.id === selectedFolderId)
+                    return exists ? launcher.folderApps(selectedFolderId) : []
+                }
+                delegate: RowLayout {
+                    required property var modelData
+                    width: folderAppsList.width
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: modelData.name
+                        Accessible.name: qsTr("Launch %1").arg(modelData.name)
+                        onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                    }
+                    ToolButton {
+                        text: "−"
+                        Accessible.name: qsTr("Remove %1 from %2").arg(modelData.name).arg(selectedFolderName)
+                        onClicked: launcher.setFolderContains(selectedFolderId,
+                                                              modelData.packageName,
+                                                              modelData.activityName,
+                                                              false)
+                    }
+                }
+                Label {
+                    anchors.centerIn: parent
+                    width: parent.width * 0.88
+                    visible: folderAppsList.count === 0
+                    text: qsTr("This folder is empty. Add installed apps to keep them together.")
+                    color: Theme.muted
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Button {
+                    text: qsTr("Delete folder")
+                    Accessible.name: qsTr("Delete %1 folder").arg(selectedFolderName)
+                    onClicked: {
+                        deletingFolderId = selectedFolderId
+                        deleteFolderDialog.open()
+                    }
+                }
+                Item { Layout.fillWidth: true }
+            }
+        }
+    }
+
+    Dialog {
+        id: addFolderAppsDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 440)
+        height: Math.min(window.height - 72, 560)
+        title: qsTr("Add apps to %1").arg(selectedFolderName)
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            TextField {
+                id: folderAppSearch
+                Layout.fillWidth: true
+                placeholderText: qsTr("Search installed apps")
+                Accessible.name: qsTr("Search installed apps to add to folder")
+            }
+
+            ListView {
+                id: availableFolderApps
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 4
+                model: {
+                    const exists = launcher.folders.some(folder => folder.id === selectedFolderId)
+                    return exists ? launcher.availableApps(selectedFolderId, folderAppSearch.text) : []
+                }
+                delegate: Button {
+                    required property var modelData
+                    width: availableFolderApps.width
+                    height: 48
+                    Accessible.name: modelData.inFolder
+                                   ? qsTr("Remove %1 from %2").arg(modelData.name).arg(selectedFolderName)
+                                   : qsTr("Add %1 to %2").arg(modelData.name).arg(selectedFolderName)
+                    onClicked: launcher.setFolderContains(selectedFolderId,
+                                                          modelData.packageName,
+                                                          modelData.activityName,
+                                                          !modelData.inFolder)
+
+                    contentItem: RowLayout {
+                        spacing: 12
+                        Image {
+                            Layout.preferredWidth: 28
+                            Layout.preferredHeight: 28
+                            source: modelData.iconUrl
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: modelData.name
+                            color: Theme.foreground
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            text: modelData.inFolder ? "✓" : "+"
+                            color: Theme.accent
+                            font.pixelSize: 18
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: deleteFolderDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        title: qsTr("Delete folder?")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            launcher.deleteFolder(deletingFolderId)
+            if (deletingFolderId === selectedFolderId)
+                folderDialog.close()
+        }
+        Label {
+            text: qsTr("The folder will be removed. Installed apps remain on this device.")
+            wrapMode: Text.WordWrap
+        }
+    }
+
     Component.onCompleted: {
         launcher.refresh()
         applySyncedTheme()
@@ -215,7 +476,7 @@ ApplicationWindow {
             currentIndex: window.selectedPage
 
             ColumnLayout {
-                spacing: Theme.spacingSection
+                spacing: Math.min(Theme.spacingSection, 16)
 
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -326,6 +587,93 @@ ApplicationWindow {
                                         borderEnd: borderStart
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: parent.activeFocus ? 1 : 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("Folders")
+                        color: Theme.foreground
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Button {
+                        text: qsTr("New")
+                        Accessible.name: qsTr("Create folder")
+                        onClicked: createFolderDialog.open()
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: launcher.folders.length > 0 ? 72 : 0
+                    visible: launcher.folders.length > 0
+
+                    Flickable {
+                        anchors.fill: parent
+                        contentWidth: folderRow.implicitWidth
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        Row {
+                            id: folderRow
+                            spacing: Theme.spacingSmall
+
+                            Repeater {
+                                model: launcher.folders
+
+                                delegate: Button {
+                                    required property var modelData
+                                    width: 84
+                                    height: 68
+                                    Accessible.name: qsTr("Open %1 folder, %2 apps")
+                                                       .arg(modelData.name)
+                                                       .arg(modelData.appCount)
+                                    onClicked: window.openFolder(modelData.id, modelData.name)
+
+                                    contentItem: Column {
+                                        spacing: 2
+                                        Text {
+                                            width: parent.width
+                                            text: "▦"
+                                            color: Theme.accent
+                                            font.pixelSize: 20
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: modelData.name
+                                            color: Theme.foreground
+                                            font.pixelSize: 10
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: qsTr("%1 apps").arg(modelData.appCount)
+                                            color: Theme.muted
+                                            font.pixelSize: 9
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                    }
+
+                                    background: HyprlandSurface {
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.surface
+                                        borderStart: parent.activeFocus ? Theme.accent : Theme.outline
+                                        borderEnd: borderStart
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
                                     }
                                 }
                             }

@@ -79,4 +79,12 @@ if(BUILD_TESTING AND NOT ANDROID)
     )
     target_link_libraries(geometry_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME geometry_tests COMMAND geometry_tests)
+
+    qt_add_executable(launcher_model_tests
+        app/native/tests/tst_launchermodel.cpp
+        app/native/LauncherModel.cpp
+        app/native/LauncherModel.h
+    )
+    target_link_libraries(launcher_model_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME launcher_model_tests COMMAND launcher_model_tests)
 endif()

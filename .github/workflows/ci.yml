@@ -209,6 +209,49 @@ jobs:
           grep -F 'app.omaapp' role.txt
           grep -F 'app.omaapp' activities.txt
           grep -F 'app.omaapp' resolved-home.txt
+          adb shell uiautomator dump --compressed /sdcard/omaapp-create-folder.xml || true
+          adb pull /sdcard/omaapp-create-folder.xml "$smoke_artifacts/window-create-folder.xml" || true
+          create_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-create-folder.xml" 'Create folder')"
+          read -r create_folder_x create_folder_y <<< "$create_folder_target"
+          adb shell input tap "$create_folder_x" "$create_folder_y"
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-new-folder-name.xml || true
+          adb pull /sdcard/omaapp-new-folder-name.xml "$smoke_artifacts/window-new-folder-name.xml" || true
+          folder_name_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-new-folder-name.xml" 'New folder name')"
+          read -r folder_name_x folder_name_y <<< "$folder_name_target"
+          adb shell input tap "$folder_name_x" "$folder_name_y"
+          adb shell input text CI_Folder
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-create-folder-confirm.xml || true
+          adb pull /sdcard/omaapp-create-folder-confirm.xml "$smoke_artifacts/window-create-folder-confirm.xml" || true
+          create_confirm_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-create-folder-confirm.xml" 'OK')"
+          read -r create_confirm_x create_confirm_y <<< "$create_confirm_target"
+          adb shell input tap "$create_confirm_x" "$create_confirm_y"
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-contents.xml || true
+          adb pull /sdcard/omaapp-folder-contents.xml "$smoke_artifacts/window-folder-contents.xml" || true
+          add_folder_apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-folder-contents.xml" 'Add apps to CI_Folder')"
+          read -r add_folder_apps_x add_folder_apps_y <<< "$add_folder_apps_target"
+          adb shell input tap "$add_folder_apps_x" "$add_folder_apps_y"
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-apps.xml || true
+          adb pull /sdcard/omaapp-folder-apps.xml "$smoke_artifacts/window-folder-apps.xml" || true
+          add_drive_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-folder-apps.xml" 'Add Drive to CI_Folder')"
+          read -r add_drive_x add_drive_y <<< "$add_drive_target"
+          adb shell input tap "$add_drive_x" "$add_drive_y"
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-drive-added.xml || true
+          adb pull /sdcard/omaapp-folder-drive-added.xml "$smoke_artifacts/window-folder-drive-added.xml" || true
+          grep -F 'Remove Drive from CI_Folder' "$smoke_artifacts/window-folder-drive-added.xml"
+          adb shell input keyevent 4
+          adb shell input keyevent 4
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-on-home.xml || true
+          adb pull /sdcard/omaapp-folder-on-home.xml "$smoke_artifacts/window-folder-on-home.xml" || true
+          grep -F 'Open CI_Folder folder, 1 apps' "$smoke_artifacts/window-folder-on-home.xml"
+          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
+          adb shell uiautomator dump --compressed /sdcard/omaapp-before-pin.xml || true
+          adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
           pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml")"
           printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
           read -r pin_x pin_y <<< "$pin_target"
@@ -231,6 +274,16 @@ jobs:
           test -s "$smoke_artifacts/launcher-before-tap.png"
           adb shell uiautomator dump --compressed /sdcard/omaapp-after-restart.xml || true
           adb pull /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml" || true
+          grep -F 'Open CI_Folder folder, 1 apps' "$smoke_artifacts/window-after-restart.xml"
+          persisted_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-after-restart.xml" 'Open CI_Folder folder, 1 apps')"
+          read -r persisted_folder_x persisted_folder_y <<< "$persisted_folder_target"
+          adb shell input tap "$persisted_folder_x" "$persisted_folder_y"
+          sleep 1
+          adb shell uiautomator dump --compressed /sdcard/omaapp-persisted-folder.xml || true
+          adb pull /sdcard/omaapp-persisted-folder.xml "$smoke_artifacts/window-persisted-folder.xml" || true
+          grep -F 'Launch Drive' "$smoke_artifacts/window-persisted-folder.xml"
+          adb shell input keyevent 4
+          sleep 1
           tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
           printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
           read -r tap_x tap_y <<< "$tap_target"

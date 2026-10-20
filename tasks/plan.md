@@ -4,7 +4,7 @@
 
 OmaApp has two installable components: an Android APK and one Omarchy plugin. The Android host uses Qt Quick, C++, and QML. The plugin runs inside Omarchy's Quickshell process and owns its Python HTTPS helper. The app does not include a separate companion service, a Linux guest, PRoot, or a Wayland compositor.
 
-The Android launcher and arm64 debug packaging already exist. Direct QR pairing and live theme sync are implemented; desktop and arm64 builds pass in CI. The launcher now has lazy Android app icons and persistent pinned activities. Source implementation, CI build, emulator smoke test, and physical-device test are separate checkpoints; a completed item below does not imply device validation unless it says so.
+The Android launcher and arm64 debug packaging already exist. Direct QR pairing and live theme sync are implemented; desktop and arm64 builds pass in CI. The launcher has lazy Android app icons, persistent pins, and local app folders. Source implementation, CI build, emulator smoke test, and physical-device test are separate checkpoints; a completed item below does not imply device validation unless it says so.
 
 ## Current pairing architecture
 
@@ -15,7 +15,7 @@ The Android launcher and arm64 debug packaging already exist. Direct QR pairing 
 - The service reads the active Omarchy theme files and Hyprland options. Android polls every four seconds and caches the last successful theme and wallpaper.
 - The protocol has no remote command, clipboard, file-transfer, notification, media, terminal, or desktop-control endpoint.
 
-The pairing implementation is committed, and focused Python protocol tests pass locally. Desktop and arm64 jobs pass in CI; the x86_64 emulator job is still checking install, launch, app enumeration, and HOME selection. This machine has `adb` but no CMake, Android SDK, emulator, or attached device, so physical pairing and theme refresh still need a real Android phone on the Omarchy network.
+The pairing implementation is committed, and focused Python protocol tests pass locally. Run `39490160786` passed the desktop and arm64 jobs and confirmed Android install, app enumeration, icon caching, pin persistence, app launch, and HOME return. Its pairing harness failed before contacting the plugin because the Android shell split a theme argument containing spaces. The next run removes spaces from its test theme names and adds folder UI/persistence coverage. This machine has `adb` but no CMake, Android SDK, emulator, or attached device, so real pairing and live theme refresh still need an Android phone on the Omarchy network.
 
 ## Work sequence
 
@@ -27,14 +27,17 @@ The pairing implementation is committed, and focused Python protocol tests pass 
 - [x] Run Python protocol tests, shell syntax, manifest validation, and QML lint locally.
 - [ ] Build the arm64 Android app in CI and fix Java/QML/C++ issues found there.
 - [x] Add an x86_64 emulator smoke test for install, launch, app enumeration, app launch, and HOME role selection.
-- [ ] Review the CI emulator result and complete a phone-to-computer pairing on an Omarchy session.
+- [x] Review the emulator launcher result: install, enumeration, HOME, icons, persisted pin, app launch, and HOME return all passed in CI.
+- [ ] Complete the CI pairing/theme-sync/reconnect/revoke smoke and a phone-to-computer pairing on an Omarchy session.
 
 ### 2. Improve daily Android launcher use
 
 - [x] Add cached Android app icons, persistent pinned launcher activities, and refresh control.
-- [ ] Verify icon loading and pinned-app persistence in the Android emulator smoke job.
+- [x] Add persisted app folders with create, rename, app membership, and delete operations.
+- [x] Verify icon loading and pinned-app persistence in emulator run `39490160786`.
+- [ ] Verify app-folder UI and persistence in the Android emulator smoke job.
 - [ ] Review the launcher grid and search on compact and large Android screens.
-- [ ] Add home pages, folders, gestures, settings, shortcuts, and compatible Omalauncher features, preserving MIT notices.
+- [ ] Add home pages, configurable gestures, settings, shortcuts, and compatible Omalauncher features, preserving MIT notices.
 - [ ] Port compatible OWL widgets and their editor after Android lifecycle and permission needs are defined.
 - [ ] Keep theme and wallpaper controls consistent with Omarchy snapshots and accessible offline.
 

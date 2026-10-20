@@ -2,11 +2,11 @@
 
 ## Starting point
 
-The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It already provides an Android home-screen launcher, theme and wallpaper support, widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration explicitly removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp currently implements Android app enumeration/launch, a HOME activity, the first Omarchy pairing screen, and a shared theme preview; the original home-page, folder, shortcut, and OWL widget feature set remains to port.
+The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It already provides an Android home-screen launcher, theme and wallpaper support, widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration explicitly removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp implements Android app enumeration/launch, a HOME activity, persistent pinned apps and folders, QR pairing, and a shared theme preview. Home pages, configurable gestures, shortcuts, settings, and OWL widgets remain to port.
 
 ## Qt and Quickshell
 
-Qt 6.11.2 desktop development tools and `qmllint` are available in this workspace. CMake, a JDK, Android SDK, `adb`, and an emulator are not installed here, so this machine cannot currently build or install the APK. GitHub Actions has produced a debug arm64 APK at the previous checkpoint; the current pairing changes still need a new build and Android runtime check.
+Qt 6.11.2 desktop development tools, QtTest, `qmllint`, and `adb` are available in this workspace. CMake, a JDK, Android SDK, and emulator are not installed here, so this machine cannot build or install the APK locally. GitHub Actions builds the debug arm64 APK and runs Android emulator checks. The latest emulator run confirmed app listing, launching, icon caching, HOME selection, and pinned-app persistence; its pairing harness exposed an argument-quoting issue that is being fixed. A physical phone is not connected.
 
 The current Quickshell build documentation requires Linux desktop dependencies such as libdrm and Wayland, and the project relies on private Qt APIs tied to a specific Qt build. Its current CMake configuration enables Linux desktop integrations and contains no Android build path. That makes the complete Quickshell executable a poor candidate for inclusion in an Android APK. Qt Quick remains a supported Android rendering host; portable QML style logic can be adapted, while desktop shell services stay in the Omarchy plugin.
 

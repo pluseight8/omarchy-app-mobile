@@ -5,7 +5,7 @@ OmaApp has two installable components: one Android APK and one Omarchy plugin. S
 ```text
 Android APK
   ├── Qt Quick launcher, devices, and appearance screens
-  ├── C++ LauncherModel / PairingModel
+  ├── C++ LauncherModel (app list, pins, folders) / PairingModel
   ├── Java LauncherBridge ── Android PackageManager / app launch
   ├── Java QR scanner ── CameraX + bundled ML Kit QR model
   ├── Java PairingBridge ── TLS certificate pin / Android Keystore token
@@ -22,8 +22,10 @@ The theme path reads Omarchy's active `colors.toml`, `shell.toml`, and backgroun
 
 The Android app is Qt Quick, not a port of the Quickshell executable. Quickshell and Omarchy shell components have Linux/Wayland integration; the plugin runs inside Quickshell and the Android app reuses compatible visual behavior. No Quickshell binary/library is bundled in the APK.
 
+Launcher favorites and folders are stored locally through `QSettings`. Folder membership references Android launcher activities by package and activity name, so an unavailable app stays out of the folder view until it is installed again. Folder edits are bounded, validated, and independent of the Omarchy pairing connection.
+
 ## Not yet verified or implemented
 
-The source and protocol tests do not establish that pairing works on a real Omarchy computer and Android device. This workspace has no Android SDK, `adb`, or emulator, and GrapheneOS has not been tested. A current CI APK build and emulator/device smoke test remain required.
+The source and protocol tests do not establish that pairing works on a real Omarchy computer and Android device. This workspace has `adb` and Qt desktop tools but no CMake, JDK, Android SDK, emulator, or attached phone; GrapheneOS has not been tested. GitHub Actions provides the APK build and emulator smoke test.
 
 There is no remote command, clipboard, file, notification, media, workspace, terminal, desktop-streaming, or plugin-management endpoint. These features need their own permission model, tests, and threat review before implementation.

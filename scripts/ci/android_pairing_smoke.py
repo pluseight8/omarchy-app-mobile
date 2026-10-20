@@ -35,7 +35,7 @@ def _one_pixel_png() -> bytes:
 
 
 def main() -> int:
-    theme = {"name": "CI Everforest"}
+    theme = {"name": "CI_Everforest"}
     theme_lock = threading.Lock()
     theme_reads = 0
     wallpaper_path: Path | None = None
@@ -174,14 +174,14 @@ def main() -> int:
                     patch.object(service, "_emit", side_effect=lambda _event: None):
                 first_qr = qr_payload(state)
                 run_android_instrumentation(
-                    state, first_qr, expected_theme="CI Everforest", updated_theme="CI Night",
+                    state, first_qr, expected_theme="CI_Everforest", updated_theme="CI_Night",
                 )
                 if len(state.devices) != 1 or not state.pending:
                     raise RuntimeError("The plugin did not retain the approved Android device.")
 
                 second_qr = qr_payload(state)
                 run_android_instrumentation(
-                    state, second_qr, expected_theme="CI Night", revoke=True,
+                    state, second_qr, expected_theme="CI_Night", revoke=True,
                 )
                 if state.devices:
                     raise RuntimeError("The Android client did not revoke its saved device token.")
