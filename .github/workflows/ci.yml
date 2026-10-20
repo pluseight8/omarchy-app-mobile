@@ -250,7 +250,7 @@ jobs:
             exit 1
           fi
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
-          sleep 2
+          sleep 8
           adb shell pidof app.omaapp
           final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           adb logcat -d -v threadtime --pid="$final_pid" -t 10000 > "$smoke_artifacts/final-logcat.txt"
