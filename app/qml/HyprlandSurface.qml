@@ -7,6 +7,7 @@ Item {
     property color fillColor: Theme.surface
     property color borderStart: Theme.outline
     property color borderEnd: borderStart
+    property real borderGradientAngle: Theme.borderGradientAngle
     property real radius: Theme.defaultCornerRadius
     property real roundingPower: Theme.defaultRoundingPower
     property real borderWidth: 1
@@ -21,6 +22,7 @@ Item {
         property color fillColor: root.fillColor
         property color borderStart: root.borderStart
         property color borderEnd: root.borderEnd
+        property real borderGradientAngle: root.borderGradientAngle
         property real radius: root.radius * Screen.devicePixelRatio
         property real roundingPower: root.roundingPower
         property real borderWidth: root.borderWidth * Screen.devicePixelRatio

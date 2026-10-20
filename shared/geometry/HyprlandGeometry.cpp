@@ -6,8 +6,8 @@
 
 namespace {
 
-constexpr float kMinimumPower = 2.0F;
-constexpr float kMaximumPower = 16.0F;
+constexpr float kMinimumPower = 1.0F;
+constexpr float kMaximumPower = 10.0F;
 constexpr float kHyprlandSmoothing = 3.14159265358979323846F / 5.34665792551F;
 
 float clampPower(float power) noexcept

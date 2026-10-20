@@ -1,24 +1,37 @@
 # OmaApp task list
 
-## Current checkpoint — Qt Quick prototype
+## Android launcher
 
-- [x] Read the attached product requirements.
-- [x] Inspect upstream Omalauncher, Omarchy shell plugins, Quickshell, and Hyprland shader sources.
-- [x] Record platform and license findings.
-- [x] Implement the Qt Quick launcher shell and Android app-list bridge.
-- [x] Port the Hyprland rounding mask and smoothing equation into a Qt ShaderEffect with scalable inner and outer masks.
-- [ ] Add visual regression captures against Hyprland for gradients, transform paths, and color management.
-- [x] Add Android package template and HOME/launcher intent filters.
-- [x] Add the first Omarchy plugin manifest, installer, and uninstaller.
-- [x] Add CI for desktop verification and Android arm64 packaging.
-- [x] Run available local checks and review the source changes.
-- [ ] Build the CMake/QSB app target and verify Android APK packaging in CI.
-- [ ] Install and launch on GrapheneOS or an Android emulator.
-- [ ] Push the initial implementation to the target repository.
+- [x] Expose Android launcher activities and launch the selected app through `PackageManager`.
+- [x] Register OmaApp as a selectable Android HOME app.
+- [x] Add the in-app QR scanner and runtime-only camera permission.
+- [x] Keep the desktop preview honest: it does not invent an installed-app list.
+- [x] Build an arm64 debug APK in GitHub Actions at the previous checkpoint (`42d177f`).
+- [x] Add an x86_64 emulator smoke check for APK install, app enumeration, launching an app, and selecting OmaApp as HOME.
+- [ ] Build the current pairing implementation in CI and review the produced APK.
+- [ ] Review the emulator smoke result for installation, launch, app enumeration, app launch, and HOME selection.
+- [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
 
-## Next checkpoints
+## Secure Omarchy pairing and live theme sync
 
-- [ ] Migrate Omalauncher features and assets after the Qt prototype is verified.
-- [ ] Implement the secure paired-device protocol and theme synchronization.
-- [ ] Implement remote features in permission-gated slices.
-- [ ] Configure signing secrets, publish a signed APK, and verify upgrade installation.
+- [x] Keep the HTTPS helper and QR encoder inside the one Omarchy plugin package.
+- [x] Add short-lived QR pairing, certificate pinning, two-sided approval, per-device tokens, encrypted Android storage, and revocation.
+- [x] Add token-authenticated re-pairing after the computer's local address changes.
+- [x] Read current Omarchy theme files and Hyprland values through `hyprctl -j getoption`.
+- [x] Sync supported colors, active border gradient, wallpaper, border width, rounding, rounding power, and spacing; retain the last snapshot offline.
+- [x] Add HTTPS protocol tests for approval, rejection, expiry, reconnect, limits, theme parsing, authentication, and revocation.
+- [x] Run all available local repository checks after this change; Python tests, plugin validation, shell syntax, QML lint, Python compilation, and whitespace checks pass.
+- [ ] Verify current desktop and Android jobs in GitHub Actions.
+- [ ] Test real phone ↔ Omarchy exchange and observe theme refresh after changing a theme.
+
+## Remaining product work
+
+- [ ] Port Omalauncher home pages, folders, gestures, OWL widgets, editor, shortcuts, and settings, keeping required notices.
+- [ ] Add visual comparisons for the Hyprland shader's gradients, transforms, and color handling.
+- [ ] Add permissioned clipboard, file, media, notification, workspace, terminal, desktop, and command features in reviewed slices.
+- [ ] Configure the owner's release-signing secrets; publish and verify the first signed Pre-release and update-over-install.
+
+## Environment limits at this checkpoint
+
+- This workspace has no CMake, JDK, Android SDK, `adb`, or Android emulator.
+- Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.

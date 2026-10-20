@@ -1,6 +1,6 @@
 # Release signing setup
 
-The release workflow intentionally stops if the release key is missing. Never replace these values with a debug keystore.
+The first tag workflow intentionally creates a GitHub Pre-release and stops if the release key is missing. Never replace these values with a debug keystore.
 
 Create a long-lived owner-controlled Android signing keystore outside the repository. For example:
 
@@ -17,4 +17,4 @@ Configure these GitHub Actions secrets in the repository:
 
 Do not commit the keystore or print any secret in workflow logs. The release workflow decodes it into a temporary runner file, signs the APK, verifies the signature, and only then creates a GitHub Release.
 
-The first signing-key setup and update-over-install check must be performed by the repository owner before publishing a release.
+The repository owner must configure and verify the signing key before pushing a version tag. The workflow publishes `OmaApp-vX.Y.Z-arm64-v8a.apk` only after signature verification. The owner should install that APK, then verify update-over-install with the same key before promoting a later release.

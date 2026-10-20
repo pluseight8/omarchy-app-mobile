@@ -100,7 +100,7 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           plugin_archive="dist/OmaApp-Omarchy-Plugin-$RELEASE_TAG.tar.gz"
-          tar -czf "$plugin_archive" -C omarchy-plugin .
+          tar -czf "$plugin_archive" --exclude='__pycache__' --exclude='*.py[cod]' -C omarchy-plugin .
           sha256sum "dist/OmaApp-$RELEASE_TAG-arm64-v8a.apk" "$plugin_archive" > dist/SHA256SUMS.txt
 
       - name: Create GitHub Release
@@ -113,4 +113,6 @@ jobs:
             "dist/OmaApp-Omarchy-Plugin-$RELEASE_TAG.tar.gz" \
             dist/SHA256SUMS.txt \
             --title "OmaApp $RELEASE_TAG" \
+            --prerelease \
+            --verify-tag \
             --generate-notes

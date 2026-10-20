@@ -1,5 +1,6 @@
 #include "LauncherModel.h"
 
+#include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -129,6 +130,10 @@ void LauncherModel::refresh()
     m_entries = std::move(nextEntries);
     rebuildVisibleRows();
     endResetModel();
+#ifdef Q_OS_ANDROID
+    qInfo().noquote() << QStringLiteral("OmaApp: enumerated %1 launcher activities")
+                             .arg(m_entries.size());
+#endif
     emit countChanged();
 #else
     beginResetModel();

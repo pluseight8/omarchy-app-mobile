@@ -12,6 +12,18 @@ if ! command -v omarchy >/dev/null 2>&1; then
     exit 1
 fi
 
+for dependency in python3 openssl; do
+    if ! command -v "$dependency" >/dev/null 2>&1; then
+        printf 'Required OmaApp plugin dependency was not found on PATH: %s\n' "$dependency" >&2
+        exit 1
+    fi
+done
+
+if ! python3 -c 'import tomllib' >/dev/null 2>&1; then
+    printf 'OmaApp requires Python 3.11 or later (tomllib is missing).\n' >&2
+    exit 1
+fi
+
 if [[ -e "$target_dir" ]]; then
     printf 'Plugin directory already exists: %s\n' "$target_dir" >&2
     printf 'Review it and remove or back it up before reinstalling.\n' >&2

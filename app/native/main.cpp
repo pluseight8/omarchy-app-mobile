@@ -1,4 +1,5 @@
 #include "LauncherModel.h"
+#include "PairingModel.h"
 #include "shared/geometry/HyprlandGeometry.h"
 
 #include <QGuiApplication>
@@ -15,6 +16,7 @@ int main(int argc, char *argv[])
 
     HyprlandGeometry geometry;
     qmlRegisterType<LauncherModel>("OmaApp.Native", 1, 0, "LauncherModel");
+    qmlRegisterType<PairingModel>("OmaApp.Native", 1, 0, "PairingModel");
     qmlRegisterSingletonInstance("OmaApp.Native", 1, 0, "Geometry", &geometry);
 
     QQmlApplicationEngine engine;

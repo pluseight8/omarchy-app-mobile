@@ -1,7 +1,7 @@
 # GrapheneOS compatibility
 
-GrapheneOS is a target, but this prototype has not been installed or tested on GrapheneOS or a Pixel device. No Google Play Services dependency is declared. That alone does not establish device compatibility.
+GrapheneOS remains a target, but OmaApp has not been installed or tested on GrapheneOS or a Pixel device. A debug APK is built by GitHub Actions; that does not establish runtime compatibility.
 
-The manifest exposes a standard Android HOME activity so the user can select OmaApp through Android's launcher selection UI. The app does not request root, privileged APIs, Shizuku, device-owner status, or an accessibility service. A working launcher APK and device smoke test are still required before claiming support.
+The Android manifest registers OmaApp as a selectable HOME app and declares only the camera permission for on-demand QR scanning plus the normal internet permission for pairing and theme sync. The app does not request root, privileged APIs, Shizuku, device-owner status, notification access, or an accessibility service. It queries launcher activities through Android's package visibility declarations rather than requesting access to every installed package.
 
-The current app queries launcher activities through Android package visibility declarations. It does not query all installed packages. Future notification, widget, tile, and background features will need separate permissions and should remain opt-in.
+The QR scanner uses CameraX and a bundled ML Kit barcode model, so scanning does not require a Google Play Services model download. Verify camera permission, launcher enumeration, app launch, HOME selection, TLS pinning, Keystore persistence, reconnect, and offline cache on a GrapheneOS device before claiming support.

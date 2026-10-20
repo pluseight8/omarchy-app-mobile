@@ -11,6 +11,7 @@ layout(std140, binding = 0) uniform buf {
     float radius;
     float roundingPower;
     float borderWidth;
+    float borderGradientAngle;
     vec4 fillColor;
     vec4 borderStart;
     vec4 borderEnd;
@@ -43,7 +44,7 @@ float hyprlandCoverage(vec2 position, vec2 size, float cornerRadius, float power
 
 void main() {
     vec2 size = max(itemSize, vec2(1.0));
-    float power = clamp(roundingPower, 2.0, 16.0);
+    float power = clamp(roundingPower, 1.0, 10.0);
     float outerRadius = clamp(radius, 0.0, min(size.x, size.y) * 0.5);
     float stroke = clamp(borderWidth, 0.0, min(size.x, size.y) * 0.5);
 
@@ -61,7 +62,25 @@ void main() {
     }
 
     float borderCoverage = max(0.0, outerCoverage - innerCoverage);
-    float gradientPosition = clamp((qt_TexCoord0.x + qt_TexCoord0.y) * 0.5, 0.0, 1.0);
+    float angle = radians(borderGradientAngle);
+    float finalAngle;
+    vec2 gradientCoord = qt_TexCoord0;
+    if (angle > 4.71) {
+        gradientCoord.y = 1.0 - gradientCoord.y;
+        finalAngle = 6.28 - angle;
+    } else if (angle > 3.14) {
+        gradientCoord = vec2(1.0) - gradientCoord;
+        finalAngle = angle - 3.14;
+    } else if (angle > 1.57) {
+        gradientCoord.x = 1.0 - gradientCoord.x;
+        finalAngle = 3.14 - angle;
+    } else {
+        finalAngle = angle;
+    }
+    float gradientPosition = clamp(
+        gradientCoord.y * sin(finalAngle) + gradientCoord.x * (1.0 - sin(finalAngle)),
+        0.0,
+        1.0);
     vec4 borderColor = mix(borderStart, borderEnd, gradientPosition);
 
     // QColor uniforms are premultiplied by Qt; coverage preserves that form.

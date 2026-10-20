@@ -17,6 +17,8 @@ qt_add_executable(omaapp
     app/native/main.cpp
     app/native/LauncherModel.cpp
     app/native/LauncherModel.h
+    app/native/PairingModel.cpp
+    app/native/PairingModel.h
     shared/geometry/HyprlandGeometry.cpp
     shared/geometry/HyprlandGeometry.h
 )

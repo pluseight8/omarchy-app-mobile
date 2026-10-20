@@ -52,3 +52,13 @@ The Android manifest follows Qt's Android package template conventions. Qt sourc
 ## Quickshell
 
 Quickshell is not linked or bundled in the current prototype. The inspected project is LGPL-3.0. No Quickshell reuse is claimed. If it is added later, include the source and license material and satisfy LGPL relinking requirements.
+
+## QR Code generator
+
+`omarchy-plugin/third_party/qrcodegen.py` is vendored from Project Nayuki's Python QR Code generator library:
+
+- Source: https://github.com/nayuki/QR-Code-generator/blob/master/python/qrcodegen.py
+- License: MIT
+- Copyright: Copyright (c) Project Nayuki
+
+The upstream copyright and permission notice are included at the top of the vendored file.

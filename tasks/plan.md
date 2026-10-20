@@ -1,80 +1,64 @@
 # OmaApp implementation plan
 
-## Goal
+## Product shape
 
-Build the two requested deliverables: one Android launcher APK and one Omarchy plugin. The first implementation checkpoint is a real Qt Quick host that can build on desktop, exposes installed Android apps through a small Java bridge, and renders rounded surfaces with a Qt ShaderEffect using Hyprland's rounding mask equation. Android packaging and the paired-device protocol follow as separate, verifiable slices.
+OmaApp has two installable components: an Android APK and one Omarchy plugin. The Android host uses Qt Quick, C++, and QML. The plugin runs inside Omarchy's Quickshell process and owns its Python HTTPS helper. The app does not include a separate companion service, a Linux guest, PRoot, or a Wayland compositor.
 
-## Architecture decisions
+The Android launcher and arm64 debug packaging already exist. The current development slice adds the first source implementation of direct QR pairing and live theme sync. Source implementation, CI build, emulator smoke test, and physical-device test are separate checkpoints; a completed item below does not imply device validation unless it says so.
 
-- Use Qt 6, C++, and QML for the Android app. Keep Android-only APIs behind a Java bridge shipped inside that APK.
-- Keep Omarchy integration in one third-party Quickshell plugin. Any helper process must ship inside that plugin and follow its lifecycle.
-- Keep shared protocol and geometry code under shared/. Do not introduce a separate OmaLink product.
-- Reuse portable Omarchy style concepts and document every adaptation. Do not claim Quickshell code is embedded until its source is actually built into the app.
-- Keep remote operations unavailable until pairing, device authorization, revocation, and audit behavior are implemented.
-- Do not publish a stable APK until an owner-controlled release key is configured and the package is signed and verified.
+## Current pairing architecture
 
-## Work plan
+- The plugin shows a three-minute, one-use QR code with the computer URL and certificate fingerprint.
+- OmaApp scans the QR, pins the certificate, and requests pairing over HTTPS.
+- The user approves the phone in the widget. The host stores a hash of a random per-device token; Android stores the token encrypted with an Android Keystore key.
+- An already trusted phone can scan a fresh QR to reconnect if the router changes the computer's address. A different certificate identity requires forgetting the old pairing and confirming a new one.
+- The service reads the active Omarchy theme files and Hyprland options. Android polls every four seconds and caches the last successful theme and wallpaper.
+- The protocol has no remote command, clipboard, file-transfer, notification, media, terminal, or desktop-control endpoint.
 
-### Phase 0 — Investigation and licensing
+The pairing implementation and focused Python protocol tests are in the current working changes. The next gate is local checks followed by both GitHub CI jobs. This machine does not have CMake, Android SDK, `adb`, or an emulator, so install/launch and real network exchange require CI emulator coverage or a connected Android device.
 
-- [x] Inspect the target repository and source Omalauncher.
-- [x] Inspect current Omarchy plugin contracts, Quickshell build requirements, and Hyprland shape shaders.
-- [x] Record compatibility limits and licensing obligations.
-- [x] Pin the Qt Android, SDK, and NDK versions in CI.
+## Work sequence
 
-### Phase 1 — Qt Quick prototype
+### 1. Finish pairing/theme-sync verification
 
-- [x] Create the Qt Quick app host and CMake target.
-- [x] Add Android launcher intent filters and package visibility for launcher activities.
-- [x] Enumerate and launch installed apps through a Java bridge.
-- [x] Port Hyprland's rounded-corner mask equation and smoothing band into a reusable Qt ShaderEffect with inner/outer masks and gradient borders.
-- [ ] Match compositor transforms, multi-stop OkLab gradients, ICC color management, and remaining border paths.
-- [x] Add focused geometry and manifest validation checks.
-- [ ] Build and run an Android APK in CI; install and launch it on an emulator or device.
+- [x] Implement TLS-pinned pairing, device approval, reconnect, revocation, and private credential storage.
+- [x] Implement current Omarchy color/shell reads, Hyprland geometry reads, wallpaper transfer, four-second refresh, and offline cache.
+- [x] Update plugin install checks, security documentation, and current task status.
+- [x] Run Python protocol tests, shell syntax, manifest validation, and QML lint locally.
+- [ ] Build the arm64 Android app in CI and fix Java/QML/C++ issues found there.
+- [x] Add an x86_64 emulator smoke test for install, launch, app enumeration, app launch, and HOME role selection.
+- [ ] Review the CI emulator result and complete a phone-to-computer pairing on an Omarchy session.
 
-### Phase 2 — Omalauncher migration
+### 2. Improve daily Android launcher use
 
-- [ ] Port the launcher’s existing home, search, theme, widget, settings, and localization behavior.
-- [ ] Remove the Arch guest, PRoot, and embedded Wayland compositor from the mobile product.
-- [ ] Preserve required notices and review every carried dependency and asset license.
+- [ ] Review the launcher grid and search on compact and large Android screens.
+- [ ] Add home pages, folders, gestures, settings, shortcuts, and appropriate app icons from Omalauncher, preserving MIT notices.
+- [ ] Port compatible OWL widgets and their editor after Android lifecycle and permission needs are defined.
+- [ ] Keep theme and wallpaper controls consistent with Omarchy snapshots and accessible offline.
 
-### Phase 3 — Omarchy visual parity
+### 3. Improve Omarchy visual parity
 
-- [ ] Load Omarchy theme colors and shell style values from a versioned snapshot.
-- [ ] Match border widths, gradients, radius, rounding power, gaps, and opacity.
-- [ ] Add wallpaper synchronization and inspect rendering on multiple pixel densities.
-- [ ] Record which Quickshell and Omarchy files are reused, adapted, or excluded.
+- [x] Use Hyprland's superellipse rounding equation and smoothing band in the Qt shader.
+- [x] Apply the active-border gradient angle and Hyprland rounding power range to the preview shader.
+- [ ] Compare the shader against current Hyprland rendering for gradient stops, transforms, border behavior, and color management.
+- [ ] Review QML components and portable style logic for reuse from Omarchy shell; do not port Quickshell's Linux compositor runtime into Android.
 
-### Phase 4 — Omarchy plugin and pairing
+### 4. Add optional connection features
 
-- [ ] Package one manifest-valid Omarchy service plugin with an install/update guide.
-- [ ] Define a versioned protocol with strict input limits and stable error responses.
-- [ ] Implement pinned encrypted pairing, per-device authorization, revocation, and emergency disconnect.
-- [ ] Keep the plugin’s helper process and lifecycle inside the plugin package.
-- [ ] Add secure theme and wallpaper synchronization.
+- [ ] Define a per-feature permission model and audit path before any remote operation is exposed.
+- [ ] Implement clipboard, file, media, notification, and workspace features as separately authorized and tested slices.
+- [ ] Consider terminal, desktop streaming, and remote commands only after the earlier transport and authorization model passes security review.
 
-### Phase 5 — Desktop features
+### 5. Release readiness
 
-- [ ] Add clipboard, files, notifications, media, workspace, and system status features behind per-device permissions.
-- [ ] Add remote terminal, desktop, and command features only with explicit confirmation and allowlisted operations.
-- [ ] Add plugin compatibility and automation APIs after threat review.
+- [x] Build an arm64 debug APK in CI.
+- [x] Configure a tag workflow that signs with the owner's existing key, verifies the signature, checksums assets, and publishes a Pre-release.
+- [ ] Configure and verify the four owner-managed GitHub signing secrets.
+- [ ] Publish `OmaApp-vX.Y.Z-arm64-v8a.apk` as a Pre-release, install it, and verify update-over-install with the same signing key.
+- [ ] Complete license-notice, accessibility, security, and compatibility reviews before calling the release ready.
 
-### Phase 6 — Release readiness
+## Constraints
 
-- [ ] Complete security review, accessibility review, localization, documentation, and screenshots.
-- [ ] Run unit, integration, lint, security, Android install, and launch checks.
-- [ ] Configure owner-managed release signing secrets and test update compatibility.
-- [ ] Publish a signed APK and compatible plugin archive with checksums and changelog.
-
-## Risks and checkpoints
-
-| Risk | Impact | Mitigation |
-| --- | --- | --- |
-| Quickshell is built around desktop Wayland and private Qt APIs | Full Quickshell reuse in an Android APK may not be viable | Keep the Android host on Qt Quick; use Quickshell in the Omarchy plugin; test portable source modules before reuse |
-| Qt for Android SDK, JDK, and Android SDK are absent locally | APK compilation cannot be verified in this workspace | Add a pinned CI toolchain and report local limitations clearly |
-| Remote-control features increase device compromise impact | Critical | Ship no remote command surface before pairing, permissions, confirmation, revocation, and audit checks exist |
-| Release signing key is not available in this workspace | No safe stable release can be published | Use repository secrets; never substitute a debug key for a release key |
-
-## Verification checkpoint
-
-The first checkpoint is complete only when desktop CMake build, QML lint, C++ geometry tests, Python manifest tests, and Omarchy manifest validation pass. Android packaging remains a separate checkpoint and must produce an installable, signed APK before a release is called ready.
+- The release key must remain owner-controlled and outside the repository. CI must fail closed if signing secrets are missing.
+- Quickshell is a desktop Wayland shell with Linux-specific services; the Android app uses Qt Quick, and the plugin uses Quickshell.
+- Any future user-data operation must be explicit, permissioned, bounded, and revocable. Do not add remote command execution to the theme-sync listener.

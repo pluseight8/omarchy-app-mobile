@@ -4,18 +4,20 @@
 
 ![OmaApp project banner](assets/hero.svg)
 
-OmaApp is the planned Android companion for Omarchy. This repository is at the Qt Quick prototype stage.
+OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick. The app and plugin now have a first working-source implementation of QR pairing and live theme sync; this slice still needs emulator and real-device verification.
 
 ## Current state
 
-- The Android app source is a Qt 6.10+ / C++ / QML launcher shell.
-- On Android, it queries launcher activities through a small Java bridge and starts the selected app. The manifest registers OmaApp as a selectable Android home screen.
+- The Android app uses Qt 6.10+ / C++ / QML and includes Android launcher enumeration, app launch, an optional HOME activity, and an on-demand QR scanner.
+- Pairing is a direct HTTPS connection to the one Omarchy plugin. The first pairing requires approval in OmaApp and in the plugin; the client pins the QR's computer certificate and keeps its bearer token encrypted with Android Keystore.
+- The plugin reads current Omarchy theme and supported Hyprland geometry, including colors, active-border gradient, wallpaper, border width, rounding, rounding power, and spacing. OmaApp refreshes the snapshot every four seconds and keeps the last successful theme while offline.
 - The desktop target is a preview. It does not fake an installed-app list.
-- The Omarchy component is one manifest-based status widget. It currently reports “not paired”.
-- Pairing, sync, remote access, the ported Omalauncher feature set, and a downloadable APK are not available yet.
-- No Quickshell executable or library is included in this prototype.
+- The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
+- Remote commands, clipboard, file sharing, media, notifications, workspace control, terminal, and desktop streaming are not implemented.
+- The APK is built as a CI debug artifact. It has not yet been installed on an emulator or phone, and there is no signed release in GitHub Releases.
+- No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-The current local workspace has Qt 6.11.2 desktop tools and `qmllint`, but lacks CMake, Qt ShaderTools, JDK, Android SDK, and Android NDK. Android packaging is configured in GitHub Actions; a successful CI run is needed before claiming an installable APK.
+This workspace has Qt 6.11.2 desktop tools and `qmllint`, but no CMake, JDK, Android SDK, `adb`, or emulator. GitHub Actions builds an arm64 debug APK. CI packaging alone does not verify installation or runtime behavior on Android.
 
 ## Build the desktop preview
 
@@ -38,17 +40,17 @@ For a local build, configure CMake with the Qt Android arm64 kit and the Android
 
 This prototype has not been installed on GrapheneOS or a Pixel device. The first Android APK is not yet available from Releases.
 
-## Install the Omarchy status widget
+## Install the Omarchy plugin
 
 From a checkout of this repository on an Omarchy computer:
 
     ./omarchy-plugin/install.sh
 
-The installer validates and copies the single plugin into the Omarchy user plugin directory. It does not install a separate server or system service.
+The installer checks Python 3.11+, OpenSSL, and Omarchy, then validates and copies the single plugin into the Omarchy user plugin directory. The plugin owns its helper process and does not install a separate server or system service. Pairing and install notes are in [the plugin guide](omarchy-plugin/README.md) and [the protocol status](docs/PAIRING.md).
 
 ## Plan and limits
 
-See [architecture](docs/ARCHITECTURE.md), [installation](docs/INSTALLATION.md), [pairing status](docs/PAIRING.md), [GrapheneOS status](docs/GRAPHENEOS.md), [compatibility findings](docs/compatibility.md), [the threat model](docs/threat-model.md), and [the implementation plan](tasks/plan.md). Remote features remain unavailable until the pairing protocol, device authorization, key revocation, and security checks are implemented.
+See [architecture](docs/ARCHITECTURE.md), [installation](docs/INSTALLATION.md), [pairing and sync](docs/PAIRING.md), [GrapheneOS status](docs/GRAPHENEOS.md), [compatibility findings](docs/compatibility.md), [the threat model](docs/threat-model.md), and [the implementation plan](tasks/plan.md). The first test release is configured as a GitHub Pre-release and requires the repository owner's signing secrets; the workflow publishes no APK if those secrets are absent.
 
 OmaApp is an independent project and is not an official Omarchy product.
 

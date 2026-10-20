@@ -39,6 +39,16 @@ private slots:
         QVERIFY(squircle > 0.99F);
     }
 
+    void roundingPowerMatchesHyprlandLimits()
+    {
+        QCOMPARE(
+            OmaApp::Geometry::superellipseDistance(3.0F, 4.0F, 0.0F),
+            OmaApp::Geometry::superellipseDistance(3.0F, 4.0F, 1.0F));
+        QCOMPARE(
+            OmaApp::Geometry::superellipseDistance(3.0F, 4.0F, 100.0F),
+            OmaApp::Geometry::superellipseDistance(3.0F, 4.0F, 10.0F));
+    }
+
     void pathIsClosedAndHandlesZeroRadius()
     {
         const QString rounded = OmaApp::Geometry::roundedRectPath(100.0F, 60.0F, 18.0F, 4.0F);

@@ -106,3 +106,94 @@ jobs:
           path: build/android/**/*.apk
           if-no-files-found: error
           retention-days: 7
+
+  android-emulator-smoke:
+    name: Android x86_64 emulator smoke test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK and emulator image
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 emulator system-images;android-36;google_apis;x86_64
+
+      - name: Set up Python for Qt installer
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.14'
+
+      - name: Export Android toolchain paths
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Install Qt for Android x86_64
+        uses: jurplel/install-qt-action/action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: 6.10.3
+          host: all_os
+          target: android
+          arch: android_x86_64
+          modules: qtshadertools
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
+          cache: true
+
+      - name: Build emulator APK
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          cmake --build build/android-emulator --target apk --parallel 2
+
+      - name: Boot emulator, install OmaApp, and select it as HOME
+        timeout-minutes: 20
+        run: |
+          printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
+            --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
+          "$ANDROID_SDK_ROOT/emulator/emulator" -avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -wipe-data &
+          adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
+          adb shell wm size 412x892
+          adb shell wm density 160
+          apk="$(find build/android-emulator -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          adb install "$apk"
+          adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
+          sleep 8
+          adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
+          adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
+          adb shell dumpsys role > role.txt
+          adb shell dumpsys activity activities > activities.txt
+          grep -F 'app.omaapp' role.txt
+          grep -F 'app.omaapp' activities.txt
+          adb shell pidof app.omaapp
+          adb shell input tap 58 410
+          sleep 3
+          adb shell dumpsys activity activities > launched-app.txt
+          resumed_activity="$(tr -d '\r' < launched-app.txt | grep 'mResumedActivity' | head -n 1)"
+          printf '%s\n' "$resumed_activity"
+          if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
+            printf 'Tapping the first launcher entry did not open another app.\n' >&2
+            exit 1
+          fi
+          adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
+          sleep 2
+          adb shell pidof app.omaapp
+          adb logcat -d -t 5000 > logcat.txt
+          grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' logcat.txt
+          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component' logcat.txt; then
+            exit 1
+          fi

@@ -4,7 +4,7 @@
   "name": "OmaApp",
   "version": "0.1.0",
   "author": "OmaApp contributors",
-  "description": "OmaApp status widget for the Omarchy shell",
+  "description": "Secure OmaApp pairing and live Omarchy theme sync",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "OmaApp",
-    "description": "Shows OmaApp pairing status",
+    "description": "Pair Android devices and manage their Omarchy theme sync",
     "category": "System",
     "allowMultiple": false
   }

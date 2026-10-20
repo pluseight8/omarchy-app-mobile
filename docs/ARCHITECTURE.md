@@ -1,22 +1,29 @@
 # Architecture
 
-OmaApp has two intended installable components: one Android APK and one Omarchy plugin. Shared C++/QML files are source modules, not additional products.
-
-## Current prototype
+OmaApp has two installable components: one Android APK and one Omarchy plugin. Shared C++/QML files and the Python helper inside the plugin are source modules, not additional products.
 
 ```text
-Android Qt Quick host
-  ├── QML launcher shell and local appearance preview
-  ├── C++ LauncherModel
+Android APK
+  ├── Qt Quick launcher, devices, and appearance screens
+  ├── C++ LauncherModel / PairingModel
   ├── Java LauncherBridge ── Android PackageManager / app launch
-  └── Qt ShaderEffect ── Hyprland-derived rounded surfaces
+  ├── Java QR scanner ── CameraX + bundled ML Kit QR model
+  ├── Java PairingBridge ── TLS certificate pin / Android Keystore token
+  └── Qt ShaderEffect ── Hyprland-derived rounded surfaces and border gradient
 
 Omarchy plugin
-  └── Manifest-based Quickshell bar widget ── unpaired status
+  ├── Quickshell bar widget ── QR, device approval, revoke, status
+  └── bundled Python helper ── TLS pairing / authenticated theme + wallpaper reads
 ```
 
-The Android host is Qt Quick, not a port of the Quickshell executable. Quickshell's inspected build depends on Linux/Wayland services and private Qt interfaces; no Quickshell code is bundled or claimed in this prototype. The plugin uses the Omarchy plugin entry point and existing shell UI types.
+The plugin helper stays inside the plugin folder and follows the widget lifecycle. It opens no listener until the user asks to pair or a saved trusted phone needs reconnection. The Android client pins the computer certificate from the QR and authenticates each device with a separate random token. The first pairing is approved on both devices; an already trusted phone can scan a new QR to update its local network address.
 
-## Not implemented
+The theme path reads Omarchy's active `colors.toml`, `shell.toml`, and background symlink, plus Hyprland options through `hyprctl -j getoption`. OmaApp polls every four seconds and caches the latest successful snapshot and wallpaper privately on the device.
 
-There is no pairing transport, desktop listener, key storage, theme synchronization, file/clipboard/notification transfer, terminal, remote desktop, plugin manager, or command authorization path. See [pairing status](PAIRING.md), [compatibility notes](compatibility.md), and [the threat model](threat-model.md).
+The Android app is Qt Quick, not a port of the Quickshell executable. Quickshell and Omarchy shell components have Linux/Wayland integration; the plugin runs inside Quickshell and the Android app reuses compatible visual behavior. No Quickshell binary/library is bundled in the APK.
+
+## Not yet verified or implemented
+
+The source and protocol tests do not establish that pairing works on a real Omarchy computer and Android device. This workspace has no Android SDK, `adb`, or emulator, and GrapheneOS has not been tested. A current CI APK build and emulator/device smoke test remain required.
+
+There is no remote command, clipboard, file, notification, media, workspace, terminal, desktop-streaming, or plugin-management endpoint. These features need their own permission model, tests, and threat review before implementation.
