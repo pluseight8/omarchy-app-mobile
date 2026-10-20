@@ -205,12 +205,27 @@ jobs:
           adb logcat -d -t 10000 > restarted-logcat.txt
           grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
           grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
-          mkdir -p build/android-emulator/smoke
-          adb exec-out screencap -p > build/android-emulator/smoke/launcher-before-tap.png
-          test -s build/android-emulator/smoke/launcher-before-tap.png
-          adb shell uiautomator dump --compressed /sdcard/omaapp-window.xml
-          adb pull /sdcard/omaapp-window.xml build/android-emulator/smoke/window.xml
-          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py build/android-emulator/smoke/window.xml || true)"
+          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
+          mkdir -p "$smoke_artifacts"
+          adb shell screencap -p /sdcard/omaapp-before-tap.png
+          adb pull /sdcard/omaapp-before-tap.png "$smoke_artifacts/launcher-before-tap.png"
+          adb shell uiautomator dump --compressed /sdcard/omaapp-window.xml || true
+          adb pull /sdcard/omaapp-window.xml "$smoke_artifacts/window.xml" || true
+          python3 - "$smoke_artifacts/window.xml" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          if path.is_file():
+              for node in ET.parse(path).getroot().iter("node"):
+                  label = node.attrib.get("content-desc") or node.attrib.get("text")
+                  if label:
+                      print("UI node:", label[:100], node.attrib.get("bounds", ""),
+                            "clickable=" + node.attrib.get("clickable", ""))
+          PY
+          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window.xml" || true)"
+          printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
           if [[ -n "$tap_target" ]]; then
             read -r tap_x tap_y <<< "$tap_target"
           else
@@ -218,15 +233,18 @@ jobs:
             tap_x=58
             tap_y=500
           fi
+          find "$smoke_artifacts" -maxdepth 1 -type f -printf '%f %s bytes\n'
           printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
           adb shell input tap "$tap_x" "$tap_y"
           sleep 3
-          adb exec-out screencap -p > build/android-emulator/smoke/launcher-after-tap.png
-          test -s build/android-emulator/smoke/launcher-after-tap.png
+          adb logcat -d -t 5000 > "$smoke_artifacts/launch-logcat.txt"
+          grep -E 'OmaApp: launch activity ' "$smoke_artifacts/launch-logcat.txt" || true
+          adb shell screencap -p /sdcard/omaapp-after-tap.png
+          adb pull /sdcard/omaapp-after-tap.png "$smoke_artifacts/launcher-after-tap.png"
           adb shell dumpsys activity activities > launched-app.txt
           resumed_activity="$(tr -d '\r' < launched-app.txt | grep -E 'mResumedActivity|topResumedActivity|^[[:space:]]*Resumed:' | head -n 1)"
           printf '%s\n' "$resumed_activity"
-          printf '%s\n' "$resumed_activity" > build/android-emulator/smoke/resumed-activity.txt
+          printf '%s\n' "$resumed_activity" > "$smoke_artifacts/resumed-activity.txt"
           if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
             printf 'Tapping the first launcher entry did not open another app.\n' >&2
             exit 1
@@ -247,6 +265,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: OmaApp-android-smoke-screenshots
-          path: build/android-emulator/smoke/
+          path: ${{ github.workspace }}/ci-artifacts/android-smoke/
           if-no-files-found: warn
           retention-days: 7

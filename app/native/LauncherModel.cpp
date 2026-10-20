@@ -219,13 +219,17 @@ bool LauncherModel::launchActivity(const QString &packageName, const QString &ac
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     const QJniObject packageObject = QJniObject::fromString(packageName);
     const QJniObject activityObject = QJniObject::fromString(activityName);
-    return QJniObject::callStaticMethod<jboolean>(
+    const bool started = QJniObject::callStaticMethod<jboolean>(
         "app/omaapp/LauncherBridge",
         "launchApp",
         "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
         context.object<jobject>(),
         packageObject.object<jstring>(),
         activityObject.object<jstring>());
+    qInfo().noquote() << QStringLiteral("OmaApp: launch activity %1 %2")
+                             .arg(started ? QStringLiteral("started") : QStringLiteral("rejected"))
+                             .arg(favoriteKey(packageName, activityName));
+    return started;
 #else
     Q_UNUSED(packageName)
     Q_UNUSED(activityName)
