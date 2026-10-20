@@ -5,7 +5,7 @@
 
 class QTimer;
 
-class PairingModel final : public QObject
+class PairingModel : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool platformSupported READ platformSupported CONSTANT)
