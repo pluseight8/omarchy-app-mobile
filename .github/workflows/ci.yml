@@ -26,7 +26,7 @@ jobs:
         # Invoke the packaged Node action directly; the root wrapper's path check fails on SHA checkouts.
         uses: jurplel/install-qt-action/action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
-          version: 6.11.2
+          version: 6.10.3
           host: linux
           target: desktop
           arch: gcc_64
@@ -64,7 +64,7 @@ jobs:
         uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
@@ -85,8 +85,8 @@ jobs:
         # Keep the same pinned Qt installer path as the desktop build.
         uses: jurplel/install-qt-action/action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
         with:
-          version: 6.11.2
-          host: linux
+          version: 6.10.3
+          host: all_os
           target: android
           arch: android_arm64_v8a
           modules: qtshadertools

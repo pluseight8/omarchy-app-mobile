@@ -8,7 +8,7 @@ OmaApp — задуманный Android-компаньон для Omarchy. Се�
 
 ## Текущее состояние
 
-- Исходники Android-приложения используют Qt 6.11, C++ и QML.
+- Исходники Android-приложения используют Qt 6.10+, C++ и QML.
 - На Android приложение получает список доступных launcher-активностей через небольшой Java-мост и запускает выбранное приложение. Манифест позволяет выбрать OmaApp как домашний экран Android.
 - Настольная версия — только предпросмотр. Список приложений на ней не подменяется фиктивными данными.
 - Компонент Omarchy — один status-widget по манифесту. Пока он показывает «не сопряжено».
@@ -19,7 +19,7 @@ OmaApp — задуманный Android-компаньон для Omarchy. Се�
 
 ## Сборка настольного предпросмотра
 
-Нужны CMake 3.24+, Ninja, Qt 6.11 с Qt Quick Controls 2, Qt ShaderTools и Qt Test, а также C++17.
+Нужны CMake 3.24+, Ninja, Qt 6.10+ с Qt Quick Controls 2, Qt ShaderTools и Qt Test, а также C++17.
 
     cmake -S . -B build/desktop -GNinja -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/desktop
@@ -29,7 +29,7 @@ OmaApp — задуманный Android-компаньон для Omarchy. Се�
 
 ## Сборка Android APK
 
-Android-цель использует Qt for Android arm64, JDK 21, Android SDK 36 и NDK 27.2.12479018. GitHub Actions устанавливает этот toolchain и собирает APK.
+Android-цель использует Qt for Android arm64, JDK 17, Android SDK 36 и NDK 27.2.12479018. GitHub Actions устанавливает этот toolchain и собирает APK.
 
 Для локальной сборки настройте CMake с Qt Android arm64 и путями к Android SDK/NDK, затем соберите цель apk:
 

@@ -8,7 +8,7 @@ OmaApp is the planned Android companion for Omarchy. This repository is at the Q
 
 ## Current state
 
-- The Android app source is a Qt 6.11 / C++ / QML launcher shell.
+- The Android app source is a Qt 6.10+ / C++ / QML launcher shell.
 - On Android, it queries launcher activities through a small Java bridge and starts the selected app. The manifest registers OmaApp as a selectable Android home screen.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The Omarchy component is one manifest-based status widget. It currently reports “not paired”.
@@ -19,7 +19,7 @@ The current local workspace has Qt 6.11.2 desktop tools and `qmllint`, but lacks
 
 ## Build the desktop preview
 
-Requirements: CMake 3.24+, Ninja, a Qt 6.11 SDK with Qt Quick Controls 2, Qt ShaderTools, and Qt Test, and a C++17 compiler.
+Requirements: CMake 3.24+, Ninja, a Qt 6.10+ SDK with Qt Quick Controls 2, Qt ShaderTools, and Qt Test, and a C++17 compiler.
 
     cmake -S . -B build/desktop -GNinja -DCMAKE_BUILD_TYPE=Debug
     cmake --build build/desktop
@@ -29,7 +29,7 @@ Run the generated `omaapp` executable to inspect the launcher shell and GPU-rend
 
 ## Build an Android APK
 
-The Android target uses Qt for Android arm64, JDK 21, Android SDK 36, and NDK 27.2.12479018. GitHub Actions installs this toolchain and builds the APK artifact.
+The Android target uses Qt for Android arm64, JDK 17, Android SDK 36, and NDK 27.2.12479018. GitHub Actions installs this toolchain and builds the APK artifact.
 
 For a local build, configure CMake with the Qt Android arm64 kit and the Android SDK/NDK paths, then build the apk target:
 
