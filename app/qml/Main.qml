@@ -245,6 +245,95 @@ ApplicationWindow {
                     }
                 }
 
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("Pinned apps")
+                        color: Theme.foreground
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        text: launcher.favorites.length > 0
+                              ? qsTr("Hold to unpin")
+                              : qsTr("Hold an app below to pin it")
+                        color: Theme.muted
+                        font.pixelSize: 11
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    ToolButton {
+                        text: "↻"
+                        Accessible.name: qsTr("Refresh installed apps")
+                        onClicked: launcher.refresh()
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: launcher.favorites.length > 0 ? 86 : 0
+                    visible: launcher.favorites.length > 0
+
+                    Flickable {
+                        anchors.fill: parent
+                        contentWidth: pinnedRow.implicitWidth
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        Row {
+                            id: pinnedRow
+                            spacing: 8
+
+                            Repeater {
+                                model: launcher.favorites
+
+                                delegate: Button {
+                                    required property var modelData
+                                    width: 72
+                                    height: 82
+                                    Accessible.name: qsTr("Launch %1").arg(modelData.name)
+                                    onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                                    onPressAndHold: launcher.removeFavorite(modelData.packageName, modelData.activityName)
+
+                                    contentItem: Column {
+                                        spacing: 5
+                                        Image {
+                                            width: 42
+                                            height: 42
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            source: modelData.iconUrl
+                                            fillMode: Image.PreserveAspectFit
+                                            asynchronous: true
+                                        }
+                                        Text {
+                                            width: 68
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: modelData.name
+                                            color: Theme.foreground
+                                            font.pixelSize: 10
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                        }
+                                    }
+
+                                    background: HyprlandSurface {
+                                        fillColor: parent.down ? Theme.surfaceRaised : "transparent"
+                                        borderStart: parent.activeFocus ? Theme.accent : "transparent"
+                                        borderEnd: borderStart
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: parent.activeFocus ? 1 : 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 TextField {
                     id: appSearch
                     Layout.fillWidth: true
@@ -284,6 +373,8 @@ ApplicationWindow {
                             required property int index
                             required property string name
                             required property string packageName
+                            required property string iconUrl
+                            required property bool favorite
 
                             width: appGrid.cellWidth - 8
                             height: appGrid.cellHeight - 8
@@ -292,26 +383,48 @@ ApplicationWindow {
                             display: AbstractButton.TextUnderIcon
                             spacing: 7
                             onClicked: launcher.launch(index)
+                            onPressAndHold: launcher.toggleFavorite(index)
 
                             contentItem: Column {
                                 spacing: 7
                                 anchors.centerIn: parent
 
-                                Rectangle {
+                                Item {
                                     width: 42
                                     height: 42
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    color: Theme.surfaceRaised
-                                    border.color: Theme.outline
-                                    border.width: 1
-                                    radius: 0
+
+                                    Image {
+                                        id: appIcon
+                                        anchors.fill: parent
+                                        source: iconUrl
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        visible: appIcon.status !== Image.Ready
+                                        color: Theme.surfaceRaised
+                                        border.color: Theme.outline
+                                        border.width: 1
+                                        radius: Theme.defaultCornerRadius
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: name.length > 0 ? name.substring(0, 1).toUpperCase() : "•"
+                                            color: Theme.accent
+                                            font.pixelSize: 21
+                                            font.weight: Font.Medium
+                                        }
+                                    }
 
                                     Text {
-                                        anchors.centerIn: parent
-                                        text: name.length > 0 ? name.substring(0, 1).toUpperCase() : "•"
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        text: favorite ? "★" : ""
                                         color: Theme.accent
-                                        font.pixelSize: 21
-                                        font.weight: Font.Medium
+                                        font.pixelSize: 13
                                     }
                                 }
 

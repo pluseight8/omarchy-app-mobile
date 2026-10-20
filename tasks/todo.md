@@ -6,10 +6,11 @@
 - [x] Register OmaApp as a selectable Android HOME app.
 - [x] Add the in-app QR scanner and runtime-only camera permission.
 - [x] Keep the desktop preview honest: it does not invent an installed-app list.
-- [x] Build an arm64 debug APK in GitHub Actions at the previous checkpoint (`42d177f`).
+- [x] Build an arm64 debug APK in GitHub Actions (`2630521`; artifact `OmaApp-ci-debug-arm64`).
 - [x] Add an x86_64 emulator smoke check for APK install, app enumeration, launching an app, and selecting OmaApp as HOME.
-- [ ] Build the current pairing implementation in CI and review the produced APK.
-- [ ] Review the emulator smoke result for installation, launch, app enumeration, app launch, and HOME selection.
+- [x] Build the pairing/theme-sync implementation for arm64 and desktop in GitHub Actions (`2630521`).
+- [x] Add lazy-loaded Android app icons, persistent pinned launcher activities, and refresh control; local C++ compile, QML lint/format, and plugin tests pass.
+- [ ] Review the current emulator smoke result for installation, launch, app enumeration, app launch, HOME selection, icon loading, and pinned-app persistence.
 - [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
 
 ## Secure Omarchy pairing and live theme sync
@@ -33,5 +34,5 @@
 
 ## Environment limits at this checkpoint
 
-- This workspace has no CMake, JDK, Android SDK, `adb`, or Android emulator.
+- This workspace has no CMake, JDK, Android SDK, Android emulator, or attached device; `adb` is installed.
 - Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.

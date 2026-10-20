@@ -5,9 +5,17 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSettings>
 #include <QVariant>
 #include <algorithm>
 #include <utility>
+
+namespace {
+QString favoriteKey(const QString &packageName, const QString &activityName)
+{
+    return packageName + QLatin1Char('/') + activityName;
+}
+} // namespace
 
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
@@ -20,6 +28,10 @@ LauncherModel::LauncherModel(QObject *parent)
 #ifdef Q_OS_ANDROID
     m_platformSupported = true;
 #endif
+    QSettings settings;
+    m_favoritePackages = settings.value(QStringLiteral("launcher/favorites")).toStringList();
+    qInfo().noquote() << QStringLiteral("OmaApp: loaded %1 pinned apps")
+                             .arg(m_favoritePackages.size());
 }
 
 int LauncherModel::rowCount(const QModelIndex &parent) const
@@ -41,6 +53,10 @@ QVariant LauncherModel::data(const QModelIndex &index, int role) const
         return entry.packageName;
     case ActivityNameRole:
         return entry.activityName;
+    case IconUrlRole:
+        return launcherIconUrl(entry);
+    case FavoriteRole:
+        return m_favoritePackages.contains(favoriteKey(entry.packageName, entry.activityName));
     default:
         return {};
     }
@@ -51,7 +67,9 @@ QHash<int, QByteArray> LauncherModel::roleNames() const
     return {
         {NameRole, "name"},
         {PackageNameRole, "packageName"},
-        {ActivityNameRole, "activityName"}
+        {ActivityNameRole, "activityName"},
+        {IconUrlRole, "iconUrl"},
+        {FavoriteRole, "favorite"}
     };
 }
 
@@ -68,6 +86,25 @@ bool LauncherModel::platformSupported() const
 QString LauncherModel::filter() const
 {
     return m_filter;
+}
+
+QVariantList LauncherModel::favorites() const
+{
+    QVariantList result;
+    for (const QString &key : m_favoritePackages) {
+        for (const Entry &entry : m_entries) {
+            if (favoriteKey(entry.packageName, entry.activityName) != key)
+                continue;
+            result.append(QVariantMap{
+                {QStringLiteral("name"), entry.name},
+                {QStringLiteral("packageName"), entry.packageName},
+                {QStringLiteral("activityName"), entry.activityName},
+                {QStringLiteral("iconUrl"), launcherIconUrl(entry)},
+            });
+            break;
+        }
+    }
+    return result;
 }
 
 void LauncherModel::setFilter(const QString &filter)
@@ -128,6 +165,7 @@ void LauncherModel::refresh()
 
     beginResetModel();
     m_entries = std::move(nextEntries);
+    m_iconUrls.clear();
     rebuildVisibleRows();
     endResetModel();
 #ifdef Q_OS_ANDROID
@@ -135,12 +173,15 @@ void LauncherModel::refresh()
                              .arg(m_entries.size());
 #endif
     emit countChanged();
+    emit favoritesChanged();
 #else
     beginResetModel();
     m_entries.clear();
+    m_iconUrls.clear();
     rebuildVisibleRows();
     endResetModel();
     emit countChanged();
+    emit favoritesChanged();
 #endif
 }
 
@@ -151,19 +192,114 @@ void LauncherModel::launch(int row)
         return;
 
     const Entry &entry = m_entries.at(m_visibleRows.at(row));
+    launchActivity(entry.packageName, entry.activityName);
+#else
+    Q_UNUSED(row)
+#endif
+}
+
+bool LauncherModel::launchPackage(const QString &packageName)
+{
+    for (const Entry &entry : m_entries) {
+        if (entry.packageName != packageName)
+            continue;
+        return launchActivity(entry.packageName, entry.activityName);
+    }
+    return false;
+}
+
+bool LauncherModel::launchActivity(const QString &packageName, const QString &activityName)
+{
+#ifdef Q_OS_ANDROID
+    const QRegularExpression packagePattern(QStringLiteral("^[A-Za-z0-9_.]{1,200}$"));
+    if (!packagePattern.match(packageName).hasMatch() || activityName.size() > 255
+        || !activityName.startsWith(packageName)) {
+        return false;
+    }
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    const QJniObject packageName = QJniObject::fromString(entry.packageName);
-    const QJniObject activityName = QJniObject::fromString(entry.activityName);
-    QJniObject::callStaticMethod<jboolean>(
+    const QJniObject packageObject = QJniObject::fromString(packageName);
+    const QJniObject activityObject = QJniObject::fromString(activityName);
+    return QJniObject::callStaticMethod<jboolean>(
         "app/omaapp/LauncherBridge",
         "launchApp",
         "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Z",
         context.object<jobject>(),
-        packageName.object<jstring>(),
-        activityName.object<jstring>());
+        packageObject.object<jstring>(),
+        activityObject.object<jstring>());
 #else
-    Q_UNUSED(row)
+    Q_UNUSED(packageName)
+    Q_UNUSED(activityName)
+    return false;
 #endif
+}
+
+void LauncherModel::toggleFavorite(int row)
+{
+    if (row < 0 || row >= m_visibleRows.size())
+        return;
+    const Entry &entry = m_entries.at(m_visibleRows.at(row));
+    const QString key = favoriteKey(entry.packageName, entry.activityName);
+    if (m_favoritePackages.contains(key))
+        m_favoritePackages.removeAll(key);
+    else
+        m_favoritePackages.append(key);
+    saveFavorites();
+    notifyFavoriteRowsChanged();
+    qInfo().noquote() << QStringLiteral("OmaApp: pinned app count %1")
+                             .arg(m_favoritePackages.size());
+    emit favoritesChanged();
+}
+
+void LauncherModel::removeFavorite(const QString &packageName, const QString &activityName)
+{
+    const QRegularExpression packagePattern(QStringLiteral("^[A-Za-z0-9_.]{1,200}$"));
+    if (!packagePattern.match(packageName).hasMatch() || activityName.size() > 255
+        || !activityName.startsWith(packageName)) {
+        return;
+    }
+    const QString key = favoriteKey(packageName, activityName);
+    if (!m_favoritePackages.contains(key))
+        return;
+    m_favoritePackages.removeAll(key);
+    saveFavorites();
+    notifyFavoriteRowsChanged();
+    emit favoritesChanged();
+}
+
+void LauncherModel::saveFavorites()
+{
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/favorites"), m_favoritePackages);
+}
+
+void LauncherModel::notifyFavoriteRowsChanged()
+{
+    for (int row = 0; row < m_visibleRows.size(); ++row)
+        emit dataChanged(index(row, 0), index(row, 0), {FavoriteRole});
+}
+
+QString LauncherModel::launcherIconUrl(const Entry &entry) const
+{
+    const QString key = entry.packageName + QLatin1Char('\x1f') + entry.activityName;
+    const auto found = m_iconUrls.constFind(key);
+    if (found != m_iconUrls.cend())
+        return found.value();
+
+    QString result;
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject packageName = QJniObject::fromString(entry.packageName);
+    const QJniObject activityName = QJniObject::fromString(entry.activityName);
+    const QJniObject icon = QJniObject::callStaticObjectMethod(
+        "app/omaapp/LauncherBridge", "iconUrl",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+        context.object<jobject>(), packageName.object<jstring>(), activityName.object<jstring>());
+    result = icon.toString();
+#endif
+    m_iconUrls.insert(key, result);
+    if (!result.isEmpty())
+        qInfo().noquote() << QStringLiteral("OmaApp: cached launcher icon for %1").arg(entry.name);
+    return result;
 }
 
 void LauncherModel::rebuildVisibleRows()

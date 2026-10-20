@@ -2,9 +2,9 @@
 
 ## Android development APK
 
-GitHub Actions builds an arm64 debug APK as the `OmaApp-ci-debug-arm64` artifact. Download it from a successful CI run and install it on an arm64 Android device with `adb install -r <apk>`. The debug artifact is for development; do not use it as an update path for a signed release.
+GitHub Actions builds an arm64 debug APK as the `OmaApp-ci-debug-arm64` artifact. The CI workflow also installs and launches the x86_64 build in an Android emulator, checks app enumeration and launching, and selects OmaApp as HOME. Download the arm64 artifact from a successful run and install it on an arm64 Android device with `adb install -r <apk>`. The debug artifact is for development; do not use it as an update path for a signed release.
 
-The current workspace does not have Android SDK tools, `adb`, or an emulator. The CI APK has not been installed or launched here. GrapheneOS and Pixel compatibility remain unverified.
+This workspace has `adb` but no Android SDK, emulator, or attached Android device. GrapheneOS and Pixel compatibility remain unverified.
 
 ## Signed test release
 

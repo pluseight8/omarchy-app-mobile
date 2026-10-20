@@ -6,6 +6,10 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+import android.net.Uri;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -15,6 +19,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.io.File;
+import java.io.FileOutputStream;
 
 public final class LauncherBridge {
     private LauncherBridge() {}
@@ -61,6 +67,60 @@ public final class LauncherBridge {
             result.put(item);
         }
         return result.toString();
+    }
+
+    public static String iconUrl(Context context, String packageName, String activityName) {
+        if (context == null || packageName == null || activityName == null
+                || !packageName.matches("[A-Za-z0-9_.]{1,200}")
+                || activityName.length() > 255 || !activityName.startsWith(packageName)) {
+            return "";
+        }
+
+        PackageManager packageManager = context.getPackageManager();
+        ComponentName component = new ComponentName(packageName, activityName);
+        final ActivityInfo activity;
+        final Drawable icon;
+        try {
+            activity = packageManager.getActivityInfo(component, 0);
+            icon = packageManager.getActivityIcon(component);
+        } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+            return "";
+        }
+
+        File cacheDirectory = new File(context.getCacheDir(), "launcher-icons");
+        if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()) {
+            return "";
+        }
+        long updatedAt = activity.applicationInfo == null ? 0 : activity.applicationInfo.lastUpdateTime;
+        String cacheKey = activity.packageName + "/" + activity.name + "/" + updatedAt;
+        String fileName = Integer.toUnsignedString(cacheKey.hashCode(), 16) + ".png";
+        File iconFile = new File(cacheDirectory, fileName);
+        if (!iconFile.isFile()) {
+            File temporary = new File(cacheDirectory, fileName + ".tmp");
+            Bitmap bitmap = null;
+            try (FileOutputStream output = new FileOutputStream(temporary, false)) {
+                bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(bitmap);
+                icon.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+                icon.draw(canvas);
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                    return "";
+                }
+                output.getFD().sync();
+            } catch (Exception error) {
+                temporary.delete();
+                return "";
+            } finally {
+                if (bitmap != null) {
+                    bitmap.recycle();
+                }
+            }
+            if (!temporary.renameTo(iconFile)) {
+                temporary.delete();
+                return "";
+            }
+        }
+        return Uri.fromFile(iconFile).toString();
     }
 
     public static boolean launchApp(Context context, String packageName, String activityName) {

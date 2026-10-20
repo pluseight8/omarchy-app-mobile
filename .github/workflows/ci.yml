@@ -153,7 +153,7 @@ jobs:
           cmake --build build/android-emulator --target apk --parallel 2
 
       - name: Boot emulator, install OmaApp, and select it as HOME
-        timeout-minutes: 20
+        timeout-minutes: 12
         run: |
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
@@ -180,7 +180,17 @@ jobs:
           grep -F 'app.omaapp' role.txt
           grep -F 'app.omaapp' activities.txt
           adb shell pidof app.omaapp
-          adb shell input tap 58 410
+          adb shell input swipe 58 410 58 410 1200
+          sleep 2
+          adb logcat -d -t 5000 > pinned-logcat.txt
+          grep -E 'OmaApp: pinned app count [1-9][0-9]*' pinned-logcat.txt
+          adb shell am force-stop app.omaapp
+          adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
+          sleep 8
+          adb logcat -d -t 10000 > restarted-logcat.txt
+          grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
+          grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
+          adb shell input tap 58 500
           sleep 3
           adb shell dumpsys activity activities > launched-app.txt
           resumed_activity="$(tr -d '\r' < launched-app.txt | grep 'mResumedActivity' | head -n 1)"
