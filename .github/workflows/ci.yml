@@ -183,62 +183,56 @@ jobs:
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
           adb shell wm size 412x892
           adb shell wm density 160
+          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
+          mkdir -p "$smoke_artifacts"
           apk="$(find build/android-emulator -type f -name '*.apk' -print -quit)"
           test -n "$apk"
           adb install "$apk"
+          adb logcat -c
           adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
           sleep 8
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
           adb shell dumpsys activity activities > activities.txt
-          grep -F 'app.omaapp' role.txt
-          grep -F 'app.omaapp' activities.txt
-          adb shell pidof app.omaapp
-          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
-          mkdir -p "$smoke_artifacts"
+          adb shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME > resolved-home.txt 2>&1 || true
+          adb shell dumpsys window windows > windows.txt
+          adb shell pidof app.omaapp > app-pid.txt || true
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
           test -s "$smoke_artifacts/launcher-before-pin.png"
           adb shell uiautomator dump --compressed /sdcard/omaapp-before-pin.xml || true
           adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
-          pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml" || true)"
+          grep -F 'app.omaapp' role.txt
+          grep -F 'app.omaapp' activities.txt
+          grep -F 'app.omaapp' resolved-home.txt
+          pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml")"
           printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
-          if [[ -n "$pin_target" ]]; then
-            read -r pin_x pin_y <<< "$pin_target"
-          else
-            echo 'No accessible app button found; using the first grid-cell center for long press.'
-            pin_x=58
-            pin_y=410
-          fi
+          read -r pin_x pin_y <<< "$pin_target"
           printf 'Long-pressing launcher app at %s,%s\n' "$pin_x" "$pin_y"
           adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
           sleep 2
           adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
-          adb logcat -d -t 5000 > pinned-logcat.txt
-          grep -E 'OmaApp: pinned app count [1-9][0-9]*' pinned-logcat.txt
+          adb logcat -d -v threadtime -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+          grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
           adb shell am force-stop app.omaapp
           adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
           sleep 8
-          adb logcat -d -t 10000 > restarted-logcat.txt
-          grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' restarted-logcat.txt
-          grep -E 'OmaApp: cached launcher icon for ' restarted-logcat.txt
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
+          grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' "$smoke_artifacts/restarted-logcat.txt"
+          grep -E 'OmaApp: cached launcher icon for ' "$smoke_artifacts/restarted-logcat.txt"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
           test -s "$smoke_artifacts/launcher-before-tap.png"
           adb shell uiautomator dump --compressed /sdcard/omaapp-after-restart.xml || true
           adb pull /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml" || true
-          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml" || true)"
+          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
           printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
-          if [[ -n "$tap_target" ]]; then
-            read -r tap_x tap_y <<< "$tap_target"
-          else
-            echo 'No accessible app button in the view hierarchy; using the first grid-cell center.'
-            tap_x=58
-            tap_y=500
-          fi
+          read -r tap_x tap_y <<< "$tap_target"
           printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
           adb shell input tap "$tap_x" "$tap_y"
           sleep 3
-          adb logcat -d -t 5000 > "$smoke_artifacts/launch-logcat.txt"
+          adb logcat -d -v threadtime -t 5000 > "$smoke_artifacts/launch-logcat.txt"
           grep -E 'OmaApp: launch activity ' "$smoke_artifacts/launch-logcat.txt" || true
           adb shell screencap -p /sdcard/omaapp-after-tap.png
           adb pull /sdcard/omaapp-after-tap.png "$smoke_artifacts/launcher-after-tap.png"
@@ -253,9 +247,9 @@ jobs:
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           sleep 2
           adb shell pidof app.omaapp
-          adb logcat -d -t 5000 > logcat.txt
-          grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' logcat.txt
-          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component' logcat.txt; then
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/final-logcat.txt"
+          grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' "$smoke_artifacts/final-logcat.txt"
+          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed' "$smoke_artifacts/final-logcat.txt"; then
             exit 1
           fi
           adb shell pm clear app.omaapp

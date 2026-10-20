@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Accessibility
 import QtQuick.Controls
 import QtQuick.Layouts
 import OmaApp.Native 1.0

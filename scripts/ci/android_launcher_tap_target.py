@@ -23,9 +23,21 @@ def main() -> int:
         print(f"cannot read Android UI dump: {error}", file=sys.stderr)
         return 1
 
-    for node in root.iter("node"):
+    nodes = list(root.iter("node"))
+    packages = {node.attrib.get("package", "") for node in nodes}
+    if "app.omaapp" not in packages:
+        visible_packages = ", ".join(sorted(package for package in packages if package)) or "none"
+        print(
+            f"OmaApp is not exposing its launcher UI; visible packages: {visible_packages}",
+            file=sys.stderr,
+        )
+        return 1
+
+    for node in nodes:
         accessible_name = node.attrib.get("content-desc", "")
-        if node.attrib.get("clickable") != "true" or not accessible_name.startswith("Launch "):
+        if (node.attrib.get("package") != "app.omaapp"
+                or node.attrib.get("clickable") != "true"
+                or not accessible_name.startswith("Launch ")):
             continue
 
         match = BOUNDS.fullmatch(node.attrib.get("bounds", ""))
