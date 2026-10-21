@@ -39,7 +39,9 @@ Item {
         property color fillColor: root.fillColor
         property color borderStart: root.borderStart
         property color borderEnd: root.borderEnd
-        property int borderStopCount: root.effectiveBorderStops.length
+        // Keep this a float: Qt's OpenGL ES 2.0 shader variant does not
+        // implement integer clamp/min overloads used by GLSL ES 1.00.
+        property real borderStopCount: root.effectiveBorderStops.length
         property color borderStop0: root.gradientStop(0)
         property color borderStop1: root.gradientStop(1)
         property color borderStop2: root.gradientStop(2)

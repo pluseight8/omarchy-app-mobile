@@ -14,7 +14,7 @@ layout(std140, binding = 0) uniform buf {
     float borderWidth;
     float borderGradientAngle;
     vec4 fillColor;
-    int borderStopCount;
+    float borderStopCount;
     vec4 borderStop0;
     vec4 borderStop1;
     vec4 borderStop2;
@@ -180,17 +180,18 @@ vec4 okLabAToPremultipliedSrgb(vec4 lab) {
     return vec4(srgb * lab.a, lab.a);
 }
 
-vec4 hyprlandGradientColor(vec2 coordinate, float degrees, int stopCount) {
-    int count = clamp(stopCount, 1, 10);
-    if (count == 1)
+vec4 hyprlandGradientColor(vec2 coordinate, float degrees) {
+    float count = clamp(borderStopCount, 1.0, 10.0);
+    if (count < 1.5)
         return borderStop0;
 
-    float progress = hyprlandGradientPosition(coordinate, degrees) * float(count - 1);
-    if (progress >= float(count - 1))
-        return gradientStop(count - 1);
+    float progress = hyprlandGradientPosition(coordinate, degrees) * (count - 1.0);
+    int lastIndex = int(count) - 1;
+    if (progress >= count - 1.0)
+        return gradientStop(lastIndex);
 
     int lowerIndex = int(floor(progress));
-    int upperIndex = min(lowerIndex + 1, count - 1);
+    int upperIndex = lowerIndex + 1;
     float fraction = progress - float(lowerIndex);
     vec4 lower = premultipliedSrgbToOkLabA(gradientStop(lowerIndex));
     vec4 upper = premultipliedSrgbToOkLabA(gradientStop(upperIndex));
@@ -220,8 +221,7 @@ void main() {
 
     float borderMask = borderCoverage(pixel, size, outerRadius, correctedOuterRadius,
                                       stroke, power);
-    vec4 borderColor = hyprlandGradientColor(qt_TexCoord0, borderGradientAngle,
-                                             borderStopCount);
+    vec4 borderColor = hyprlandGradientColor(qt_TexCoord0, borderGradientAngle);
 
     // QColor uniforms arrive premultiplied in ShaderEffect. Keep that form
     // when applying coverage and source-over compositing translucent borders.

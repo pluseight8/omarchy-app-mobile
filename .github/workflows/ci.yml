@@ -206,9 +206,9 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/startup-logcat.txt"
           grep -F 'qt.scenegraph.general: Creating QRhi with backend ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
-          if grep -F 'HyprlandSurface shader failed:' "$smoke_artifacts/startup-logcat.txt"; then
+          if grep -E 'HyprlandSurface shader failed:|Failed to (compile shader|build graphics pipeline state)' "$smoke_artifacts/startup-logcat.txt"; then
             exit 1
           fi
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
@@ -338,7 +338,7 @@ jobs:
           final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           adb logcat -d -v threadtime --pid="$final_pid" -t 10000 > "$smoke_artifacts/final-logcat.txt"
           grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' "$smoke_artifacts/final-logcat.txt"
-          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed|ReferenceError:|Detected recursive rearrange|HyprlandSurface shader failed:' "$smoke_artifacts/final-logcat.txt"; then
+          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed|ReferenceError:|Detected recursive rearrange|HyprlandSurface shader failed:|Failed to (compile shader|build graphics pipeline state)' "$smoke_artifacts/final-logcat.txt"; then
             exit 1
           fi
           adb shell pm clear app.omaapp
