@@ -206,7 +206,11 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          # Qt's QRhi backend line is emitted with an auxiliary thread/process
+          # identity on Android; keep the full buffer so the backend assertion
+          # cannot silently miss it. Shader compiler failures are checked here
+          # as well, before visual baselines can mask a broken renderer.
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
           grep -F 'qt.scenegraph.general: Creating QRhi with backend ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
           if grep -E 'HyprlandSurface shader failed:|Failed to (compile shader|build graphics pipeline state)' "$smoke_artifacts/startup-logcat.txt"; then
             exit 1
