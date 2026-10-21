@@ -157,6 +157,16 @@ jobs:
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
 
+      - name: Capture generated GLES shader variants
+        run: |
+          qsb="$QT_HOST_PATH/bin/qsb"
+          shader_pack="$(find build/android-emulator -type f -name 'hyprland_rounded.frag.qsb' -print -quit)"
+          test -x "$qsb"
+          test -n "$shader_pack"
+          mkdir -p ci-artifacts/android-smoke/shaders
+          "$qsb" -x glsl,100es -o ci-artifacts/android-smoke/shaders/hyprland-100es.frag "$shader_pack"
+          "$qsb" -x glsl,300es -o ci-artifacts/android-smoke/shaders/hyprland-300es.frag "$shader_pack"
+
       - name: Boot emulator, install OmaApp, and select it as HOME
         timeout-minutes: 20
         run: |
@@ -239,6 +249,7 @@ jobs:
             "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
           fi
+          grep -F 'HyprlandSurface shader' "$smoke_artifacts/renderer-logcat.txt" || true
           python3 scripts/ci/check_visual_regression.py "$visual_artifacts" --baselines tests/visual_baselines/android
           settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/settings.xml" 'Apps')"
           read -r settings_x settings_y <<< "$settings_target"

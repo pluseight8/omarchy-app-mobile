@@ -65,5 +65,9 @@ Item {
             else if (status === ShaderEffect.Ready)
                 console.info("HyprlandSurface shader ready")
         }
+
+        Component.onCompleted: {
+            console.info("HyprlandSurface shader initial status: " + status + " " + log)
+        }
     }
 }
