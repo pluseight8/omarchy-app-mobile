@@ -15,6 +15,11 @@ int main(int argc, char *argv[])
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL)
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     qputenv("QSG_INFO", "1");
+    // Qt reports a file-backed ShaderEffect as Compiled as soon as the QSB
+    // resource is deserialized. This test-only trace records the actual
+    // uniform values sent to the QRhi pipeline while diagnosing backend
+    // rendering differences; it is excluded from normal builds.
+    qputenv("QSG_RHI_SHADEREFFECT_DEBUG", "1");
 #elif defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
     qputenv("QSG_INFO", "1");

@@ -8,7 +8,11 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
-from check_visual_regression import compare_images, decode_png  # noqa: E402
+from check_visual_regression import (  # noqa: E402
+    compare_images,
+    decode_png,
+    verify_style_surface_rendered,
+)
 
 
 def png_file(path: Path, pixels: tuple[tuple[tuple[int, int, int, int], ...], ...]) -> None:
@@ -138,6 +142,28 @@ class VisualRegressionTests(unittest.TestCase):
 
         self.assertEqual(changed, 1)
         self.assertGreater(fraction, 0)
+
+    def test_style_probe_requires_visible_surface_fill_and_border(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style.png"
+            rows = [[(16, 19, 21, 255)] * 412 for _ in range(892)]
+            for y in range(200, 355):
+                for x in range(22, 390):
+                    rows[y][x] = (12, 14, 16, 255)
+            for x in range(22, 390):
+                rows[199][x] = (202, 204, 204, 255)
+            png_file(image, tuple(tuple(row) for row in rows))
+
+            verify_style_surface_rendered(image)
+
+    def test_style_probe_rejects_transparent_shader_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style.png"
+            rows = [[(16, 19, 21, 255)] * 412 for _ in range(892)]
+            png_file(image, tuple(tuple(row) for row in rows))
+
+            with self.assertRaisesRegex(ValueError, "interior is missing"):
+                verify_style_surface_rendered(image)
 
 
 if __name__ == "__main__":

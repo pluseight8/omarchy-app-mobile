@@ -250,7 +250,8 @@ jobs:
             exit 1
           fi
           grep -F 'HyprlandSurface shader' "$smoke_artifacts/renderer-logcat.txt" || true
-          python3 scripts/ci/check_visual_regression.py "$visual_artifacts" --baselines tests/visual_baselines/android
+          python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
+            --baselines tests/visual_baselines/android --verify-style-surface
           settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/settings.xml" 'Apps')"
           read -r settings_x settings_y <<< "$settings_target"
           adb shell input tap "$settings_x" "$settings_y"

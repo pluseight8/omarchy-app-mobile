@@ -62,7 +62,7 @@ Item {
         onStatusChanged: {
             if (status === ShaderEffect.Error)
                 console.error("HyprlandSurface shader failed: " + log)
-            else if (status === ShaderEffect.Ready)
+            else if (status === ShaderEffect.Compiled)
                 console.info("HyprlandSurface shader ready")
         }
 

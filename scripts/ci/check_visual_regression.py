@@ -140,6 +140,34 @@ def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
     return changed, changed / max(1, total)
 
 
+def verify_style_surface_rendered(image: Path) -> None:
+    """Fail if the rounded Omarchy preview is transparent on its page."""
+    width, height, channels, rows = decode_png(image)
+    if (width, height) != (412, 892):
+        raise ValueError(
+            f"style shader probe expects 412x892 pixels, got {width}x{height}"
+        )
+
+    def rgb(point: tuple[int, int]) -> tuple[int, int, int]:
+        x, y = point
+        start = x * channels
+        return tuple(rows[y][start:start + 3])
+
+    background = rgb((200, 180))
+    interior = rgb((200, 260))
+    border = rgb((200, 199))
+    interior_contrast = sum(abs(a - b) for a, b in zip(interior, background))
+    border_contrast = sum(abs(a - b) for a, b in zip(border, background))
+    if interior_contrast < 8:
+        raise ValueError(
+            "HyprlandSurface preview interior is missing: its center matches the page background"
+        )
+    if border_contrast < 48:
+        raise ValueError(
+            "HyprlandSurface preview border is missing: its top edge matches the page background"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("screenshots", type=Path)
@@ -147,6 +175,8 @@ def main() -> int:
                         default=Path("tests/visual_baselines/android"))
     parser.add_argument("--screens", nargs="+", choices=SCREENS, default=SCREENS,
                         help="which captured screens to compare")
+    parser.add_argument("--verify-style-surface", action="store_true",
+                        help="assert the Omarchy preview fill and border are actually rendered")
     parser.add_argument("--expected-size", nargs=2, type=int, metavar=("WIDTH", "HEIGHT"),
                         default=(412, 892),
                         help="expected physical screenshot size (default: 412 892)")
@@ -163,6 +193,13 @@ def main() -> int:
 
     failures = []
     missing_baselines = []
+    if args.verify_style_surface:
+        try:
+            verify_style_surface_rendered(args.screenshots / "style.png")
+            print("style shader probe: preview fill and border are visible")
+        except (OSError, ValueError, zlib.error) as error:
+            failures.append(str(error))
+
     for screen in args.screens:
         actual = args.screenshots / f"{screen}.png"
         baseline = args.baselines / f"{screen}.png"
