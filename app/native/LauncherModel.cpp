@@ -47,6 +47,7 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
 #endif
     QSettings settings;
     m_favoritePackages = settings.value(QStringLiteral("launcher/favorites")).toStringList();
+    m_gridColumns = qBound(3, settings.value(QStringLiteral("launcher/gridColumns"), 4).toInt(), 5);
     loadFolders();
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
@@ -143,6 +144,25 @@ QVariantList LauncherModel::folders() const
         });
     }
     return result;
+}
+
+int LauncherModel::gridColumns() const
+{
+    return m_gridColumns;
+}
+
+void LauncherModel::setGridColumns(int columns)
+{
+    const int boundedColumns = qBound(3, columns, 5);
+    if (m_gridColumns == boundedColumns)
+        return;
+    m_gridColumns = boundedColumns;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/gridColumns"), m_gridColumns);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save launcher grid columns" << settings.status();
+    emit gridColumnsChanged();
 }
 
 QVariantList LauncherModel::availableApps(const QString &folderId, const QString &filter) const

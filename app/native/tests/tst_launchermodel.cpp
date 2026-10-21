@@ -85,6 +85,21 @@ private slots:
         QVERIFY(!model.createFolder(QStringLiteral("Fresh start")).isEmpty());
     }
 
+    void gridColumnPreferencePersistsWithinSupportedRange()
+    {
+        LauncherModel model;
+        QCOMPARE(model.gridColumns(), 4);
+        model.setGridColumns(3);
+        QCOMPARE(model.gridColumns(), 3);
+
+        LauncherModel restored;
+        QCOMPARE(restored.gridColumns(), 3);
+        restored.setGridColumns(99);
+        QCOMPARE(restored.gridColumns(), 5);
+        restored.setGridColumns(-1);
+        QCOMPARE(restored.gridColumns(), 3);
+    }
+
 private:
     QTemporaryDir m_settingsDirectory;
 };

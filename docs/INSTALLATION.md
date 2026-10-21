@@ -4,11 +4,11 @@
 
 GitHub Actions builds an arm64 debug APK as the `OmaApp-ci-debug-arm64` artifact. The CI workflow also installs and launches the x86_64 build in an Android emulator, checks app enumeration and launching, and selects OmaApp as HOME. Download the arm64 artifact from a successful run and install it on an arm64 Android device with `adb install -r <apk>`. The debug artifact is for development; do not use it as an update path for a signed release.
 
-This workspace has `adb` but no Android SDK, emulator, or attached Android device. GrapheneOS and Pixel compatibility remain unverified.
+For the complete Google Pixel 10 + GrapheneOS installation and test checklist, use [the device guide](GRAPHENEOS.md). The physical-device run is still pending.
 
 ## Signed test release
 
-The tag workflow builds an arm64 release APK, signs it with the repository owner's key, verifies the signature, attaches a plugin archive and checksums, and publishes a GitHub **Pre-release**. The APK asset follows `OmaApp-vX.Y.Z-arm64-v8a.apk`.
+The existing tag workflow builds an arm64 release APK, signs it with the repository owner's key, verifies the signature, attaches a plugin archive and checksums, and publishes a GitHub **Pre-release**. The APK asset follows `OmaApp-vX.Y.Z-arm64-v8a.apk`.
 
 Before creating a version tag, the repository owner must configure `OMAAPP_KEYSTORE_BASE64`, `OMAAPP_KEY_ALIAS`, `OMAAPP_KEYSTORE_PASSWORD`, and `OMAAPP_KEY_PASSWORD` in GitHub Actions secrets. See [release signing](release-signing.md). The workflow fails before publication if any secret is missing; it never creates or uses a temporary release key.
 
@@ -24,4 +24,4 @@ The installer requires Omarchy, Python 3.11+ and OpenSSL. It validates the manif
 
 Open the OmaApp widget, choose **Pair Android device**, scan the QR in OmaApp, and approve the phone in the widget. For network requirements and the supported theme fields, see [pairing](PAIRING.md).
 
-To remove the plugin, run `./omarchy-plugin/uninstall.sh`. It disables the plugin and keeps a timestamped source backup. The trusted-device database and TLS private key live separately in `~/.local/state/omarchy/omaapp`; revoke saved phones in the widget before permanently deleting that state directory.
+To remove the plugin, run `./omarchy-plugin/uninstall.sh`. It disables the plugin and keeps a timestamped source backup under `~/.local/state/omarchy/plugin-backups`, outside the directory Quickshell scans for active plugins. The trusted-device database and TLS private key live separately in `~/.local/state/omarchy/omaapp`; revoke saved phones in the widget before permanently deleting that state directory.

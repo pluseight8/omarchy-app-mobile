@@ -2,7 +2,7 @@
 
 ## Starting point
 
-The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It already provides an Android home-screen launcher, theme and wallpaper support, widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration explicitly removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp implements Android app enumeration/launch, a HOME activity, persistent pinned apps and folders, QR pairing, and a shared theme preview. Home pages, configurable gestures, shortcuts, settings, and OWL widgets remain to port.
+The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It provides a home-screen launcher, themes, OWL widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp implements Android app enumeration/launch, HOME, system icons, search, a dock, persistent folders, 3–5 column grid settings, swipe navigation, and Omarchy pairing/theme sync. Its multi-page widget canvas, OWL interpreter/editor, and dynamic app shortcuts remain to port. No PRoot or Arch Linux ARM is included.
 
 ## Qt and Quickshell
 
@@ -16,7 +16,7 @@ No Quickshell source or library is included in the initial prototype. This is in
 
 The inspected Omarchy quattro branch discovers third-party plugins from git repositories with a root manifest using schema version 1. A plugin can declare service and bar-widget entry points. Third-party QML runs unsandboxed in the long-lived shell process, so plugin code must be treated as trusted code and must not turn network input into shell commands.
 
-The implementation will keep one plugin package. Any helper process will be included in that package and launched under the plugin lifecycle, not installed as an independent product.
+The implementation keeps one plugin package. The bundled helper is launched by the bar widget inside the Quickshell lifecycle, not installed as an independent product. The installer, full restart, duplicate-backup behavior, actual widget registration, and helper path were exercised against Omarchy 4.0.4 / Quickshell 0.3.1. A Linux integration test separately starts the TLS helper and verifies event delivery and revocation.
 
 ## Hyprland geometry
 

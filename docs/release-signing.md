@@ -15,6 +15,6 @@ Configure these GitHub Actions secrets in the repository:
 - OMAAPP_KEYSTORE_PASSWORD — keystore password.
 - OMAAPP_KEY_PASSWORD — private-key password.
 
-Do not commit the keystore or print any secret in workflow logs. The release workflow decodes it into a temporary runner file, signs the APK, verifies the signature, and only then creates a GitHub Release.
+Do not commit the keystore or print any secret in workflow logs. The existing release workflow decodes it into a temporary runner file, signs the arm64 APK, verifies its signature, then builds same-key x86_64 update-test APKs, installs the older package on an Android emulator, upgrades it to the tagged version, and verifies persisted launcher settings. It creates the GitHub Release only after these checks.
 
-The repository owner must configure and verify the signing key before pushing a version tag. The workflow publishes `OmaApp-vX.Y.Z-arm64-v8a.apk` only after signature verification. The owner should install that APK, then verify update-over-install with the same key before promoting a later release.
+The repository owner must configure and verify the signing key before pushing a version tag. The workflow publishes `OmaApp-vX.Y.Z-arm64-v8a.apk` only after signature and emulator install/update checks pass. The owner should still install the published arm64 APK on a Pixel 10 with GrapheneOS and follow [the device guide](GRAPHENEOS.md).

@@ -15,6 +15,7 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
+    Q_PROPERTY(int gridColumns READ gridColumns NOTIFY gridColumnsChanged)
 
 public:
     enum Role {
@@ -37,9 +38,11 @@ public:
     QString filter() const;
     QVariantList favorites() const;
     QVariantList folders() const;
+    int gridColumns() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void setGridColumns(int columns);
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE bool launchPackage(const QString &packageName);
     Q_INVOKABLE bool launchActivity(const QString &packageName, const QString &activityName);
@@ -58,6 +61,7 @@ signals:
     void filterChanged();
     void favoritesChanged();
     void foldersChanged();
+    void gridColumnsChanged();
 
 private:
     struct Entry {
@@ -77,6 +81,7 @@ private:
     QString m_filter;
     QStringList m_favoritePackages;
     QList<Folder> m_folders;
+    int m_gridColumns = 4;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;
 

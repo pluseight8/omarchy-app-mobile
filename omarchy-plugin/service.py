@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
 import hashlib
 import hmac
 import http.server
@@ -13,18 +14,22 @@ import json
 import mimetypes
 import os
 import re
+import select
 import secrets
+import signal
 import socket
 import ssl
+import stat
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
 from collections import defaultdict, deque
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from third_party.qrcodegen import QrCode
 
@@ -34,8 +39,22 @@ DEFAULT_PORT = 44892
 PAIRING_TTL_SECONDS = 180
 MAX_JSON_BYTES = 16 * 1024
 MAX_WALLPAPER_BYTES = 30 * 1024 * 1024
+MAX_CLIPBOARD_BYTES = 64 * 1024
+MAX_TRANSFER_BYTES = 100 * 1024 * 1024
 DEVICE_ID_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
 DEVICE_NAME_MAX = 80
+DEVICE_PERMISSIONS = {
+    "clipboard": False,
+    "files.send": False,
+    "files.receive": False,
+    "media.control": False,
+    "system.read": False,
+    "workspace.control": False,
+    "commands": False,
+}
+TRANSFER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._()@+-]{0,159}\Z")
+MPRIS_PLAYER = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
+COMMAND_ID = re.compile(r"[a-z][a-z0-9-]{0,47}\Z")
 COLOR_KEYS = {
     "accent", "background", "dark_background", "darker_background",
     "lighter_background", "foreground", "dark_foreground", "light_foreground",
@@ -60,6 +79,48 @@ SHELL_SPACING_KEYS = {
     "panel-gap", "panel-padding", "popup-padding", "dropdown-width",
     "searchable-dropdown-width", "number-field-width", "searchable-popup-min-height",
 }
+SHELL_TOML_KEYS = {
+    "bar": {"background", "background-alpha", "text", "active", "scale-with-font", "size-horizontal", "size-vertical"},
+    "hyprland": {"active-border", "active-border-foreground"},
+    "controls": {
+        "normal-color", "normal-fill-alpha", "normal-border", "normal-border-width", "normal-border-alpha",
+        "hover-cursor-color", "hover-cursor-fill-alpha", "hover-cursor-border", "hover-cursor-border-width",
+        "hover-cursor-border-alpha", "focus-color", "focus-fill-alpha", "focus-border", "focus-border-width",
+        "focus-border-alpha", "selected-color", "selected-fill-alpha", "selected-border",
+        "selected-border-width", "selected-border-alpha", "pressed-fill-alpha", "selection-fill-alpha",
+    },
+    "spacing": SHELL_SPACING_KEYS | {"scale-with-font"},
+    "font": {
+        "base-size", "caption", "body-small", "body", "subtitle", "title", "heading", "display",
+        "display-large", "icon-small", "icon", "icon-large",
+    },
+    "popups": {"background", "background-alpha", "text", "border", "border-alpha", "border-width"},
+    "tooltip": {"background", "background-alpha", "text", "border", "border-alpha", "border-width"},
+    "notifications": {"background", "background-alpha", "text", "border", "border-alpha", "border-width", "countdown"},
+    "launcher": {
+        "background", "background-alpha", "text", "border", "border-alpha", "scrim", "scrim-alpha",
+        "selected-background", "selected-background-alpha", "selected-text", "selected-border",
+        "selected-border-alpha",
+    },
+    "menu": {
+        "background", "background-alpha", "text", "border", "border-alpha", "scrim", "scrim-alpha",
+        "selected-background", "selected-background-alpha", "selected-text", "selected-border",
+        "selected-border-alpha",
+    },
+    "polkit": {"background", "background-alpha", "text", "text-error", "border", "border-error", "border-alpha", "scrim", "scrim-alpha", "accent"},
+    "lock": {"background", "background-alpha", "text", "placeholder", "text-error", "border", "border-active", "border-error", "border-alpha", "selection", "selection-alpha"},
+    "image-picker": {"scrim", "scrim-alpha", "text", "selected-border", "selected-border-alpha", "unselected-border", "unselected-border-alpha"},
+}
+SHELL_COLOR_KEYS = {
+    "background", "text", "active", "accent", "border", "border-error", "border-active",
+    "countdown", "placeholder", "selection", "scrim", "selected-background", "selected-text",
+    "selected-border", "unselected-border", "normal-color", "normal-border", "hover-cursor-color",
+    "hover-cursor-border", "focus-color", "focus-border", "selected-color", "selected-border",
+    "active-border", "active-border-foreground", "text-error",
+}
+SHELL_BOOL_KEYS = {"scale-with-font"}
+SHELL_COLOR_REFERENCE = re.compile(r"(?:colors|hyprland)\.[a-z][a-z0-9_-]{0,63}\Z")
+SHELL_COLOR_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,31}\Z")
 MAX_PAIRED_DEVICES = 16
 _EVENT_LOCK = threading.Lock()
 PRIVATE_IPV4_NETWORKS = tuple(map(ipaddress.ip_network, ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")))
@@ -105,6 +166,223 @@ def _state_directory() -> Path:
 def _current_directory() -> Path:
     root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
     return root / "omarchy" / "current"
+
+
+def _transfer_directory() -> Path:
+    configured = os.environ.get("XDG_DOWNLOAD_DIR")
+    download_directory = Path(configured).expanduser() if configured else Path.home() / "Downloads"
+    return download_directory / "OmaApp"
+
+
+class EventHub:
+    """Coalesce local Omarchy and Hyprland notifications for paired clients."""
+
+    def __init__(self) -> None:
+        self._condition = threading.Condition()
+        self._revision = 0
+        self._events: deque[tuple[int, str]] = deque(maxlen=128)
+
+    @property
+    def revision(self) -> int:
+        with self._condition:
+            return self._revision
+
+    def publish(self, kind: str) -> None:
+        if kind not in {"theme", "features"}:
+            return
+        with self._condition:
+            self._revision += 1
+            self._events.append((self._revision, kind))
+            self._condition.notify_all()
+
+    def wait_after(self, revision: int, timeout: float = 25.0) -> dict[str, Any]:
+        with self._condition:
+            self._condition.wait_for(lambda: self._revision > revision, timeout=timeout)
+            for event_revision, kind in self._events:
+                if event_revision > revision:
+                    return {"revision": event_revision, "kind": kind}
+            return {"revision": self._revision, "kind": None}
+
+
+def _run_command(arguments: list[str], *, timeout: float = 2.0,
+                 input_data: bytes | None = None, output_limit: int = 64 * 1024) -> bytes | None:
+    try:
+        result = subprocess.run(
+            arguments,
+            check=False,
+            capture_output=True,
+            input=input_data,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0 or len(result.stdout) > output_limit:
+        return None
+    return result.stdout
+
+
+def _safe_transfer_name(value: str) -> str | None:
+    if value in {".", ".."} or not TRANSFER_NAME.fullmatch(value):
+        return None
+    return value
+
+
+def _system_status() -> dict[str, Any]:
+    memory: dict[str, int] = {}
+    try:
+        for line in Path("/proc/meminfo").read_text(encoding="ascii").splitlines():
+            key, _, raw = line.partition(":")
+            if key in {"MemTotal", "MemAvailable"}:
+                value = raw.strip().split()[0]
+                if value.isdigit():
+                    memory[key] = int(value) * 1024
+    except (OSError, UnicodeError, IndexError):
+        pass
+
+    battery = None
+    for candidate in Path("/sys/class/power_supply").glob("*"):
+        try:
+            if (candidate / "type").read_text(encoding="ascii").strip() != "Battery":
+                continue
+            capacity = (candidate / "capacity").read_text(encoding="ascii").strip()
+            status = (candidate / "status").read_text(encoding="ascii").strip()
+            if capacity.isdigit() and 0 <= int(capacity) <= 100:
+                battery = {"percent": int(capacity), "status": _safe_string(status, 24)}
+            break
+        except OSError:
+            continue
+
+    try:
+        load = [round(float(value), 2) for value in os.getloadavg()]
+        load_average = load if all(0 <= value < 1_000_000 for value in load) else None
+    except (AttributeError, OSError):
+        load_average = None
+    return {
+        "memoryTotalBytes": memory.get("MemTotal"),
+        "memoryAvailableBytes": memory.get("MemAvailable"),
+        "loadAverage": load_average,
+        "battery": battery,
+        "capturedAt": int(time.time()),
+    }
+
+
+def _hyprland_workspaces() -> list[dict[str, Any]]:
+    raw = _run_command(["hyprctl", "-j", "workspaces"], output_limit=256 * 1024)
+    if raw is None:
+        return []
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return []
+    if not isinstance(value, list):
+        return []
+    result = []
+    for workspace in value[:64]:
+        if not isinstance(workspace, dict):
+            continue
+        workspace_id = workspace.get("id")
+        if isinstance(workspace_id, bool) or not isinstance(workspace_id, int) or not 0 <= workspace_id <= 1000:
+            continue
+        result.append({
+            "id": workspace_id,
+            "name": _safe_string(workspace.get("name"), 80),
+            "monitor": _safe_string(workspace.get("monitor"), 80),
+            "focused": workspace.get("focused") is True,
+            "windows": _safe_number(workspace.get("windows"), 0, 10000),
+        })
+    return result
+
+
+def _mpris_players() -> list[dict[str, Any]]:
+    output = _run_command(["playerctl", "-l"], output_limit=16 * 1024)
+    if output is None:
+        return []
+    result = []
+    for player in output.decode("utf-8", errors="replace").splitlines()[:16]:
+        player = player.strip()
+        if not MPRIS_PLAYER.fullmatch(player):
+            continue
+        metadata = _run_command(
+            ["playerctl", "-p", player, "metadata", "--format",
+             "{{status}}\n{{artist}}\n{{title}}\n{{album}}"],
+            output_limit=2048,
+        )
+        if metadata is None:
+            continue
+        fields = metadata.decode("utf-8", errors="replace").splitlines()
+        fields += [""] * (4 - len(fields))
+        result.append({
+            "player": player,
+            "status": fields[0][:24],
+            "artist": _safe_string(fields[1], 160),
+            "title": _safe_string(fields[2], 160),
+            "album": _safe_string(fields[3], 160),
+        })
+    return result
+
+
+def _user_commands() -> list[dict[str, Any]]:
+    config_root = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    path = config_root / "omaapp" / "commands.toml"
+    try:
+        if path.stat().st_size > 64 * 1024:
+            return []
+        with path.open("rb") as stream:
+            data = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    raw_commands = data.get("command")
+    if not isinstance(raw_commands, list):
+        return []
+    result = []
+    seen_ids: set[str] = set()
+    for command in raw_commands[:16]:
+        if not isinstance(command, dict):
+            continue
+        command_id = command.get("id")
+        label = _safe_string(command.get("label"), 48)
+        argv = command.get("argv")
+        if not isinstance(command_id, str) or not COMMAND_ID.fullmatch(command_id) \
+                or command_id in seen_ids or not label or not isinstance(argv, list) \
+                or not 1 <= len(argv) <= 16:
+            continue
+        if any(not isinstance(argument, str) or len(argument) > 256 or not argument.isprintable()
+               for argument in argv):
+            continue
+        executable = Path(argv[0])
+        if not executable.is_absolute() or not executable.is_file() or not os.access(executable, os.X_OK):
+            continue
+        seen_ids.add(command_id)
+        result.append({"id": command_id, "label": label, "argv": argv})
+    return result
+
+
+def _run_user_command(command_id: str) -> bool:
+    if not COMMAND_ID.fullmatch(command_id):
+        return False
+    command = next((item for item in _user_commands() if item["id"] == command_id), None)
+    if command is None:
+        return False
+    try:
+        process = subprocess.Popen(
+            command["argv"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+        try:
+            return process.wait(timeout=3.0) == 0
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=0.5)
+            except (OSError, subprocess.TimeoutExpired):
+                process.kill()
+            return False
+    except OSError:
+        return False
 
 
 def _private_directory(path: Path) -> None:
@@ -244,6 +522,68 @@ def _normalize_hyprland_gradient(value: Any) -> str | None:
     return " ".join(colors + ([angle] if angle else []))
 
 
+def _safe_shell_setting(key: str, value: Any) -> int | float | str | bool | None:
+    if key in SHELL_BOOL_KEYS:
+        return value if isinstance(value, bool) else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        upper = 1 if key.endswith("-alpha") else 1000
+        return _safe_number(value, 0, upper)
+    if not isinstance(value, str) or len(value) > 160 or not value.isprintable():
+        return None
+    value = value.strip()
+    if key not in SHELL_COLOR_KEYS:
+        return None
+    if SHELL_COLOR_REFERENCE.fullmatch(value) or value in {"transparent", "none"}:
+        return value
+    if _safe_color_value("hyprland_active_border", value):
+        return value
+    if SHELL_COLOR_NAME.fullmatch(value):
+        return value
+    return None
+
+
+def _hyprland_animations() -> dict[str, list[dict[str, Any]]]:
+    raw = _run_command(["hyprctl", "-j", "animations"], timeout=1.0, output_limit=512 * 1024)
+    if raw is None:
+        return {"items": [], "beziers": []}
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {"items": [], "beziers": []}
+    if not isinstance(value, list) or len(value) != 2:
+        return {"items": [], "beziers": []}
+
+    items: list[dict[str, Any]] = []
+    if isinstance(value[0], list):
+        for animation in value[0][:128]:
+            if not isinstance(animation, dict):
+                continue
+            name = animation.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}", name):
+                continue
+            speed = _safe_number(animation.get("speed"), 0, 100)
+            items.append({
+                "name": name,
+                "overridden": animation.get("overridden") is True,
+                "enabled": animation.get("enabled") if isinstance(animation.get("enabled"), bool) else None,
+                "speed": speed,
+                "bezier": _safe_string(animation.get("bezier"), 64),
+                "style": _safe_string(animation.get("style"), 80),
+            })
+
+    beziers: list[dict[str, Any]] = []
+    if isinstance(value[1], list):
+        for bezier in value[1][:64]:
+            if not isinstance(bezier, dict):
+                continue
+            name = bezier.get("name")
+            coordinates = {key: _safe_number(bezier.get(key), 0, 1) for key in ("X0", "Y0", "X1", "Y1")}
+            if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}", name) \
+                    and all(number is not None for number in coordinates.values()):
+                beziers.append({"name": name, **coordinates})
+    return {"items": items, "beziers": beziers}
+
+
 def _read_toml(path: Path) -> dict[str, Any]:
     try:
         if path.stat().st_size > 256 * 1024:
@@ -283,22 +623,22 @@ def _theme_snapshot() -> tuple[dict[str, Any], Path | None]:
             colors[key] = value
 
     raw_shell = _read_toml(shell_file)
-    shell: dict[str, dict[str, int | float | str]] = {}
+    shell: dict[str, dict[str, int | float | str | bool]] = {}
     for section, values in raw_shell.items():
-        if section != "spacing":
+        allowed_keys = SHELL_TOML_KEYS.get(section)
+        if not allowed_keys:
             continue
-        if not isinstance(section, str) or not section.replace("-", "").isalnum() \
-                or not isinstance(values, dict):
+        if not isinstance(values, dict):
             continue
-        safe_values: dict[str, int | float | str] = {}
+        safe_values: dict[str, int | float | str | bool] = {}
         for key, value in values.items():
-            if key not in SHELL_SPACING_KEYS:
+            if not isinstance(key, str) or key not in allowed_keys:
                 continue
-            number = _safe_number(value, 0, 1000)
-            if number is not None:
-                safe_values[key] = number
+            safe_value = _safe_shell_setting(key, value)
+            if safe_value is not None:
+                safe_values[key] = safe_value
         if safe_values:
-            shell[section[:64]] = safe_values
+            shell[section] = safe_values
 
     active_border_value = _hyprland_value("general:col.active_border")
     active_border = _normalize_hyprland_gradient(active_border_value)
@@ -353,6 +693,7 @@ def _theme_snapshot() -> tuple[dict[str, Any], Path | None]:
         "hostName": _safe_string(socket.gethostname(), 80) or "Omarchy",
         "theme": {"name": theme_name, "colors": colors, "shell": shell},
         "hyprland": geometry,
+        "animations": _hyprland_animations(),
         "wallpaper": wallpaper,
         "capturedAt": int(time.time()),
     }, wallpaper_path)
@@ -407,6 +748,9 @@ class ServiceState:
         self.server_thread: threading.Thread | None = None
         self.advertised_address = ""
         self.wallpaper_cache: tuple[int, Path | None] | None = None
+        self.event_hub = EventHub()
+        self.monitor_stop = threading.Event()
+        self.monitor_threads: list[threading.Thread] = []
 
     @property
     def fingerprint(self) -> str:
@@ -480,12 +824,117 @@ class ServiceState:
             )
             self.server_thread.start()
             self.port = int(server.server_address[1])
+            self.start_monitors()
             return self.port
+
+    def start_monitors(self) -> None:
+        if any(thread.is_alive() for thread in self.monitor_threads):
+            return
+        self.monitor_stop.clear()
+        self.monitor_threads = []
+        monitors = [self.watch_theme_files, self.watch_hyprland_events]
+        for target in monitors:
+            thread = threading.Thread(target=target, name=f"omaapp-{target.__name__}", daemon=True)
+            self.monitor_threads.append(thread)
+            thread.start()
+
+    def stop_monitors(self) -> None:
+        self.monitor_stop.set()
+        threads, self.monitor_threads = self.monitor_threads, []
+        for thread in threads:
+            if thread.is_alive() and thread is not threading.current_thread():
+                thread.join(timeout=2)
+
+    def watch_theme_files(self) -> None:
+        try:
+            libc = ctypes.CDLL(None, use_errno=True)
+            init = libc.inotify_init1
+            init.argtypes = [ctypes.c_int]
+            init.restype = ctypes.c_int
+            add_watch = libc.inotify_add_watch
+            add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+            add_watch.restype = ctypes.c_int
+            descriptor = init(os.O_NONBLOCK | os.O_CLOEXEC)
+        except (AttributeError, OSError):
+            return
+        if descriptor < 0:
+            return
+
+        mask = 0x00000002 | 0x00000004 | 0x00000008 | 0x00000040 | 0x00000080 \
+            | 0x00000100 | 0x00000200 | 0x00000400 | 0x00000800
+        watched: set[str] = set()
+
+        def add_existing_directories() -> None:
+            for directory in (_current_directory().parent, _current_directory(), _current_directory() / "theme"):
+                try:
+                    resolved = str(directory.resolve(strict=True))
+                    if resolved not in watched and directory.is_dir():
+                        if add_watch(descriptor, os.fsencode(resolved), mask) >= 0:
+                            watched.add(resolved)
+                except (OSError, RuntimeError):
+                    continue
+
+        try:
+            add_existing_directories()
+            while not self.monitor_stop.is_set():
+                try:
+                    readable, _, _ = select.select([descriptor], [], [], 1.0)
+                    if readable:
+                        os.read(descriptor, 64 * 1024)
+                        self.event_hub.publish("theme")
+                        # A theme switch can retarget the `current` symlink.
+                        add_existing_directories()
+                except (OSError, ValueError):
+                    return
+        finally:
+            os.close(descriptor)
+
+    def watch_hyprland_events(self) -> None:
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "")
+        signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", "")
+        if not runtime or not signature or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", signature):
+            return
+        event_socket = Path(runtime) / "hypr" / signature / ".socket2.sock"
+        theme_events = {"configreloaded"}
+        feature_events = {
+            "workspace", "workspacev2", "createworkspace", "createworkspacev2",
+            "destroyworkspace", "destroyworkspacev2", "focusedmon", "focusedmonv2",
+            "monitoradded", "monitorremoved",
+        }
+        while not self.monitor_stop.is_set():
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            connection.settimeout(1.0)
+            try:
+                connection.connect(str(event_socket))
+                buffer = b""
+                while not self.monitor_stop.is_set():
+                    try:
+                        chunk = connection.recv(4096)
+                    except socket.timeout:
+                        continue
+                    if not chunk:
+                        break
+                    buffer += chunk
+                    if len(buffer) > 64 * 1024:
+                        buffer = buffer[-4096:]
+                    while b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        event_name = line.split(b">>", 1)[0].decode("ascii", errors="ignore")
+                        if event_name in theme_events:
+                            self.event_hub.publish("theme")
+                        elif event_name in feature_events:
+                            self.event_hub.publish("features")
+            except OSError:
+                pass
+            finally:
+                connection.close()
+            self.monitor_stop.wait(1.5)
 
     def stop_server(self) -> None:
         with self.lock:
             server, self.server = self.server, None
             self.server_thread = None
+        self.stop_monitors()
         if server is not None:
             server.shutdown()
             server.server_close()
@@ -726,6 +1175,28 @@ class ServiceState:
                 return None
             return device_id, device
 
+    @staticmethod
+    def has_permission(device: dict[str, Any], permission: str) -> bool:
+        permissions = device.get("permissions")
+        return isinstance(permissions, dict) and permissions.get(permission) is True
+
+    def set_permission(self, device_id: str, permission: str, enabled: bool) -> bool:
+        if permission not in DEVICE_PERMISSIONS or not isinstance(enabled, bool):
+            return False
+        with self.lock:
+            device = self.devices.get(device_id)
+            if not isinstance(device, dict):
+                return False
+            permissions = device.get("permissions")
+            if not isinstance(permissions, dict):
+                permissions = {}
+                device["permissions"] = permissions
+            permissions[permission] = enabled
+            self.save_devices()
+        _emit({"event": "devices", "devices": self.public_devices()})
+        self.event_hub.publish("features")
+        return True
+
     def save_devices(self) -> None:
         _atomic_json(self.devices_path, self.devices)
 
@@ -733,6 +1204,10 @@ class ServiceState:
         with self.lock:
             return [
                 {"deviceId": device_id, "deviceName": str(device.get("deviceName", "Android"))[:DEVICE_NAME_MAX]}
+                | {"permissions": {
+                    permission: self.has_permission(device, permission)
+                    for permission in DEVICE_PERMISSIONS
+                }}
                 for device_id, device in self.devices.items()
                 if isinstance(device, dict)
             ]
@@ -782,12 +1257,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
-    def _read_json(self) -> dict[str, Any] | None:
+    def _read_json(self, maximum: int = MAX_JSON_BYTES) -> dict[str, Any] | None:
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             return None
-        if length < 2 or length > MAX_JSON_BYTES:
+        if length < 2 or length > maximum:
             return None
         try:
             value = json.loads(self.rfile.read(length))
@@ -807,12 +1282,112 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._reply(401, {"error": "unauthorized"})
         return result
 
+    def _authorized_feature(self, permission: str) -> tuple[str, dict[str, Any]] | None:
+        authenticated = self._authenticated()
+        if authenticated is None:
+            return None
+        if not self.service_state.has_permission(authenticated[1], permission):
+            self._reply(403, {"error": "permission_required", "permission": permission})
+            return None
+        return authenticated
+
+    def _feature_json(self, permission: str, maximum: int = MAX_JSON_BYTES) -> dict[str, Any] | None:
+        if self._authorized_feature(permission) is None:
+            return None
+        body = self._read_json(maximum)
+        if body is None:
+            self._reply(400, {"error": "invalid_json"})
+            return None
+        return body
+
+    def _send_local_file(self, path: Path, name: str) -> None:
+        try:
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_TRANSFER_BYTES:
+                os.close(descriptor)
+                self._reply(404, {"error": "file_unavailable"})
+                return
+        except OSError:
+            self._reply(404, {"error": "file_unavailable"})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", mimetypes.guess_type(name)[0] or "application/octet-stream")
+        self.send_header("Content-Length", str(metadata.st_size))
+        self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        try:
+            with os.fdopen(descriptor, "rb") as stream:
+                while chunk := stream.read(64 * 1024):
+                    self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return
+
+    def _receive_file(self) -> None:
+        raw_name = self.headers.get("X-OmaApp-File-Name", "")
+        name = _safe_transfer_name(unquote(raw_name))
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if not name or length < 1:
+            self._reply(400, {"error": "invalid_file"})
+            return
+        if length > MAX_TRANSFER_BYTES:
+            self._reply(413, {"error": "file_too_large"})
+            return
+
+        directory = _transfer_directory()
+        _private_directory(directory)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".omaapp-", dir=directory)
+        received = 0
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                while received < length:
+                    chunk = self.rfile.read(min(64 * 1024, length - received))
+                    if not chunk:
+                        raise OSError("incomplete upload")
+                    received += len(chunk)
+                    stream.write(chunk)
+                stream.flush()
+                os.fsync(stream.fileno())
+            destination = directory / name
+            try:
+                os.link(temporary_name, destination, follow_symlinks=False)
+            except FileExistsError:
+                self._reply(409, {"error": "file_exists"})
+                return
+            os.chmod(destination, 0o600)
+        except OSError:
+            self._reply(400, {"error": "incomplete_upload"})
+            return
+        finally:
+            Path(temporary_name).unlink(missing_ok=True)
+        self._reply(201, {"name": name, "size": received})
+
     def do_GET(self) -> None:  # noqa: N802
         if not self._rate_limit():
             return
         path = urlsplit(self.path).path
         if path == "/v1/health":
             self._reply(200, {"protocolVersion": PROTOCOL_VERSION, "service": "OmaApp Omarchy"})
+            return
+        if path == "/v1/events":
+            if self._authenticated() is None:
+                return
+            query = parse_qs(urlsplit(self.path).query, max_num_fields=4)
+            raw_revision = query.get("since", ["0"])[0]
+            if len(raw_revision) > 20 or not raw_revision.isdecimal():
+                self._reply(400, {"error": "invalid_revision"})
+                return
+            revision = int(raw_revision)
+            current_revision = self.service_state.event_hub.revision
+            if revision > current_revision:
+                self._reply(400, {"error": "invalid_revision"})
+                return
+            self._reply(200, self.service_state.event_hub.wait_after(revision))
             return
         if path.startswith("/v1/pair/status/"):
             request_id = path.removeprefix("/v1/pair/status/")
@@ -829,6 +1404,113 @@ class Handler(http.server.BaseHTTPRequestHandler):
             snapshot, wallpaper_path = _theme_snapshot()
             self.service_state.wallpaper_cache = (snapshot["capturedAt"], wallpaper_path)
             self._reply(200, snapshot)
+            return
+        if path == "/v1/permissions":
+            authenticated = self._authenticated()
+            if authenticated is None:
+                return
+            self._reply(200, {
+                permission: self.service_state.has_permission(authenticated[1], permission)
+                for permission in DEVICE_PERMISSIONS
+            })
+            return
+        if path == "/v1/features":
+            authenticated = self._authenticated()
+            if authenticated is None:
+                return
+            device = authenticated[1]
+            permissions = {
+                permission: self.service_state.has_permission(device, permission)
+                for permission in DEVICE_PERMISSIONS
+            }
+            features: dict[str, Any] = {
+                "permissions": permissions,
+                "eventRevision": self.service_state.event_hub.revision,
+            }
+            if permissions["system.read"]:
+                features["system"] = _system_status()
+            if permissions["workspace.control"]:
+                features["workspaces"] = _hyprland_workspaces()
+            if permissions["media.control"]:
+                features["players"] = _mpris_players()
+            if permissions["commands"]:
+                features["commands"] = [
+                    {"id": command["id"], "label": command["label"]}
+                    for command in _user_commands()
+                ]
+            if permissions["files.send"]:
+                directory = _transfer_directory()
+                files = []
+                try:
+                    for candidate in sorted(directory.iterdir(), key=lambda item: item.name.casefold())[:100]:
+                        name = _safe_transfer_name(candidate.name)
+                        try:
+                            metadata = candidate.lstat()
+                        except OSError:
+                            continue
+                        if name and candidate.is_file() and not candidate.is_symlink() \
+                                and metadata.st_size <= MAX_TRANSFER_BYTES:
+                            files.append({"name": name, "size": metadata.st_size})
+                except OSError:
+                    pass
+                features["files"] = files
+            self._reply(200, features)
+            return
+        if path == "/v1/system":
+            if self._authorized_feature("system.read") is not None:
+                self._reply(200, _system_status())
+            return
+        if path == "/v1/workspaces":
+            if self._authorized_feature("workspace.control") is not None:
+                self._reply(200, {"workspaces": _hyprland_workspaces()})
+            return
+        if path == "/v1/media":
+            if self._authorized_feature("media.control") is not None:
+                self._reply(200, {"players": _mpris_players()})
+            return
+        if path == "/v1/clipboard":
+            if self._authorized_feature("clipboard") is None:
+                return
+            clipboard = _run_command(
+                ["wl-paste", "--no-newline", "--type", "text/plain;charset=utf-8"],
+                timeout=1.5,
+                output_limit=MAX_CLIPBOARD_BYTES,
+            )
+            if clipboard is None:
+                self._reply(503, {"error": "clipboard_unavailable"})
+                return
+            try:
+                text = clipboard.decode("utf-8")
+            except UnicodeDecodeError:
+                self._reply(415, {"error": "clipboard_not_text"})
+                return
+            self._reply(200, {"text": text})
+            return
+        if path == "/v1/files" or path.startswith("/v1/files/"):
+            if self._authorized_feature("files.send") is None:
+                return
+            if path == "/v1/files":
+                directory = _transfer_directory()
+                files = []
+                try:
+                    for candidate in sorted(directory.iterdir(), key=lambda item: item.name.casefold())[:100]:
+                        name = _safe_transfer_name(candidate.name)
+                        try:
+                            metadata = candidate.lstat()
+                        except OSError:
+                            continue
+                        if name and candidate.is_file() and not candidate.is_symlink() \
+                                and metadata.st_size <= MAX_TRANSFER_BYTES:
+                            files.append({"name": name, "size": metadata.st_size})
+                except OSError:
+                    pass
+                self._reply(200, {"files": files})
+                return
+            name = _safe_transfer_name(unquote(path.removeprefix("/v1/files/")))
+            if not name or "/" in path.removeprefix("/v1/files/"):
+                self._reply(404, {"error": "file_unavailable"})
+                return
+            self._send_local_file(_transfer_directory() / name, name)
             return
         if path == "/v1/wallpaper":
             authenticated = self._authenticated()
@@ -892,6 +1574,77 @@ class Handler(http.server.BaseHTTPRequestHandler):
             status, result = self.service_state.reconnect_device(device_id, body["pairSecret"])
             self._reply(status, result)
             return
+        if path == "/v1/clipboard":
+            body = self._feature_json("clipboard", MAX_CLIPBOARD_BYTES + 1024)
+            if body is None:
+                return
+            text = body.get("text")
+            if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_CLIPBOARD_BYTES:
+                self._reply(400, {"error": "invalid_clipboard"})
+                return
+            result = _run_command(
+                ["wl-copy", "--type", "text/plain;charset=utf-8"],
+                timeout=1.5,
+                input_data=text.encode("utf-8"),
+                output_limit=1024,
+            )
+            if result is None:
+                self._reply(503, {"error": "clipboard_unavailable"})
+                return
+            self._reply(200, {"status": "copied"})
+            return
+        if path == "/v1/workspaces/activate":
+            body = self._feature_json("workspace.control")
+            if body is None:
+                return
+            workspace_id = body.get("workspaceId")
+            if isinstance(workspace_id, bool) or not isinstance(workspace_id, int) \
+                    or not 0 <= workspace_id <= 1000:
+                self._reply(400, {"error": "invalid_workspace"})
+                return
+            result = _run_command(["hyprctl", "dispatch", "workspace", str(workspace_id)])
+            if result is None:
+                self._reply(503, {"error": "workspace_unavailable"})
+                return
+            self._reply(200, {"status": "activated", "workspaceId": workspace_id})
+            return
+        if path == "/v1/media":
+            body = self._feature_json("media.control")
+            if body is None:
+                return
+            player = body.get("player")
+            action = body.get("action")
+            if not isinstance(player, str) or not MPRIS_PLAYER.fullmatch(player) \
+                    or action not in {"play-pause", "play", "pause", "next", "previous", "stop"}:
+                self._reply(400, {"error": "invalid_media_action"})
+                return
+            result = _run_command(["playerctl", "-p", player, action])
+            if result is None:
+                self._reply(503, {"error": "media_action_unavailable"})
+                return
+            self._reply(200, {"status": "sent", "player": player, "action": action})
+            return
+        if path == "/v1/commands/execute":
+            body = self._feature_json("commands")
+            if body is None:
+                return
+            command_id = body.get("commandId")
+            if not isinstance(command_id, str) or not COMMAND_ID.fullmatch(command_id):
+                self._reply(400, {"error": "invalid_command"})
+                return
+            if not any(command["id"] == command_id for command in _user_commands()):
+                self._reply(404, {"error": "command_not_configured"})
+                return
+            if not _run_user_command(command_id):
+                self._reply(503, {"error": "command_failed"})
+                return
+            self._reply(200, {"status": "completed", "commandId": command_id})
+            return
+        if path == "/v1/files":
+            if self._authorized_feature("files.receive") is None:
+                return
+            self._receive_file()
+            return
         if path == "/v1/pair/complete":
             authenticated = self._authenticated()
             if authenticated is None:
@@ -944,6 +1697,14 @@ def _process_command(state: ServiceState, command: dict[str, Any]) -> bool:
                 state.devices.pop(device_id, None)
                 state.save_devices()
             _emit({"event": "devices", "devices": state.public_devices()})
+        return True
+    if action == "set_permission":
+        device_id = command.get("deviceId")
+        permission = command.get("permission")
+        enabled = command.get("enabled")
+        if isinstance(device_id, str) and isinstance(permission, str) and isinstance(enabled, bool):
+            if not state.set_permission(device_id, permission, enabled):
+                _emit({"event": "error", "message": "Could not update this device permission"})
         return True
     if action == "stop":
         return False

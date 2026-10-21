@@ -16,6 +16,8 @@ class PairingModel : public QObject
     Q_PROPERTY(bool hasPairedDevice READ hasPairedDevice NOTIFY stateChanged)
     Q_PROPERTY(bool hasPendingRequest READ hasPendingRequest NOTIFY stateChanged)
     Q_PROPERTY(QVariantMap snapshot READ snapshot NOTIFY stateChanged)
+    Q_PROPERTY(QVariantMap features READ features NOTIFY stateChanged)
+    Q_PROPERTY(QString featureMessage READ featureMessage NOTIFY stateChanged)
     Q_PROPERTY(QString wallpaperUrl READ wallpaperUrl NOTIFY stateChanged)
     Q_PROPERTY(QString candidateHostName READ candidateHostName NOTIFY candidateChanged)
     Q_PROPERTY(QString candidateFingerprint READ candidateFingerprint NOTIFY candidateChanged)
@@ -32,6 +34,8 @@ public:
     bool hasPairedDevice() const;
     bool hasPendingRequest() const;
     QVariantMap snapshot() const;
+    QVariantMap features() const;
+    QString featureMessage() const;
     QString wallpaperUrl() const;
     QString candidateHostName() const;
     QString candidateFingerprint() const;
@@ -43,6 +47,12 @@ public:
     Q_INVOKABLE void cancelPairing();
     Q_INVOKABLE void revoke();
     Q_INVOKABLE void forget();
+    Q_INVOKABLE void pushClipboard();
+    Q_INVOKABLE void pullClipboard();
+    Q_INVOKABLE void startFileTransfer();
+    Q_INVOKABLE void activateWorkspace(int workspaceId);
+    Q_INVOKABLE void mediaAction(const QString &player, const QString &action);
+    Q_INVOKABLE void executeCommand(const QString &commandId);
 
 signals:
     void stateChanged();
@@ -57,6 +67,8 @@ private:
     bool m_hasPairedDevice = false;
     bool m_hasPendingRequest = false;
     QVariantMap m_snapshot;
+    QVariantMap m_features;
+    QString m_featureMessage;
     QString m_wallpaperUrl;
     QString m_candidateQr;
     QString m_candidateHostName;

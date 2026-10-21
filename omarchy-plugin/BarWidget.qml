@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -20,6 +19,24 @@ BarWidget {
     property string pendingRequestId: ""
     property string pendingDeviceName: ""
     property var pairedDevices: []
+    property string permissionsForDevice: ""
+    readonly property var permissionOptions: [
+        { key: "clipboard", label: qsTr("Clipboard text") },
+        { key: "files.send", label: qsTr("Send files to phone") },
+        { key: "files.receive", label: qsTr("Receive files from phone") },
+        { key: "media.control", label: qsTr("MPRIS media control") },
+        { key: "system.read", label: qsTr("System status") },
+        { key: "workspace.control", label: qsTr("Hyprland workspaces") },
+        { key: "commands", label: qsTr("Approved user commands") }
+    ]
+
+    function permissionEnabled(permission) {
+        for (let index = 0; index < pairedDevices.length; ++index) {
+            if (pairedDevices[index].deviceId === permissionsForDevice)
+                return Boolean((pairedDevices[index].permissions || {})[permission])
+        }
+        return false
+    }
 
     function localPath(url) {
         const value = String(url)
@@ -140,16 +157,20 @@ BarWidget {
 
     BarIconButton {
         id: button
+        bar: root.bar
         anchors.centerIn: parent
         text: "O"
-        labelText: "OMA"
+        tooltipText: root.serviceMessage
         active: root.pairedDevices.length > 0 || root.pendingRequestId.length > 0
         Accessible.name: root.pendingRequestId.length > 0
                 ? qsTr("OmaApp pairing request needs approval")
                 : root.pairedDevices.length > 0
                   ? qsTr("OmaApp has %1 paired devices").arg(root.pairedDevices.length)
                   : qsTr("OmaApp is not paired")
-        onClicked: pairingWindow.visible = !pairingWindow.visible
+        onPressed: function(button) {
+            if (button === Qt.LeftButton)
+                pairingWindow.open = !pairingWindow.open
+        }
     }
 
     MouseArea {
@@ -160,48 +181,38 @@ BarWidget {
         onExited: if (root.bar) root.bar.hideTooltip(root)
     }
 
-    PopupWindow {
+    PopupCard {
         id: pairingWindow
-        anchor.window: root.bar
-        anchor.rect.x: Math.max(0, root.x - 140)
-        anchor.rect.y: root.bar ? root.bar.height : 0
-        width: 360
-        height: root.pendingRequestId.length > 0 ? 380 : 440
-        visible: false
-        color: "transparent"
-        grabFocus: true
+        anchorItem: button
+        bar: root.bar
+        owner: root
+        contentWidth: 360
+        contentHeight: root.pendingRequestId.length > 0 ? 380 : 440
+        open: false
 
-        Rectangle {
+        ColumnLayout {
             anchors.fill: parent
-            color: Commons.Color.popups.background
-            radius: 12
-            border.color: Commons.Color.popups.border
-            border.width: 1
-
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
+            spacing: 12
 
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("OmaApp")
-                        color: Commons.Color.popups.text
+                        color: Color.popups.text
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
                     }
                     Button {
                         text: qsTr("Close")
-                        onClicked: pairingWindow.visible = false
+                        onClicked: pairingWindow.open = false
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
                     text: root.serviceMessage
-                    color: Commons.Color.popups.text
+                    color: Color.popups.text
                     wrapMode: Text.WordWrap
                 }
 
@@ -222,7 +233,7 @@ BarWidget {
                         Layout.fillWidth: true
                         text: qsTr("Allow %1 to connect and receive this computer’s theme?")
                                 .arg(root.pendingDeviceName)
-                        color: Commons.Color.popups.text
+                        color: Color.popups.text
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -238,7 +249,7 @@ BarWidget {
                     Button {
                         Layout.fillWidth: true
                         text: qsTr("Approve")
-                        highlighted: true
+                        selected: true
                         onClicked: root.sendServiceCommand("approve", { requestId: root.pendingRequestId })
                     }
                 }
@@ -258,7 +269,7 @@ BarWidget {
                     Layout.fillWidth: true
                     visible: root.pairingQrData.length > 0 && root.pendingRequestId.length === 0
                     text: qsTr("The QR code contains a temporary pairing secret. Approve only a device you can see.")
-                    color: Commons.Color.popups.text
+                    color: Color.popups.text
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
                     horizontalAlignment: Text.AlignHCenter
@@ -276,8 +287,16 @@ BarWidget {
                             Text {
                                 Layout.fillWidth: true
                                 text: modelData.deviceName
-                                color: Commons.Color.popups.text
+                                color: Color.popups.text
                                 elide: Text.ElideRight
+                            }
+                            Button {
+                                text: qsTr("Permissions")
+                                onClicked: {
+                                    root.permissionsForDevice = modelData.deviceId
+                                    pairingWindow.open = false
+                                    permissionDialog.open = true
+                                }
                             }
                             Button {
                                 text: qsTr("Revoke")
@@ -292,7 +311,67 @@ BarWidget {
                     }
                 }
 
-                Item { Layout.fillHeight: true }
+            Item { Layout.fillHeight: true }
+        }
+    }
+
+    PopupCard {
+        id: permissionDialog
+        anchorItem: button
+        bar: root.bar
+        owner: permissionDialog
+        centerOnBar: true
+        contentWidth: 360
+        contentHeight: 430
+        open: false
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Device permissions")
+                    color: Color.popups.text
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
+                }
+                Button {
+                    text: qsTr("Close")
+                    onClicked: permissionDialog.open = false
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Theme sync is available to paired devices. Each computer feature below stays disabled until you enable it.")
+                color: Color.popups.text
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                model: root.permissionOptions
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: modelData.label
+                        color: Color.popups.text
+                    }
+                    ToggleSwitch {
+                        id: permissionToggle
+                        checked: root.permissionEnabled(modelData.key)
+                        Accessible.name: modelData.label
+                        onToggled: root.sendServiceCommand("set_permission", {
+                            deviceId: root.permissionsForDevice,
+                            permission: modelData.key,
+                            enabled: !checked
+                        })
+                    }
+                }
             }
         }
     }

@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from scripts.ci.android_accessibility_tap_target import find_target
+from scripts.ci.android_accessibility_assert_checked import is_checked
 
 
 class AndroidAccessibilityTapTargetTest(unittest.TestCase):
@@ -49,6 +50,18 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             self.find(xml, "Open CI_Folder folder, 1 apps"),
             (63, 473),
         )
+
+    def test_finds_a_checked_launcher_setting(self):
+        xml = """<hierarchy>
+            <node package="app.omaapp" checked="false" content-desc="Use 4 app columns" />
+            <node package="app.omaapp" checked="true" content-desc="Use 5 app columns" />
+            <node package="com.android.systemui" checked="true" content-desc="Use 5 app columns" />
+        </hierarchy>"""
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "window.xml"
+            path.write_text(xml, encoding="utf-8")
+            self.assertTrue(is_checked(path, "Use 5 app columns"))
+            self.assertFalse(is_checked(path, "Use 3 app columns"))
 
 
 if __name__ == "__main__":

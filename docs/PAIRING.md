@@ -1,6 +1,6 @@
 # OmaApp ↔ Omarchy pairing and theme sync
 
-The first direct connection is implemented as one Quickshell bar widget and an Android QR scanner. The Python helper and QR encoder ship inside the plugin package; no second installer, system service, or remote-command endpoint is added.
+The direct connection uses one Quickshell bar widget and an Android QR scanner. The Python helper and QR encoder ship inside the plugin package; no second installer or system service is added.
 
 ## Pairing flow
 
@@ -18,8 +18,14 @@ The QR is the local-network discovery step. Both devices need to be able to reac
 
 ## Theme snapshot
 
-Every four seconds while OmaApp is open, it requests the current theme and supported geometry over the authenticated channel. The plugin reads Omarchy's active `colors.toml`, `shell.toml`, and `current/background` symlink, and asks Hyprland for the active border colors/angle, inactive border, border size, rounding, rounding power, and inner/outer gaps using `hyprctl -j getoption`.
+While OmaApp is in the foreground, it waits for authenticated theme and workspace events. The plugin watches active Omarchy theme files with inotify and listens to Hyprland socket2 events for configuration reloads and workspace changes. A 30-second foreground fallback refresh handles missed events and feature metrics. The plugin reads Omarchy's active `colors.toml`, `shell.toml`, and `current/background` symlink, and asks Hyprland for active/inactive border colors and angle, border size, rounding, rounding power, inner/outer gaps, animation entries, and Bezier curves.
 
-OmaApp applies the supported foreground/background/accent/error/muted colors, active border gradient, wallpaper, spacing, border width, radius, and rounding power. The last successful JSON snapshot and wallpaper stay in the app's private storage when the computer is offline. Reconnection retries the saved endpoint and refreshes the snapshot. There is no remote execution, clipboard, file sharing, media, notifications, workspace control, terminal, or desktop stream in this protocol.
+OmaApp applies the supported theme colors and `shell.toml` tokens, border gradient, wallpaper, spacing, border width, radius, rounding power, and live animation list. The last successful JSON snapshot and wallpaper stay in the app's private storage when the computer is offline. Reconnection retries the saved endpoint and refreshes the snapshot.
 
-The service and Android bridge have automated protocol tests and are built by CI. [CI run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557) completed TLS-pinned pairing, host approval, theme/geometry/wallpaper sync, live update, reconnect, and revocation on an Android x86_64 emulator. This validates the Android client against a CI plugin fixture; the APK has not yet been tested on GrapheneOS or another physical phone connected to an Omarchy computer.
+## Optional computer features
+
+Each paired phone starts with every feature disabled. The Omarchy widget grants or revokes clipboard, file send, file receive, MPRIS, system metrics, workspace control, and configured command access independently. Requests validate their paths, identifiers, payload sizes, workspace numbers, player actions, and command IDs. The PC helper never accepts an arbitrary command line: optional commands must be listed by the user in `~/.config/omaapp/commands.toml` as an absolute executable plus an argument vector and run under a timeout without a shell.
+
+File transfers are capped at 100 MiB and PC-side files stay inside `~/Downloads/OmaApp`. Android uses the system document picker for both upload and download. Clipboard accepts plain text only, up to 64 KiB, and transfers only on an explicit tap while OmaApp is foregrounded. MPRIS uses `playerctl`; workspace switching uses a validated numeric ID with `hyprctl`.
+
+The plugin service has Linux integration tests for TLS startup, persistence, theme inotify events, permission events, and revocation after restart. Protocol tests exercise per-feature permissions, files, clipboard, MPRIS, workspaces, commands, shell theme fields, and Hyprland animations. The real Omarchy plugin was installed and restarted in the development Omarchy 4.0.4 / Quickshell 0.3.1 session. Android physical-device and Pixel 10 GrapheneOS testing remains to be performed with the guide in [GRAPHENEOS.md](GRAPHENEOS.md).

@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import struct
+import sys
+import tempfile
+import unittest
+import zlib
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+from check_visual_regression import compare_images, decode_png  # noqa: E402
+
+
+def png_file(path: Path, pixels: tuple[tuple[tuple[int, int, int, int], ...], ...]) -> None:
+    height = len(pixels)
+    width = len(pixels[0])
+    raw = bytearray()
+    for row in pixels:
+        raw.append(0)
+        raw.extend(channel for pixel in row for channel in pixel)
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+    )
+
+
+class VisualRegressionTests(unittest.TestCase):
+    def test_decodes_rgba_png_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "screen.png"
+            png_file(path, (
+                ((0, 0, 0, 255), (255, 255, 255, 255)),
+                ((1, 2, 3, 255), (4, 5, 6, 255)),
+            ))
+
+            width, height, channels, rows = decode_png(path)
+
+        self.assertEqual((width, height, channels), (2, 2, 4))
+        self.assertEqual(rows[1], bytes((1, 2, 3, 255, 4, 5, 6, 255)))
+
+    def test_identical_images_have_no_regression(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            baseline = Path(directory) / "baseline.png"
+            pixels = (((10, 20, 30, 255), (40, 50, 60, 255)),) * 2
+            png_file(actual, pixels)
+            png_file(baseline, pixels)
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 0)
+        self.assertEqual(fraction, 0)
+
+    def test_system_bars_are_masked(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            baseline = Path(directory) / "baseline.png"
+            dark = (0, 0, 0, 255)
+            bright = (255, 255, 255, 255)
+            png_file(actual, ((bright, bright),) + ((dark, dark),) * 97 + ((bright, bright),) * 2)
+            png_file(baseline, ((dark, dark),) * 100)
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 0)
+        self.assertEqual(fraction, 0)
+
+    def test_content_change_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            baseline = Path(directory) / "baseline.png"
+            dark = (0, 0, 0, 255)
+            bright = (255, 255, 255, 255)
+            rows = [(dark, dark)] * 100
+            rows[50] = (bright, dark)
+            png_file(actual, tuple(rows))
+            png_file(baseline, ((dark, dark),) * 100)
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 1)
+        self.assertGreater(fraction, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

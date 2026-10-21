@@ -36,7 +36,12 @@
             android:screenOrientation="unspecified" />
 
         <activity
-            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:name="app.omaapp.FileTransferActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+
+        <activity
+            android:name="app.omaapp.OmaAppActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:exported="true"
             android:label="-- %%INSERT_APP_NAME%% --"

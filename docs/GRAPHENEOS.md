@@ -1,7 +1,51 @@
-# GrapheneOS compatibility
+# Проверка на Google Pixel 10 с GrapheneOS
 
-GrapheneOS remains a target, but OmaApp has not been installed or tested on GrapheneOS or a Pixel device. A debug APK is built by GitHub Actions; that does not establish runtime compatibility.
+Это пошаговый план проверки текущего APK и Omarchy plugin. Реальная установка на Pixel 10 пока не выполнена: в рабочем окружении нет подключённого телефона. Pixel 10 входит в официальный список устройств GrapheneOS; устанавливайте систему только по [официальной инструкции GrapheneOS](https://grapheneos.org/install/) и следуйте её шагам для конкретного устройства.
 
-The Android manifest registers OmaApp as a selectable HOME app and declares only the camera permission for on-demand QR scanning plus the normal internet permission for pairing and theme sync. The app does not request root, privileged APIs, Shizuku, device-owner status, notification access, or an accessibility service. It queries launcher activities through Android's package visibility declarations rather than requesting access to every installed package.
+## Подготовка
 
-The QR scanner uses CameraX and a bundled ML Kit barcode model, so scanning does not require a Google Play Services model download. Verify camera permission, launcher enumeration, app launch, HOME selection, TLS pinning, Keystore persistence, reconnect, and offline cache on a GrapheneOS device before claiming support.
+1. Установите GrapheneOS и завершите первоначальную настройку телефона.
+2. На компьютере с Omarchy обновите OmaApp до тестируемого commit. Из клона репозитория запустите:
+
+   ```sh
+   ./omarchy-plugin/install.sh
+   omarchy-restart-shell
+   ```
+
+   После перезапуска откройте меню OmaApp в панели Omarchy. Если значок не появился, проверьте вывод `omarchy shell shell debugBarGeometry` и журналы Quickshell. Установщик помещает один каталог plugin в `~/.config/omarchy/plugins/org.pluseight.omaapp`; отдельный сервер или системная служба не нужны.
+
+3. Подключите телефон и компьютер к одной доверенной Wi-Fi сети. Сеть должна разрешать локальные подключения и TCP-порт `44892`. Для проверки локальной доступности с телефона временно отключите VPN и гостевую изоляцию Wi-Fi.
+4. Получите APK из успешного CI run или GitHub Pre-release. Для CI APK откройте run из [списка Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml), загрузите `OmaApp-ci-debug-arm64` и распакуйте архив. Это отладочная сборка: обновление с неё на APK, подписанный production-ключом, возможно только при совпадающей подписи.
+5. Передавайте APK на телефон через USB или локальный файловый менеджер и подтвердите установку пакета `app.omaapp` в системном установщике GrapheneOS. Android проверяет подпись APK; не устанавливайте APK, который пришёл не из доверенного CI или официального GitHub Release.
+
+## Запуск лаунчера и работа без компьютера
+
+1. Откройте OmaApp и разрешите доступ к камере только когда Android попросит его для сканирования QR-кода.
+2. В настройках Android выберите OmaApp как приложение главного экрана и нажмите Home.
+3. Убедитесь, что список приложений и системные иконки загружаются, поиск фильтрует список, а долгое нажатие закрепляет приложение в Dock. Создайте папку, добавьте и удалите приложение, перезапустите OmaApp и убедитесь, что изменения сохранились.
+4. В Settings выберите 3, 4 и 5 колонок, затем проведите по экрану влево/вправо и проверьте переходы Apps, Devices, Style и Settings.
+5. Переведите телефон в авиарежим или выключите компьютер. Установленные Android-приложения, поиск, Dock, папки и локальные настройки должны продолжать работать. После первого сопряжения экран Style показывает последний сохранённый снимок оформления и обои без соединения с ПК.
+
+## Сопряжение и оформление Omarchy
+
+1. В виджете OmaApp на панели нажмите **Pair Android device**. В OmaApp откройте Devices и отсканируйте QR-код.
+2. На телефоне проверьте имя компьютера и SHA-256 отпечаток сертификата; нажмите **Trust computer**. На компьютере подтвердите отображённое имя телефона.
+3. В Devices проверьте состояние **CONNECTED**, имя активной темы и время обновления. Откройте Style и сверьте цвет фона, акцент, обои, градиент рамки, rounding, rounding power, spacing и список Hyprland animations с текущими настройками компьютера.
+4. На компьютере переключите активную тему и обои. Ожидайте обновление по событию Quickshell/Hyprland; если событие пропущено, клиент делает редкую страховочную сверку. Измените `rounding` или spacing, затем проверьте Style ещё раз.
+5. Перезапустите Quickshell командой `omarchy-restart-shell`. Иконка plugin должна вернуться, а helper — обслуживать телефон. Создайте новый QR и выберите **Reconnect**: прежнее доверие должно пережить смену IP, если сертификат компьютера не менялся.
+6. В виджете plugin отзовите устройство или нажмите **Revoke** в OmaApp при подключённом компьютере. Запросы с телефона должны перестать работать. Переключатели разрешений для каждого устройства независимы; выключите и повторно проверьте каждую функцию отдельно.
+
+## Проверка функций Alpha
+
+- **Clipboard:** в OmaApp откройте Devices и нажмите отправку текста с телефона; на компьютере проверьте текст в Wayland clipboard. Скопируйте другой текст на компьютере и нажмите чтение буфера в OmaApp. Android разрешает приложению читать буфер, когда оно активно; синхронизация намеренно запускается только по нажатию, пока OmaApp открыт. Android 13+ показывает системное подтверждение при записи текста в clipboard.
+- **Файлы:** разрешите отдельно отправку и получение файлов в plugin. В OmaApp выберите файл через системный Documents picker, отправьте его в `~/Downloads/OmaApp`, затем получите файл с ПК и выберите место сохранения в системном picker. Не выдавайте OmaApp широкое разрешение на все файлы: Android SAF позволяет пользователю выбрать конкретный документ или каталог. См. [Android Documents and files](https://developer.android.com/training/data-storage/shared/documents-files) и [clipboard API](https://developer.android.com/develop/ui/views/touch-and-input/copy-paste).
+- **MPRIS:** включите разрешение Media control, запустите на ПК совместимый медиаплеер и проверьте кнопки play/pause/next/previous в Devices.
+- **System:** разрешите чтение системных показателей; сравните load, память и заряд батареи с компьютером. На ПК без батареи интерфейс должен показывать отсутствие источника питания.
+- **Hyprland workspaces:** разрешите Workspace control, создайте несколько рабочих пространств и переключите их с телефона. Проверьте активное пространство на мониторе.
+- **Commands:** сначала добавьте только безвредную пользовательскую команду в `~/.config/omaapp/commands.toml`, проверьте `argv` и executable, затем отдельно разрешите Commands для телефона. Протестируйте отказ для неизвестного ID и выключение разрешения.
+
+Каждый отказ разрешения должен показываться без потери сопряжения. После отзыва токена запросы перестают работать независимо от сохранённого состояния на телефоне.
+
+## Сбор данных при проверке
+
+Сохраните номер APK, версию GrapheneOS, результат установки/обновления, состояние HOME, итог каждого сценария и журналы Android вокруг ошибок. На Omarchy запишите версию Omarchy и Quickshell, вывод `omarchy shell shell debugBarGeometry`, доступность `hyprctl -j animations`, версию `playerctl` и журнал helper. Удалите из журналов имя Wi-Fi, публичные IP, QR-коды, сертификатные ключи и токены перед публикацией.

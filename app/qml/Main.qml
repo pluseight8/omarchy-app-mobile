@@ -50,9 +50,28 @@ ApplicationWindow {
         return fallback
     }
 
+    function shellColor(value, fallback) {
+        const raw = String(value || "").trim()
+        if (raw.startsWith("hyprland."))
+            return parseHyprlandColor((pairing.snapshot.hyprland || {}).activeBorder, fallback)
+        if (raw.startsWith("colors."))
+            return parseHyprlandColor(((pairing.snapshot.theme || {}).colors || {})[raw.substring(7)], fallback)
+        return parseHyprlandColor(raw, fallback)
+    }
+
+    function withAlpha(value, alpha) {
+        const color = Qt.color(value)
+        return Qt.rgba(color.r, color.g, color.b, boundedNumber(alpha, 1, 0, 1))
+    }
+
     function boundedNumber(value, fallback, minimum, maximum) {
         const number = Number(value)
         return Number.isFinite(number) ? Math.max(minimum, Math.min(maximum, number)) : fallback
+    }
+
+    function featureEnabled(permission) {
+        const permissions = pairing.features.permissions || {}
+        return permissions[permission] === true
     }
 
     function applySyncedTheme() {
@@ -68,6 +87,14 @@ ApplicationWindow {
             Theme.spacingSmall = 8
             Theme.spacingGroup = 16
             Theme.spacingSection = 24
+            Theme.spacingScale = 1
+            Theme.fontBaseSize = 12
+            Theme.controlFillAlpha = 0.04
+            Theme.selectedFillAlpha = 0.18
+            Theme.launcherBackgroundAlpha = 1
+            Theme.popupBackgroundAlpha = 1
+            Theme.surface = Qt.darker(Theme.background, 1.18)
+            Theme.surfaceRaised = Qt.darker(Theme.background, 1.34)
             Theme.defaultCornerRadius = 0
             Theme.defaultRoundingPower = 2
             Theme.previewRadius = 24
@@ -80,6 +107,10 @@ ApplicationWindow {
         const colors = theme.colors || {}
         const shell = theme.shell || {}
         const spacing = shell.spacing || {}
+        const launcherStyle = shell.launcher || {}
+        const popupStyle = shell.popups || {}
+        const controlsStyle = shell.controls || {}
+        const fontStyle = shell.font || {}
         const geometry = pairing.snapshot.hyprland || {}
 
         Theme.background = parseHyprlandColor(colors.background, Theme.background)
@@ -137,6 +168,20 @@ ApplicationWindow {
         Theme.spacingSmall = boundedNumber(smallSpacing, 8, 0, 100) * spacingScale
         Theme.spacingGroup = boundedNumber(groupSpacing, 16, 0, 100) * spacingScale
         Theme.spacingSection = boundedNumber(sectionSpacing, 24, 0, 100) * spacingScale
+        Theme.spacingScale = spacingScale
+
+        const launcherAlpha = boundedNumber(launcherStyle["background-alpha"], 1, 0, 1)
+        const popupAlpha = boundedNumber(popupStyle["background-alpha"], 1, 0, 1)
+        Theme.launcherBackgroundAlpha = launcherAlpha
+        Theme.popupBackgroundAlpha = popupAlpha
+        Theme.surface = withAlpha(shellColor(launcherStyle.background, Theme.background), launcherAlpha)
+        Theme.surfaceRaised = withAlpha(shellColor(popupStyle.background, Theme.background), popupAlpha)
+        Theme.controlFillAlpha = boundedNumber(controlsStyle["normal-fill-alpha"], 0.04, 0, 1)
+        Theme.selectedFillAlpha = boundedNumber(
+            launcherStyle["selected-background-alpha"] !== undefined
+                    ? launcherStyle["selected-background-alpha"] : controlsStyle["selected-fill-alpha"],
+            0.18, 0, 1)
+        Theme.fontBaseSize = boundedNumber(fontStyle["base-size"], 12, 6, 48)
     }
 
     Connections {
@@ -428,7 +473,7 @@ ApplicationWindow {
         anchors.fill: parent
         z: -1
         color: Theme.background
-        opacity: pairing.wallpaperUrl.length > 0 ? 0.78 : 1
+        opacity: pairing.wallpaperUrl.length > 0 ? Theme.launcherBackgroundAlpha : 1
     }
 
     ColumnLayout {
@@ -469,11 +514,24 @@ ApplicationWindow {
             }
         }
 
-        StackLayout {
+        SwipeView {
             id: pages
             Layout.fillWidth: true
             Layout.fillHeight: true
             currentIndex: window.selectedPage
+
+            onCurrentIndexChanged: {
+                if (window.selectedPage !== currentIndex)
+                    window.selectedPage = currentIndex
+            }
+
+            Connections {
+                target: window
+                function onSelectedPageChanged() {
+                    if (pages.currentIndex !== window.selectedPage)
+                        pages.currentIndex = window.selectedPage
+                }
+            }
 
             ColumnLayout {
                 spacing: Math.min(Theme.spacingSection, 16)
@@ -509,7 +567,7 @@ ApplicationWindow {
                     Layout.fillWidth: true
 
                     Text {
-                        text: qsTr("Pinned apps")
+                        text: qsTr("Dock")
                         color: Theme.foreground
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
@@ -536,6 +594,16 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.preferredHeight: launcher.favorites.length > 0 ? 86 : 0
                     visible: launcher.favorites.length > 0
+
+                    HyprlandSurface {
+                        anchors.fill: parent
+                        z: -1
+                        fillColor: Theme.surface
+                        borderStart: Theme.outline
+                        borderEnd: Theme.outline
+                        radius: Theme.defaultCornerRadius
+                        borderWidth: 1
+                    }
 
                     Flickable {
                         anchors.fill: parent
@@ -582,7 +650,7 @@ ApplicationWindow {
                                     }
 
                                     background: HyprlandSurface {
-                                        fillColor: parent.down ? Theme.surfaceRaised : "transparent"
+                                            fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                         borderStart: parent.activeFocus ? Theme.accent : "transparent"
                                         borderEnd: borderStart
                                         radius: Theme.defaultCornerRadius
@@ -592,6 +660,8 @@ ApplicationWindow {
                             }
                         }
                     }
+
+
                 }
 
                 RowLayout {
@@ -669,7 +739,7 @@ ApplicationWindow {
                                     }
 
                                     background: HyprlandSurface {
-                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.surface
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                         borderStart: parent.activeFocus ? Theme.accent : Theme.outline
                                         borderEnd: borderStart
                                         radius: Theme.defaultCornerRadius
@@ -711,7 +781,7 @@ ApplicationWindow {
                         id: appGrid
                         anchors.fill: parent
                         clip: true
-                        cellWidth: Math.max(104, Math.floor(width / 3))
+                        cellWidth: Math.floor(width / launcher.gridColumns)
                         cellHeight: 104
                         model: launcher
                         boundsBehavior: Flickable.StopAtBounds
@@ -788,7 +858,7 @@ ApplicationWindow {
                             }
 
                             background: HyprlandSurface {
-                                fillColor: parent.down ? Theme.surfaceRaised : "transparent"
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                 borderStart: parent.activeFocus ? Theme.accent : "transparent"
                                 borderEnd: borderStart
                                 radius: Theme.defaultCornerRadius
@@ -827,8 +897,18 @@ ApplicationWindow {
                 }
             }
 
-            ColumnLayout {
-                spacing: Theme.spacingSection
+            Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: deviceColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                ColumnLayout {
+                    id: deviceColumn
+                    width: parent.width
+                    spacing: Theme.spacingSection
 
                 ColumnLayout {
                     spacing: 8
@@ -990,7 +1070,221 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
 
-                Item { Layout.fillHeight: true }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: pairing.hasPairedDevice
+                    spacing: 10
+
+                    Text {
+                        text: qsTr("Quick actions")
+                        color: Theme.foreground
+                        font.pixelSize: 20
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Each action requires its own approval in the Omarchy plugin. Clipboard access runs only when you tap a button while OmaApp is open.")
+                        color: Theme.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: window.width >= 560 ? 2 : 1
+                        rowSpacing: 8
+                        columnSpacing: 8
+
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Send phone clipboard")
+                            enabled: pairing.connected && window.featureEnabled("clipboard")
+                            Accessible.name: qsTr("Send phone clipboard to the computer")
+                            onClicked: pairing.pushClipboard()
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Read computer clipboard")
+                            enabled: pairing.connected && window.featureEnabled("clipboard")
+                            Accessible.name: qsTr("Copy computer clipboard to the phone")
+                            onClicked: pairing.pullClipboard()
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Transfer files")
+                            enabled: pairing.connected && (window.featureEnabled("files.send")
+                                                             || window.featureEnabled("files.receive"))
+                            onClicked: pairing.startFileTransfer()
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: pairing.featureMessage.length > 0
+                        text: pairing.featureMessage
+                        color: Theme.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    HyprlandSurface {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 94
+                        visible: pairing.features.system !== undefined
+                        fillColor: Theme.surface
+                        borderStart: Theme.outline
+                        borderEnd: Theme.outline
+                        radius: Theme.defaultCornerRadius
+                        borderWidth: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: 4
+                            Text {
+                                text: qsTr("COMPUTER STATUS")
+                                color: Theme.accent
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 1
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                property var systemState: pairing.features.system || ({})
+                                property var batteryState: systemState.battery || ({})
+                                property var loadState: systemState.loadAverage || []
+                                text: qsTr("Load %1 · Memory %2 / %3 GiB · Battery %4")
+                                      .arg(loadState.length > 0 ? loadState[0] : "—")
+                                      .arg(systemState.memoryTotalBytes > 0
+                                           ? ((systemState.memoryTotalBytes - systemState.memoryAvailableBytes) / 1073741824).toFixed(1)
+                                           : "—")
+                                      .arg(systemState.memoryTotalBytes > 0
+                                           ? (systemState.memoryTotalBytes / 1073741824).toFixed(1)
+                                           : "—")
+                                      .arg(batteryState.percent !== undefined
+                                           ? batteryState.percent + "% · " + (batteryState.status || "")
+                                           : qsTr("AC power / unavailable"))
+                                color: Theme.foreground
+                                font.pixelSize: 13
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: pairing.features.workspaces !== undefined
+                        spacing: 6
+                        Text {
+                            text: qsTr("Hyprland workspaces")
+                            color: Theme.foreground
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Repeater {
+                                model: pairing.features.workspaces || []
+                                delegate: Button {
+                                    required property var modelData
+                                    text: (modelData.name || qsTr("Workspace %1").arg(modelData.id))
+                                          + (modelData.focused ? "  ·  " + qsTr("Active") : "")
+                                    Accessible.name: qsTr("Switch to workspace %1").arg(modelData.name || modelData.id)
+                                    onClicked: pairing.activateWorkspace(modelData.id)
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: pairing.features.players !== undefined
+                        spacing: 6
+                        Text {
+                            text: qsTr("Media")
+                            color: Theme.foreground
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                        }
+                        Repeater {
+                            model: pairing.features.players || []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: [modelData.title, modelData.artist].filter(Boolean).join(" · ")
+                                          || modelData.player
+                                    color: Theme.foreground
+                                    elide: Text.ElideRight
+                                }
+                                Button {
+                                    text: modelData.status === "Playing" ? qsTr("Pause") : qsTr("Play")
+                                    Accessible.name: modelData.status === "Playing"
+                                                     ? qsTr("Pause %1").arg(modelData.player)
+                                                     : qsTr("Play %1").arg(modelData.player)
+                                    onClicked: pairing.mediaAction(modelData.player,
+                                                                   modelData.status === "Playing" ? "pause" : "play")
+                                }
+                                Button {
+                                    text: qsTr("Next")
+                                    Accessible.name: qsTr("Next track on %1").arg(modelData.player)
+                                    onClicked: pairing.mediaAction(modelData.player, "next")
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: pairing.features.commands !== undefined
+                        spacing: 6
+                        Text {
+                            text: qsTr("Approved commands")
+                            color: Theme.foreground
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: (pairing.features.commands || []).length === 0
+                            text: qsTr("No user commands are configured on the computer.")
+                            color: Theme.muted
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
+                        Repeater {
+                            model: pairing.features.commands || []
+                            delegate: Button {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                Layout.minimumHeight: 48
+                                text: modelData.label
+                                Accessible.name: qsTr("Run approved computer command %1").arg(modelData.label)
+                                onClicked: pairing.executeCommand(modelData.id)
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: pairing.hasPairedDevice && !window.featureEnabled("system.read")
+                                 && !window.featureEnabled("workspace.control")
+                                 && !window.featureEnabled("media.control")
+                        text: qsTr("Enable optional computer features in the OmaApp plugin’s Permissions menu. Each permission is independent and off by default.")
+                        color: Theme.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                    Item { Layout.preferredHeight: 8 }
+                }
             }
 
             Flickable {
@@ -1111,6 +1405,82 @@ ApplicationWindow {
 
                     Text {
                         Layout.fillWidth: true
+                        text: qsTr("Quickshell tokens · %1× spacing · %2 px base font · %3% control fill · %4% launcher opacity")
+                                  .arg(Theme.spacingScale.toFixed(2))
+                                  .arg(Theme.fontBaseSize.toFixed(0))
+                                  .arg(Math.round(Theme.controlFillAlpha * 100))
+                                  .arg(Math.round(Theme.launcherBackgroundAlpha * 100))
+                        color: Theme.muted
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    ColumnLayout {
+                        id: animationsPanel
+                        property var animationSnapshot: pairing.snapshot.animations || ({})
+                        Layout.fillWidth: true
+                        spacing: 6
+
+                        Text {
+                            text: qsTr("Hyprland animations")
+                            color: Theme.foreground
+                            font.pixelSize: 18
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: (animationsPanel.animationSnapshot.items || []).length === 0
+                            text: pairing.snapshot.theme === undefined
+                                  ? qsTr("Pair a computer to see its live animation settings.")
+                                  : qsTr("Hyprland did not provide animation data in the last sync.")
+                            color: Theme.muted
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
+                        Repeater {
+                            model: animationsPanel.animationSnapshot.items || []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: modelData.name
+                                    color: Theme.foreground
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: modelData.enabled === false ? qsTr("OFF") : qsTr("ON")
+                                    color: modelData.enabled === false ? Theme.muted : Theme.accent
+                                    font.pixelSize: 10
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    Layout.preferredWidth: 160
+                                    text: [modelData.style || modelData.bezier || "",
+                                          modelData.speed === null ? "" : qsTr("speed %1").arg(modelData.speed)]
+                                          .filter(value => value.length > 0).join(" · ")
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                    horizontalAlignment: Text.AlignRight
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: (animationsPanel.animationSnapshot.beziers || []).length > 0
+                            text: qsTr("%1 custom Bezier curves are available on this computer.")
+                                      .arg((animationsPanel.animationSnapshot.beziers || []).length)
+                            color: Theme.muted
+                            font.pixelSize: 11
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
                         text: pairing.connected
                               ? qsTr("Colors, border gradient, rounding, power, spacing and wallpaper follow the connected Omarchy theme.")
                               : pairing.hasPairedDevice
@@ -1122,6 +1492,98 @@ ApplicationWindow {
                     }
                 }
             }
+
+        Flickable {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            contentWidth: width
+            contentHeight: settingsColumn.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            ColumnLayout {
+                id: settingsColumn
+                width: parent.width
+                spacing: Theme.spacingSection
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text {
+                        text: qsTr("Settings")
+                        color: Theme.foreground
+                        font.pixelSize: 32
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Tune the launcher on this phone. These choices stay available when the computer is offline.")
+                        color: Theme.muted
+                        font.pixelSize: 14
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 142
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 12
+                        Text {
+                            text: qsTr("Home grid")
+                            color: Theme.foreground
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Choose how many app columns fit across this screen.")
+                            color: Theme.muted
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Repeater {
+                                model: [3, 4, 5]
+                                delegate: Button {
+                                    required property int modelData
+                                    Layout.fillWidth: true
+                                    text: String(modelData)
+                                    checkable: true
+                                    checked: launcher.gridColumns === modelData
+                                    Accessible.name: qsTr("Use %1 app columns").arg(modelData)
+                                    onClicked: launcher.setGridColumns(modelData)
+                                    background: HyprlandSurface {
+                                        fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
+                                        borderStart: parent.checked ? Theme.accent : Theme.outline
+                                        borderEnd: borderStart
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Pinned apps, folders, and grid columns are saved on this device. Omarchy theme sync remains cached for offline use.")
+                    color: Theme.muted
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
         }
 
         RowLayout {
@@ -1132,7 +1594,8 @@ ApplicationWindow {
                 model: [
                     { label: qsTr("Apps"), page: 0 },
                     { label: qsTr("Devices"), page: 1 },
-                    { label: qsTr("Style"), page: 2 }
+                    { label: qsTr("Style"), page: 2 },
+                    { label: qsTr("Settings"), page: 3 }
                 ]
 
                 delegate: Button {
@@ -1140,11 +1603,14 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: modelData.label
                     checkable: true
-                    checked: window.selectedPage === modelData.page
+                    checked: pages.currentIndex === modelData.page
                     Accessible.name: modelData.label
-                    onClicked: window.selectedPage = modelData.page
+                    onClicked: {
+                        window.selectedPage = modelData.page
+                        pages.currentIndex = modelData.page
+                    }
                     background: HyprlandSurface {
-                        fillColor: parent.checked ? Theme.surfaceRaised : "transparent"
+                        fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
                         borderEnd: borderStart
                         radius: Theme.defaultCornerRadius
