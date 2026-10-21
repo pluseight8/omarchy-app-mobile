@@ -17,11 +17,15 @@ def find_target(xml_path: Path, target: str) -> tuple[int, int]:
     for node in root.iter("node"):
         actionable = (node.attrib.get("clickable") == "true"
                       or node.attrib.get("focusable") == "true")
-        labels = {
-            label.strip()
-            for attribute in ("content-desc", "text")
-            for label in node.attrib.get(attribute, "").split(",")
-        }
+        labels = set()
+        for attribute in ("content-desc", "text"):
+            value = node.attrib.get(attribute, "").strip()
+            if value:
+                # Keep the full accessible name intact: commas can be part of
+                # a label, as in "Open <folder>, 1 apps". Qt may also combine
+                # multiple accessibility names into one comma-separated value.
+                labels.add(value)
+                labels.update(label.strip() for label in value.split(","))
         if (node.attrib.get("package") != "app.omaapp"
                 or not actionable
                 or node.attrib.get("enabled") == "false"

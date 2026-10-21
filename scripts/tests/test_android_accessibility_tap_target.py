@@ -41,6 +41,15 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             bounds="[28,416][383,455]" /></hierarchy>"""
         self.assertEqual(self.find(xml, "New folder name"), (205, 435))
 
+    def test_preserves_commas_in_full_accessible_name(self):
+        xml = """<hierarchy><node package="app.omaapp" clickable="true"
+            enabled="true" content-desc="Open CI_Folder folder, 1 apps"
+            bounds="[22,440][105,507]" /></hierarchy>"""
+        self.assertEqual(
+            self.find(xml, "Open CI_Folder folder, 1 apps"),
+            (63, 473),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
