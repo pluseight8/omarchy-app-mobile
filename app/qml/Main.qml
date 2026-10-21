@@ -518,6 +518,7 @@ ApplicationWindow {
             id: pages
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
             currentIndex: window.selectedPage
 
             onCurrentIndexChanged: {

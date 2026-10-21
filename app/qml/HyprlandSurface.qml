@@ -11,9 +11,11 @@ Item {
     property real radius: Theme.defaultCornerRadius
     property real roundingPower: Theme.defaultRoundingPower
     property real borderWidth: 1
+    readonly property bool shaderSupported: Qt.platform.os !== "android"
 
     ShaderEffect {
         anchors.fill: parent
+        visible: root.shaderSupported
         supportsAtlasTextures: true
 
         property vector2d itemSize: Qt.vector2d(
@@ -28,5 +30,17 @@ Item {
         property real borderWidth: root.borderWidth * Screen.devicePixelRatio
 
         fragmentShader: "qrc:/shaders/hyprland_rounded.frag.qsb"
+    }
+
+    // Android CI screenshots show diagonal artifacts from ShaderEffect here.
+    // Use a native Quick rectangle on Android; keep the Hyprland shader on
+    // desktop, where it is used for the superellipse preview.
+    Rectangle {
+        anchors.fill: parent
+        visible: !root.shaderSupported
+        color: root.fillColor
+        radius: Math.max(0, Math.min(root.radius, Math.min(width, height) * 0.5))
+        border.color: root.borderStart
+        border.width: Math.max(0, Math.min(root.borderWidth, Math.min(width, height) * 0.5))
     }
 }
