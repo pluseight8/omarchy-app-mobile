@@ -1310,7 +1310,7 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("Explore the same superellipse controls used by the Hyprland rounding model.")
+                            text: qsTr("Preview Omarchy colors and adjust rounded-surface values on this phone.")
                             color: Theme.muted
                             font.pixelSize: 15
                             wrapMode: Text.WordWrap
@@ -1343,64 +1343,120 @@ ApplicationWindow {
                                 color: Theme.muted
                                 font.pixelSize: 13
                             }
+                            RowLayout {
+                                spacing: 8
+                                Text {
+                                    text: qsTr("Border colors")
+                                    color: Theme.muted
+                                    font.pixelSize: 12
+                                }
+                                Rectangle {
+                                    width: 22
+                                    height: 16
+                                    radius: 4
+                                    color: Theme.activeBorderStart
+                                    Accessible.name: qsTr("First synced border color")
+                                }
+                                Rectangle {
+                                    width: 22
+                                    height: 16
+                                    radius: 4
+                                    color: Theme.activeBorderEnd
+                                    Accessible.name: qsTr("Second synced border color")
+                                }
+                                Text {
+                                    text: qsTr("%1°").arg(Math.round(Theme.borderGradientAngle))
+                                    color: Theme.muted
+                                    font.pixelSize: 12
+                                }
+                            }
                         }
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 8
-                        Text {
-                            text: qsTr("Rounding power")
-                            color: Theme.foreground
-                            font.pixelSize: 14
-                        }
-                        Slider {
-                            id: powerSlider
+                        spacing: 6
+                        RowLayout {
                             Layout.fillWidth: true
-            from: 1
-            to: 10
-            stepSize: 0.5
-                            value: Theme.previewPower
-                            Accessible.name: qsTr("Rounding power")
-                            onMoved: Theme.previewPower = value
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Rounding power")
+                                color: Theme.foreground
+                                font.pixelSize: 14
+                            }
+                            ToolButton {
+                                text: "−"
+                                Accessible.name: qsTr("Decrease rounding power")
+                                onClicked: Theme.previewPower = Math.max(1, Theme.previewPower - 0.5)
+                            }
+                            Text {
+                                text: Theme.previewPower.toFixed(1)
+                                color: Theme.foreground
+                                font.pixelSize: 13
+                            }
+                            ToolButton {
+                                text: "+"
+                                Accessible.name: qsTr("Increase rounding power")
+                                onClicked: Theme.previewPower = Math.min(10, Theme.previewPower + 0.5)
+                            }
                         }
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 8
-                        Text {
-                            text: qsTr("Corner radius")
-                            color: Theme.foreground
-                            font.pixelSize: 14
-                        }
-                        Slider {
+                        spacing: 6
+                        RowLayout {
                             Layout.fillWidth: true
-                            from: 0
-                            to: 100
-                            stepSize: 1
-                            value: Theme.previewRadius
-                            Accessible.name: qsTr("Corner radius")
-                            onMoved: Theme.previewRadius = value
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Corner radius")
+                                color: Theme.foreground
+                                font.pixelSize: 14
+                            }
+                            ToolButton {
+                                text: "−"
+                                Accessible.name: qsTr("Decrease corner radius")
+                                onClicked: Theme.previewRadius = Math.max(0, Theme.previewRadius - 2)
+                            }
+                            Text {
+                                text: Math.round(Theme.previewRadius) + " px"
+                                color: Theme.foreground
+                                font.pixelSize: 13
+                            }
+                            ToolButton {
+                                text: "+"
+                                Accessible.name: qsTr("Increase corner radius")
+                                onClicked: Theme.previewRadius = Math.min(100, Theme.previewRadius + 2)
+                            }
                         }
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 8
-                        Text {
-                            text: qsTr("Border width")
-                            color: Theme.foreground
-                            font.pixelSize: 14
-                        }
-                        Slider {
+                        spacing: 6
+                        RowLayout {
                             Layout.fillWidth: true
-                            from: 0
-                            to: 12
-                            stepSize: 1
-                            value: Theme.previewBorderWidth
-                            Accessible.name: qsTr("Border width")
-                            onMoved: Theme.previewBorderWidth = value
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Border width")
+                                color: Theme.foreground
+                                font.pixelSize: 14
+                            }
+                            ToolButton {
+                                text: "−"
+                                Accessible.name: qsTr("Decrease border width")
+                                onClicked: Theme.previewBorderWidth = Math.max(0, Theme.previewBorderWidth - 1)
+                            }
+                            Text {
+                                text: Math.round(Theme.previewBorderWidth) + " px"
+                                color: Theme.foreground
+                                font.pixelSize: 13
+                            }
+                            ToolButton {
+                                text: "+"
+                                Accessible.name: qsTr("Increase border width")
+                                onClicked: Theme.previewBorderWidth = Math.min(12, Theme.previewBorderWidth + 1)
+                            }
                         }
                     }
 

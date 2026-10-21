@@ -20,7 +20,7 @@ The implementation keeps one plugin package. The bundled helper is launched by t
 
 ## Hyprland geometry
 
-The C++ geometry reference implements Hyprland's Lp superellipse distance and smoothing band, and its unit tests cover the 1–10 rounding-power range. The Android UI currently uses Qt's native rounded rectangles because the custom Qt ShaderEffect produced diagonal artifacts in emulator screenshots. It applies the synced border colors as horizontal or vertical gradients. Superellipse rendering with arbitrary rounding power and exact Hyprland gradient angles remains deferred until it can be rendered cleanly on Android.
+The C++ geometry reference implements Hyprland's Lp superellipse distance and smoothing band, and its unit tests cover the 1–10 rounding-power range. The Android UI currently uses Qt's native rounded rectangles and solid border because custom shader and gradient surfaces produced artifacts in emulator screenshots. OmaApp still reads and caches the rounding power and both border colors/angle, and the Style preview displays them, but it does not yet render the exact superellipse or gradient. Restore that rendering only after the Android screenshot test stays clean.
 
 Hyprland is BSD-3-Clause. The rounding mask equation is adapted from `rounding.glsl`; the original notice and license terms ship in `THIRD_PARTY.md` and the APK documentation.
 
