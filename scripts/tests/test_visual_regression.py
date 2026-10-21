@@ -56,6 +56,25 @@ class VisualRegressionTests(unittest.TestCase):
         self.assertEqual(changed, 0)
         self.assertEqual(fraction, 0)
 
+    def test_higher_density_capture_is_compared_in_logical_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            baseline = Path(directory) / "baseline.png"
+            dark = (10, 20, 30, 255)
+            bright = (40, 50, 60, 255)
+            png_file(baseline, ((dark, bright), (bright, dark)))
+            png_file(actual, (
+                (dark, dark, bright, bright),
+                (dark, dark, bright, bright),
+                (bright, bright, dark, dark),
+                (bright, bright, dark, dark),
+            ))
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 0)
+        self.assertEqual(fraction, 0)
+
     def test_system_bars_are_masked(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             actual = Path(directory) / "actual.png"

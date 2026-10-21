@@ -84,25 +84,56 @@ def decode_png(path: Path) -> tuple[int, int, int, list[bytes]]:
 def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
     actual_width, actual_height, actual_channels, actual_rows = decode_png(actual)
     base_width, base_height, base_channels, base_rows = decode_png(baseline)
-    if (actual_width, actual_height, actual_channels) != (base_width, base_height, base_channels):
+    if actual_channels != base_channels:
         raise ValueError(
-            f"{actual.name}: screenshot {actual_width}x{actual_height} differs from baseline "
-            f"{base_width}x{base_height}"
+            f"{actual.name}: screenshot has {actual_channels} channels, baseline has {base_channels}"
         )
+
+    scaled = (actual_width, actual_height) != (base_width, base_height)
+    if scaled and actual_width * base_height != actual_height * base_width:
+        raise ValueError(
+            f"{actual.name}: screenshot {actual_width}x{actual_height} does not share the baseline "
+            f"aspect ratio {base_width}x{base_height}"
+        )
+
+    def sample_actual_pixel(x: int, y: int) -> tuple[int, ...]:
+        if not scaled:
+            start = x * actual_channels
+            return tuple(actual_rows[y][start:start + actual_channels])
+
+        # Average the physical-pixel rectangle for one logical baseline pixel.
+        # This supports fractional density ratios such as 240/160 without a
+        # Pillow dependency and makes DPI captures comparable in dp space.
+        left = x * actual_width // base_width
+        right = max(left + 1, (x + 1) * actual_width // base_width)
+        top = y * actual_height // base_height
+        bottom = max(top + 1, (y + 1) * actual_height // base_height)
+        sums = [0] * actual_channels
+        samples = 0
+        for physical_y in range(top, bottom):
+            row = actual_rows[physical_y]
+            for physical_x in range(left, right):
+                offset = physical_x * actual_channels
+                for channel in range(actual_channels):
+                    sums[channel] += row[offset + channel]
+                samples += 1
+        return tuple((value + samples // 2) // samples for value in sums)
 
     changed = total = 0
     bytes_per_pixel = actual_channels
     dynamic_regions = HOME_DYNAMIC_REGIONS if actual.stem == "home" else ()
-    for y, (actual_row, base_row) in enumerate(zip(actual_rows, base_rows)):
-        # Mask Android's clock/status icons and gesture navigation hint.
-        if y < 42 or y >= actual_height - 32:
+    for y, base_row in enumerate(base_rows):
+        # Mask Android's clock/status icons and gesture navigation hint in the
+        # baseline's logical-pixel coordinate space.
+        if y < 42 or y >= base_height - 32:
             continue
-        for x in range(actual_width):
+        for x in range(base_width):
             if any(left <= x < right and top <= y < bottom
                    for left, top, right, bottom in dynamic_regions):
                 continue
             left = x * bytes_per_pixel
-            delta = max(abs(actual_row[left + channel] - base_row[left + channel])
+            actual_pixel = sample_actual_pixel(x, y)
+            delta = max(abs(actual_pixel[channel] - base_row[left + channel])
                         for channel in range(min(3, bytes_per_pixel)))
             changed += delta > 16
             total += 1
@@ -114,6 +145,11 @@ def main() -> int:
     parser.add_argument("screenshots", type=Path)
     parser.add_argument("--baselines", type=Path,
                         default=Path("tests/visual_baselines/android"))
+    parser.add_argument("--screens", nargs="+", choices=SCREENS, default=SCREENS,
+                        help="which captured screens to compare")
+    parser.add_argument("--expected-size", nargs=2, type=int, metavar=("WIDTH", "HEIGHT"),
+                        default=(412, 892),
+                        help="expected physical screenshot size (default: 412 892)")
     parser.add_argument("--record", action="store_true",
                         help="replace baseline images with the current screenshots")
     parser.add_argument("--allow-missing-baseline", action="store_true",
@@ -127,13 +163,16 @@ def main() -> int:
 
     failures = []
     missing_baselines = []
-    for screen in SCREENS:
+    for screen in args.screens:
         actual = args.screenshots / f"{screen}.png"
         baseline = args.baselines / f"{screen}.png"
         try:
             width, height, _channels, rows = decode_png(actual)
-            if width != 412 or height != 892:
-                raise ValueError(f"{screen}: expected 412x892 screenshot, got {width}x{height}")
+            expected_width, expected_height = args.expected_size
+            if width != expected_width or height != expected_height:
+                raise ValueError(
+                    f"{screen}: expected {expected_width}x{expected_height} screenshot, got {width}x{height}"
+                )
             if not any(any(pixel for pixel in row) for row in rows):
                 raise ValueError(f"{screen}: screenshot is empty")
             if args.record:

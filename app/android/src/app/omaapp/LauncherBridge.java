@@ -6,9 +6,12 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Icon;
 import android.net.Uri;
 
 import org.json.JSONArray;
@@ -19,10 +22,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.io.File;
 import java.io.FileOutputStream;
 
 public final class LauncherBridge {
+    private static final int MAX_DYNAMIC_SHORTCUTS = 4;
+
     private LauncherBridge() {}
 
     public static String listLauncherApps(Context context) {
@@ -149,5 +156,105 @@ public final class LauncherBridge {
         } catch (RuntimeException error) {
             return false;
         }
+    }
+
+    /** Publishes pinned launcher apps as long-press shortcuts for OmaApp. */
+    public static int syncDynamicShortcuts(Context context, String favoritesJson) {
+        if (context == null || favoritesJson == null || favoritesJson.length() > 64 * 1024) {
+            return 0;
+        }
+        ShortcutManager shortcutManager = context.getSystemService(ShortcutManager.class);
+        if (shortcutManager == null) {
+            return 0;
+        }
+
+        final JSONArray favorites;
+        try {
+            favorites = new JSONArray(favoritesJson);
+        } catch (JSONException error) {
+            return 0;
+        }
+        int limit = Math.min(MAX_DYNAMIC_SHORTCUTS,
+                Math.max(0, shortcutManager.getMaxShortcutCountPerActivity()));
+        ArrayList<ShortcutInfo> shortcuts = new ArrayList<>();
+        PackageManager packageManager = context.getPackageManager();
+        for (int index = 0; index < favorites.length() && shortcuts.size() < limit; ++index) {
+            JSONObject favorite = favorites.optJSONObject(index);
+            if (favorite == null) {
+                continue;
+            }
+            String packageName = favorite.optString("packageName", "");
+            String activityName = favorite.optString("activityName", "");
+            String label = favorite.optString("name", "").trim();
+            if (!packageName.matches("[A-Za-z0-9_.]{1,200}")
+                    || activityName.length() > 255 || !activityName.startsWith(packageName)
+                    || label.isEmpty() || label.length() > 160) {
+                continue;
+            }
+
+            ComponentName component = new ComponentName(packageName, activityName);
+            final ActivityInfo activity;
+            final Drawable activityIcon;
+            try {
+                activity = packageManager.getActivityInfo(component, 0);
+                activityIcon = packageManager.getActivityIcon(component);
+            } catch (PackageManager.NameNotFoundException | RuntimeException error) {
+                continue;
+            }
+            if (activity.applicationInfo == null || !activity.exported) {
+                continue;
+            }
+
+            Intent launch = new Intent(Intent.ACTION_MAIN);
+            launch.addCategory(Intent.CATEGORY_LAUNCHER);
+            launch.setComponent(component);
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            ShortcutInfo.Builder builder = new ShortcutInfo.Builder(context,
+                    shortcutId(packageName, activityName));
+            builder.setShortLabel(shortLabel(label));
+            builder.setLongLabel(label);
+            builder.setIntent(launch);
+            builder.setRank(shortcuts.size());
+            if (activityIcon != null) {
+                builder.setIcon(shortcutIcon(activityIcon));
+            }
+            shortcuts.add(builder.build());
+        }
+
+        try {
+            return shortcutManager.setDynamicShortcuts(shortcuts) ? shortcuts.size() : 0;
+        } catch (IllegalArgumentException | IllegalStateException error) {
+            return 0;
+        }
+    }
+
+    private static String shortLabel(String value) {
+        int end = value.offsetByCodePoints(0, Math.min(25, value.codePointCount(0, value.length())));
+        return value.substring(0, end);
+    }
+
+    private static String shortcutId(String packageName, String activityName) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest((packageName + "/" + activityName)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder("app-");
+            for (int index = 0; index < 12; ++index) {
+                result.append(String.format(Locale.ROOT, "%02x", hash[index]));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException("SHA-256 is not available.", error);
+        }
+    }
+
+    private static Icon shortcutIcon(Drawable drawable) {
+        int size = 192;
+        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, size, size);
+        drawable.draw(canvas);
+        return Icon.createWithAdaptiveBitmap(bitmap);
     }
 }

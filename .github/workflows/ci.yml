@@ -108,8 +108,12 @@ jobs:
           retention-days: 7
 
   android-emulator-smoke:
-    name: Android x86_64 emulator smoke test
+    name: Android x86_64 emulator smoke (${{ matrix.rhi_backend }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        rhi_backend: [OpenGL, Vulkan]
     permissions:
       contents: read
     steps:
@@ -150,7 +154,7 @@ jobs:
       - name: Build emulator APK
         run: |
           python3 scripts/ci/prepare_android_pairing_smoke.py
-          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
 
       - name: Boot emulator, install OmaApp, and select it as HOME
@@ -167,7 +171,9 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod a+rw /dev/kvm
           fi
-          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swangle -wipe-data)
+          # SwiftShader exposes both GLES and Vulkan so the matrix exercises
+          # the QSB shader through each Android Qt Quick RHI backend.
+          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader -wipe-data)
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
             echo 'KVM is unavailable; using software CPU emulation.'
             emulator_args+=(-accel off)
@@ -201,6 +207,10 @@ jobs:
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
+          if grep -F 'HyprlandSurface shader failed:' "$smoke_artifacts/startup-logcat.txt"; then
+            exit 1
+          fi
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
           test -s "$smoke_artifacts/launcher-before-pin.png"
@@ -278,6 +288,9 @@ jobs:
           adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
           adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
           grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
+          shortcut_output="$(adb shell am instrument -w -e launcherShortcuts true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+          printf '%s\n' "$shortcut_output"
+          grep -F 'INSTRUMENTATION_STATUS: stage=launcher_shortcuts_passed' <<< "$shortcut_output"
           adb shell am force-stop app.omaapp
           adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
           sleep 8
@@ -330,12 +343,17 @@ jobs:
           fi
           adb shell pm clear app.omaapp
           python3 scripts/ci/android_pairing_smoke.py
+          python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
+            --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline
+          python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme/density-240" \
+            --baselines tests/visual_baselines/android-paired --screens style \
+            --expected-size 618 1338 --allow-missing-baseline
 
       - name: Upload Android smoke screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: OmaApp-android-smoke-screenshots
+          name: OmaApp-android-smoke-screenshots-${{ matrix.rhi_backend }}
           path: ${{ github.workspace }}/ci-artifacts/android-smoke/
           if-no-files-found: warn
           retention-days: 7

@@ -1,6 +1,8 @@
 #include "LauncherModel.h"
 
 #include <QDebug>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -15,8 +17,12 @@ namespace {
 constexpr qsizetype maximumFolders = 24;
 constexpr qsizetype maximumFolderItems = 128;
 constexpr int maximumHomePages = 5;
+constexpr qsizetype maximumBackupBytes = 64 * 1024;
+constexpr qsizetype maximumFavoriteApps = 512;
 const QStringList homeWidgetIds{QStringLiteral("clock"), QStringLiteral("computer"),
                                 QStringLiteral("media")};
+const QStringList gestureIds{QStringLiteral("homeSwipe"), QStringLiteral("sectionSwipe"),
+                             QStringLiteral("longPressPin"), QStringLiteral("longPressEdit")};
 
 QString favoriteKey(const QString &packageName, const QString &activityName)
 {
@@ -68,6 +74,14 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
         const auto saved = savedWidgets.constFind(widgetId);
         if (saved != savedWidgets.cend() && saved.value().metaType().id() == QMetaType::Bool)
             m_homeWidgets.insert(widgetId, saved.value().toBool());
+    }
+    m_gestures = {{QStringLiteral("homeSwipe"), true}, {QStringLiteral("sectionSwipe"), true},
+                  {QStringLiteral("longPressPin"), true}, {QStringLiteral("longPressEdit"), true}};
+    const QVariantMap savedGestures = settings.value(QStringLiteral("launcher/gestures")).toMap();
+    for (const QString &gestureId : gestureIds) {
+        const auto saved = savedGestures.constFind(gestureId);
+        if (saved != savedGestures.cend() && saved.value().metaType().id() == QMetaType::Bool)
+            m_gestures.insert(gestureId, saved.value().toBool());
     }
     loadFolders();
     qInfo().noquote()
@@ -182,6 +196,11 @@ QVariantMap LauncherModel::homeWidgets() const
     return m_homeWidgets;
 }
 
+QVariantMap LauncherModel::gestures() const
+{
+    return m_gestures;
+}
+
 void LauncherModel::setGridColumns(int columns)
 {
     const int boundedColumns = qBound(3, columns, 5);
@@ -252,6 +271,52 @@ bool LauncherModel::setFavoritePage(const QString &packageName, const QString &a
     return true;
 }
 
+bool LauncherModel::placeFavorite(const QString &packageName, const QString &activityName,
+                                  int page, int targetIndex)
+{
+    if (page < 0 || page >= m_homePageCount || !validLauncherTarget(packageName, activityName))
+        return false;
+
+    const QString key = favoriteKey(packageName, activityName);
+    const bool alreadyPinned = m_favoritePackages.contains(key);
+    const bool installed = std::any_of(m_entries.cbegin(), m_entries.cend(),
+                                       [&packageName, &activityName](const Entry &entry) {
+                                           return entry.packageName == packageName &&
+                                                  entry.activityName == activityName;
+                                       });
+    if ((!alreadyPinned && !installed) ||
+        (!alreadyPinned && m_favoritePackages.size() >= maximumFavoriteApps)) {
+        return false;
+    }
+
+    QStringList pageKeys;
+    pageKeys.reserve(m_favoritePackages.size());
+    for (const QString &favorite : m_favoritePackages) {
+        if (favorite != key && m_favoritePages.value(favorite, 0).toInt() == page)
+            pageKeys.append(favorite);
+    }
+    const int pageIndex = qBound(0, targetIndex, pageKeys.size());
+
+    m_favoritePackages.removeAll(key);
+    int insertionIndex = m_favoritePackages.size();
+    if (pageIndex < pageKeys.size()) {
+        insertionIndex = m_favoritePackages.indexOf(pageKeys.at(pageIndex));
+    } else if (!pageKeys.isEmpty()) {
+        insertionIndex = m_favoritePackages.indexOf(pageKeys.constLast()) + 1;
+    }
+    m_favoritePackages.insert(qBound(0, insertionIndex, m_favoritePackages.size()), key);
+    m_favoritePages.insert(key, page);
+    saveFavorites();
+    saveFavoritePages();
+    notifyFavoriteRowsChanged();
+    emit favoritesChanged();
+    emit homePagesChanged();
+#ifdef Q_OS_ANDROID
+    syncDynamicShortcuts();
+#endif
+    return true;
+}
+
 void LauncherModel::setHomeWidgetEnabled(const QString &widgetId, bool enabled)
 {
     if (!homeWidgetIds.contains(widgetId) || m_homeWidgets.value(widgetId).toBool() == enabled)
@@ -263,6 +328,240 @@ void LauncherModel::setHomeWidgetEnabled(const QString &widgetId, bool enabled)
     if (settings.status() != QSettings::NoError)
         qWarning() << "OmaApp: failed to save home widgets" << settings.status();
     emit homeWidgetsChanged();
+}
+
+bool LauncherModel::setGestureEnabled(const QString &gestureId, bool enabled)
+{
+    if (!gestureIds.contains(gestureId) || m_gestures.value(gestureId).toBool() == enabled)
+        return gestureIds.contains(gestureId);
+    QVariantMap updated = m_gestures;
+    updated.insert(gestureId, enabled);
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/gestures"), updated);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        qWarning() << "OmaApp: failed to save launcher gestures" << settings.status();
+        return false;
+    }
+    m_gestures = std::move(updated);
+    emit gesturesChanged();
+    return true;
+}
+
+QString LauncherModel::exportLayout() const
+{
+    QJsonArray favorites;
+    for (const QString &key : m_favoritePackages) {
+        const qsizetype separator = key.indexOf(QLatin1Char('/'));
+        if (separator <= 0 || separator == key.size() - 1)
+            continue;
+        favorites.append(QJsonObject{
+            {QStringLiteral("packageName"), key.left(separator)},
+            {QStringLiteral("activityName"), key.mid(separator + 1)},
+            {QStringLiteral("page"), m_favoritePages.value(key, 0).toInt()},
+        });
+    }
+
+    QJsonArray folders;
+    for (const Folder &folder : m_folders) {
+        QJsonArray apps;
+        for (const QString &key : folder.activities) {
+            const qsizetype separator = key.indexOf(QLatin1Char('/'));
+            if (separator <= 0 || separator == key.size() - 1)
+                continue;
+            apps.append(QJsonObject{
+                {QStringLiteral("packageName"), key.left(separator)},
+                {QStringLiteral("activityName"), key.mid(separator + 1)},
+            });
+        }
+        folders.append(QJsonObject{
+            {QStringLiteral("name"), folder.name},
+            {QStringLiteral("apps"), apps},
+        });
+    }
+
+    const QJsonObject payload{
+        {QStringLiteral("schema"), 1},
+        {QStringLiteral("gridColumns"), m_gridColumns},
+        {QStringLiteral("homePageCount"), m_homePageCount},
+        {QStringLiteral("favorites"), favorites},
+        {QStringLiteral("folders"), folders},
+        {QStringLiteral("homeWidgets"), QJsonObject::fromVariantMap(m_homeWidgets)},
+        {QStringLiteral("gestures"), QJsonObject::fromVariantMap(m_gestures)},
+    };
+    return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+}
+
+bool LauncherModel::importLayout(const QString &json)
+{
+    const QByteArray payload = json.toUtf8();
+    if (payload.isEmpty() || payload.size() > maximumBackupBytes)
+        return false;
+
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return false;
+    const QJsonObject object = document.object();
+    const QJsonValue schema = object.value(QStringLiteral("schema"));
+    const QJsonValue gridValue = object.value(QStringLiteral("gridColumns"));
+    const QJsonValue pagesValue = object.value(QStringLiteral("homePageCount"));
+    const QJsonValue favoritesValue = object.value(QStringLiteral("favorites"));
+    const QJsonValue foldersValue = object.value(QStringLiteral("folders"));
+    const QJsonValue widgetsValue = object.value(QStringLiteral("homeWidgets"));
+    const QJsonValue gesturesValue = object.value(QStringLiteral("gestures"));
+    if (!schema.isDouble() || schema.toInt(-1) != 1 || !gridValue.isDouble() ||
+        !pagesValue.isDouble() || !favoritesValue.isArray() || !foldersValue.isArray() ||
+        !widgetsValue.isObject() || !gesturesValue.isObject()) {
+        return false;
+    }
+
+    const int grid = gridValue.toInt(-1);
+    const int pageCount = pagesValue.toInt(-1);
+    const QJsonArray favoriteArray = favoritesValue.toArray();
+    const QJsonArray folderArray = foldersValue.toArray();
+    if (grid < 3 || grid > 5 || pageCount < 1 || pageCount > maximumHomePages ||
+        favoriteArray.size() > maximumFavoriteApps || folderArray.size() > maximumFolders) {
+        return false;
+    }
+
+    QStringList favoriteKeys;
+    QVariantMap pages;
+    for (const QJsonValue &value : favoriteArray) {
+        if (!value.isObject())
+            return false;
+        const QJsonObject favorite = value.toObject();
+        const QString packageName = favorite.value(QStringLiteral("packageName")).toString();
+        const QString activityName = favorite.value(QStringLiteral("activityName")).toString();
+        const QJsonValue pageValue = favorite.value(QStringLiteral("page"));
+        if (!validLauncherTarget(packageName, activityName) || !pageValue.isDouble() ||
+            pageValue.toInt(-1) < 0 || pageValue.toInt(-1) >= pageCount) {
+            return false;
+        }
+        const QString key = favoriteKey(packageName, activityName);
+        if (favoriteKeys.contains(key))
+            return false;
+        favoriteKeys.append(key);
+        pages.insert(key, pageValue.toInt());
+    }
+
+    QList<Folder> folders;
+    QStringList folderNames;
+    for (const QJsonValue &value : folderArray) {
+        if (!value.isObject())
+            return false;
+        const QJsonObject folderObject = value.toObject();
+        const QString name = folderObject.value(QStringLiteral("name")).toString().trimmed();
+        const QJsonValue appsValue = folderObject.value(QStringLiteral("apps"));
+        if (!validFolderName(name) || !appsValue.isArray() ||
+            appsValue.toArray().size() > maximumFolderItems) {
+            return false;
+        }
+        if (std::any_of(folderNames.cbegin(), folderNames.cend(), [&name](const QString &other) {
+                return other.compare(name, Qt::CaseInsensitive) == 0;
+            })) {
+            return false;
+        }
+        folderNames.append(name);
+        Folder folder{QUuid::createUuid().toString(QUuid::WithoutBraces), name, {}};
+        for (const QJsonValue &appValue : appsValue.toArray()) {
+            if (!appValue.isObject())
+                return false;
+            const QJsonObject app = appValue.toObject();
+            const QString packageName = app.value(QStringLiteral("packageName")).toString();
+            const QString activityName = app.value(QStringLiteral("activityName")).toString();
+            if (!validLauncherTarget(packageName, activityName))
+                return false;
+            const QString key = favoriteKey(packageName, activityName);
+            if (!folder.activities.contains(key))
+                folder.activities.append(key);
+        }
+        folders.append(std::move(folder));
+    }
+
+    QVariantMap widgets;
+    const QJsonObject widgetObject = widgetsValue.toObject();
+    for (const QString &widgetId : homeWidgetIds) {
+        const QJsonValue enabled = widgetObject.value(widgetId);
+        if (!enabled.isUndefined() && !enabled.isBool())
+            return false;
+        widgets.insert(widgetId, enabled.isUndefined() ? true : enabled.toBool());
+    }
+
+    QVariantMap gestures;
+    const QJsonObject gestureObject = gesturesValue.toObject();
+    for (const QString &gestureId : gestureIds) {
+        const QJsonValue enabled = gestureObject.value(gestureId);
+        if (!enabled.isUndefined() && !enabled.isBool())
+            return false;
+        gestures.insert(gestureId, enabled.isUndefined() ? true : enabled.toBool());
+    }
+
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/gridColumns"), grid);
+    settings.setValue(QStringLiteral("launcher/homePageCount"), pageCount);
+    settings.setValue(QStringLiteral("launcher/favorites"), favoriteKeys);
+    settings.setValue(QStringLiteral("launcher/favoritePages"), pages);
+    settings.setValue(QStringLiteral("launcher/folders"), QJsonDocument([&folders] {
+        QJsonArray result;
+        for (const Folder &folder : folders) {
+            QJsonArray apps;
+            for (const QString &key : folder.activities) {
+                const qsizetype separator = key.indexOf(QLatin1Char('/'));
+                apps.append(QJsonObject{
+                    {QStringLiteral("packageName"), key.left(separator)},
+                    {QStringLiteral("activityName"), key.mid(separator + 1)},
+                });
+            }
+            result.append(QJsonObject{
+                {QStringLiteral("id"), folder.id},
+                {QStringLiteral("name"), folder.name},
+                {QStringLiteral("apps"), apps},
+            });
+        }
+        return result;
+    }()).toJson(QJsonDocument::Compact));
+    settings.setValue(QStringLiteral("launcher/homeWidgets"), widgets);
+    settings.setValue(QStringLiteral("launcher/gestures"), gestures);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        qWarning() << "OmaApp: failed to restore launcher layout" << settings.status();
+        return false;
+    }
+
+    m_gridColumns = grid;
+    m_homePageCount = pageCount;
+    m_favoritePackages = std::move(favoriteKeys);
+    m_favoritePages = std::move(pages);
+    m_folders = std::move(folders);
+    m_homeWidgets = std::move(widgets);
+    m_gestures = std::move(gestures);
+    emit gridColumnsChanged();
+    emit homePagesChanged();
+    emit favoritesChanged();
+    emit foldersChanged();
+    emit homeWidgetsChanged();
+    emit gesturesChanged();
+    notifyFavoriteRowsChanged();
+#ifdef Q_OS_ANDROID
+    syncDynamicShortcuts();
+#endif
+    return true;
+}
+
+bool LauncherModel::copyLayoutBackup() const
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard)
+        return false;
+    clipboard->setText(exportLayout(), QClipboard::Clipboard);
+    return true;
+}
+
+QString LauncherModel::clipboardText() const
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    return clipboard ? clipboard->text(QClipboard::Clipboard).left(maximumBackupBytes) : QString();
 }
 
 QVariantList LauncherModel::availableApps(const QString &folderId, const QString &filter) const
@@ -473,6 +772,9 @@ void LauncherModel::refresh()
     emit favoritesChanged();
     emit homePagesChanged();
     emit foldersChanged();
+#ifdef Q_OS_ANDROID
+    syncDynamicShortcuts();
+#endif
 #else
     beginResetModel();
     m_entries.clear();
@@ -556,6 +858,9 @@ void LauncherModel::toggleFavorite(int row, int homePage)
         << QStringLiteral("OmaApp: pinned app count %1").arg(m_favoritePackages.size());
     emit favoritesChanged();
     emit homePagesChanged();
+#ifdef Q_OS_ANDROID
+    syncDynamicShortcuts();
+#endif
 }
 
 void LauncherModel::removeFavorite(const QString &packageName, const QString &activityName)
@@ -575,6 +880,9 @@ void LauncherModel::removeFavorite(const QString &packageName, const QString &ac
     notifyFavoriteRowsChanged();
     emit favoritesChanged();
     emit homePagesChanged();
+#ifdef Q_OS_ANDROID
+    syncDynamicShortcuts();
+#endif
 }
 
 void LauncherModel::saveFavorites()
@@ -706,6 +1014,22 @@ QString LauncherModel::launcherIconUrl(const Entry &entry) const
     if (!result.isEmpty())
         qInfo().noquote() << QStringLiteral("OmaApp: cached launcher icon for %1").arg(entry.name);
     return result;
+}
+
+void LauncherModel::syncDynamicShortcuts() const
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QByteArray favoritesJson = QJsonDocument::fromVariant(favorites())
+                                        .toJson(QJsonDocument::Compact);
+    const QJniObject favorites = QJniObject::fromString(QString::fromUtf8(favoritesJson));
+    const jint published = QJniObject::callStaticMethod<jint>(
+        "app/omaapp/LauncherBridge", "syncDynamicShortcuts",
+        "(Landroid/content/Context;Ljava/lang/String;)I",
+        context.object<jobject>(), favorites.object<jstring>());
+    qInfo().noquote() << QStringLiteral("OmaApp: published %1 Android app shortcuts")
+                             .arg(published);
+#endif
 }
 
 void LauncherModel::rebuildVisibleRows()

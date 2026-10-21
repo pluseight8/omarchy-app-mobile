@@ -10,6 +10,7 @@ QtObject {
     property color muted: "#707880"
     property color activeBorderStart: accent
     property color activeBorderEnd: accent
+    property var activeBorderStops: [accent, accent]
     property real borderGradientAngle: 45
 
     property color surface: Qt.darker(background, 1.18)

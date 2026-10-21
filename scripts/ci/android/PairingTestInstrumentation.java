@@ -8,6 +8,8 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -24,6 +26,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -56,6 +59,21 @@ public final class PairingTestInstrumentation extends Instrumentation {
             Log.i(TAG, "Target application context is ready.");
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
+            }
+            if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
+                runLauncherShortcutSmoke(context);
+                result.putString("stage", "launcher_shortcuts_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            String reconnectTheme = testArguments.getString("assertReconnect", "");
+            if (!reconnectTheme.isEmpty()) {
+                awaitPluginRestartReconnect(context, reconnectTheme);
+                result.putString("stage", "plugin_restart_reconnected");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
             }
             Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
             if (launch == null) {
@@ -138,6 +156,33 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 + "; last phase=" + lastState.optString("phase"));
     }
 
+    private static void awaitPluginRestartReconnect(Context context, String expectedTheme)
+            throws Exception {
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(launch);
+
+        long deadline = SystemClock.elapsedRealtime() + 90_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+            JSONObject snapshot = state.optJSONObject("snapshot");
+            JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
+            if ("connected".equals(state.optString("phase"))
+                    && theme != null && expectedTheme.equals(theme.optString("name"))) {
+                if (!state.optBoolean("hasPairedDevice")) {
+                    throw new IllegalStateException("The plugin restart cleared the saved device token.");
+                }
+                Log.i(TAG, "The saved device reconnected after the Omarchy plugin restarted.");
+                return;
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("The saved device did not reconnect and receive the post-restart theme.");
+    }
+
     private void reportProgress(Context context, String stage) throws Exception {
         JSONObject state = new JSONObject(PairingBridge.stateJson(context));
         JSONObject snapshot = state.optJSONObject("snapshot");
@@ -170,7 +215,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || Math.abs(geometry.optDouble("roundingPower", -1) - 4.0) > 0.001
                 || geometry.optInt("borderWidth", -1) != 2
                 || geometry.optInt("gapsIn", -1) != 5 || geometry.optInt("gapsOut", -1) != 10
-                || !geometry.optString("activeBorder").contains("45deg")) {
+                || !geometry.optString("activeBorder").contains("45deg")
+                || geometry.optString("activeBorder").split("rgba\\(").length != 4) {
             throw new IllegalStateException("Theme colors, spacing, or Hyprland geometry did not sync.");
         }
         String wallpaperPath = state.optString("wallpaperPath", "");
@@ -220,17 +266,27 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
 
         JSONObject system = requireJson(credentials, "/v1/system", "GET", null, 200);
-        if (!system.has("capturedAt") || !system.has("memoryTotalBytes")
-                || !system.has("memoryAvailableBytes") || !system.has("battery")
-                || !system.has("loadAverage")) {
+        long memoryTotal = system.optLong("memoryTotalBytes", -1);
+        long memoryAvailable = system.optLong("memoryAvailableBytes", -1);
+        JSONArray loadAverage = system.optJSONArray("loadAverage");
+        if (system.optLong("capturedAt", 0) <= 0 || memoryTotal <= 0
+                || memoryAvailable < 0 || memoryAvailable > memoryTotal
+                || !system.has("battery") || loadAverage == null || loadAverage.length() != 3
+                || loadAverage.optDouble(0, -1) < 0) {
             throw new IllegalStateException("The computer status response is incomplete.");
         }
         JSONObject workspaces = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
-        if (workspaces.optJSONArray("workspaces") == null) {
+        JSONArray workspaceList = workspaces.optJSONArray("workspaces");
+        if (workspaceList == null || workspaceList.length() < 2
+                || !hasFocusedWorkspace(workspaceList, 1)) {
             throw new IllegalStateException("The Hyprland workspace response is invalid.");
         }
         JSONObject media = requireJson(credentials, "/v1/media", "GET", null, 200);
-        if (media.optJSONArray("players") == null) {
+        JSONArray players = media.optJSONArray("players");
+        JSONObject firstPlayer = players == null ? null : players.optJSONObject(0);
+        if (players == null || players.length() != 1 || firstPlayer == null
+                || !"mpv".equals(firstPlayer.optString("player"))
+                || !"Before next".equals(firstPlayer.optString("title"))) {
             throw new IllegalStateException("The MPRIS response is invalid.");
         }
 
@@ -256,8 +312,20 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         PairingBridge.activateWorkspace(context, 2);
         awaitAction(context);
+        JSONObject switched = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
+        if (!hasFocusedWorkspace(switched.optJSONArray("workspaces"), 2)) {
+            throw new IllegalStateException("The selected Hyprland workspace did not become active.");
+        }
         PairingBridge.mediaAction(context, "mpv", "next");
         awaitAction(context);
+        JSONObject advanced = requireJson(credentials, "/v1/media", "GET", null, 200);
+        JSONArray advancedPlayers = advanced.optJSONArray("players");
+        JSONObject advancedPlayer = advancedPlayers == null ? null : advancedPlayers.optJSONObject(0);
+        if (advancedPlayers == null || advancedPlayers.length() != 1
+                || advancedPlayer == null
+                || !"After next".equals(advancedPlayer.optString("title"))) {
+            throw new IllegalStateException("MPRIS did not report the updated track after next.");
+        }
         PairingBridge.executeCommand(context, "ci-safe");
         awaitAction(context);
 
@@ -301,6 +369,47 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         reportStage("features_passed");
+    }
+
+    private static boolean hasFocusedWorkspace(JSONArray workspaces, int expectedId)
+            throws Exception {
+        if (workspaces == null) {
+            return false;
+        }
+        for (int index = 0; index < workspaces.length(); ++index) {
+            JSONObject workspace = workspaces.optJSONObject(index);
+            if (workspace != null && workspace.optInt("id", -1) == expectedId
+                    && workspace.optBoolean("focused")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void runLauncherShortcutSmoke(Context context) throws Exception {
+        ShortcutManager shortcuts = context.getSystemService(ShortcutManager.class);
+        if (shortcuts == null) {
+            throw new IllegalStateException("Android dynamic shortcuts are not available.");
+        }
+        List<ShortcutInfo> dynamic = shortcuts.getDynamicShortcuts();
+        if (dynamic.isEmpty()) {
+            throw new IllegalStateException("Pinning an app did not publish a dynamic launcher shortcut.");
+        }
+        boolean resolvesToInstalledLauncherActivity = false;
+        for (ShortcutInfo shortcut : dynamic) {
+            if (shortcut.getIntent() == null || shortcut.getIntent().getComponent() == null
+                    || shortcut.getShortLabel() == null || shortcut.getShortLabel().length() == 0) {
+                throw new IllegalStateException("A dynamic launcher shortcut is missing its target or label.");
+            }
+            if (context.getPackageManager().resolveActivity(
+                    shortcut.getIntent(), 0) != null) {
+                resolvesToInstalledLauncherActivity = true;
+            }
+        }
+        if (!resolvesToInstalledLauncherActivity) {
+            throw new IllegalStateException("No dynamic shortcut resolves to an installed app activity.");
+        }
+        reportStage("launcher_shortcuts_passed");
     }
 
     private static JSONObject awaitFeatures(Context context, JSONObject credentials,

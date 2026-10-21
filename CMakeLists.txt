@@ -10,8 +10,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
 qt_standard_project_setup(REQUIRES 6.10)
+
+set(OMAAPP_TEST_RHI_BACKEND "" CACHE STRING
+    "Force an Android graphics API for backend-specific CI renders (OpenGL or Vulkan)")
+set_property(CACHE OMAAPP_TEST_RHI_BACKEND PROPERTY STRINGS "" OpenGL Vulkan)
+if(NOT OMAAPP_TEST_RHI_BACKEND STREQUAL "" AND
+   NOT OMAAPP_TEST_RHI_BACKEND STREQUAL "OpenGL" AND
+   NOT OMAAPP_TEST_RHI_BACKEND STREQUAL "Vulkan")
+    message(FATAL_ERROR "OMAAPP_TEST_RHI_BACKEND must be empty, OpenGL, or Vulkan")
+endif()
 
 qt_add_executable(omaapp
     app/native/main.cpp
@@ -33,6 +42,22 @@ qt_add_qml_module(omaapp
         app/qml/Theme.qml
         app/qml/HyprlandSurface.qml
 )
+
+# Qt's ShaderEffect needs precompiled QSB on Android and every Qt 6 graphics
+# API. qt_add_shaders packages SPIR-V plus the OpenGL ES, Vulkan, Metal, and
+# Direct3D variants in one resource.
+qt_add_shaders(omaapp omaapp_rounding_shaders
+    PREFIX "/shaders"
+    BASE app/qml/shaders
+    FILES
+        app/qml/shaders/hyprland_rounded.frag
+)
+
+if(OMAAPP_TEST_RHI_BACKEND STREQUAL "OpenGL")
+    target_compile_definitions(omaapp PRIVATE OMAAPP_TEST_RHI_BACKEND_OPENGL)
+elseif(OMAAPP_TEST_RHI_BACKEND STREQUAL "Vulkan")
+    target_compile_definitions(omaapp PRIVATE OMAAPP_TEST_RHI_BACKEND_VULKAN)
+endif()
 
 target_link_libraries(omaapp PRIVATE
     Qt6::Core
@@ -76,6 +101,6 @@ if(BUILD_TESTING AND NOT ANDROID)
         app/native/LauncherModel.cpp
         app/native/LauncherModel.h
     )
-    target_link_libraries(launcher_model_tests PRIVATE Qt6::Core Qt6::Test)
+    target_link_libraries(launcher_model_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
     add_test(NAME launcher_model_tests COMMAND launcher_model_tests)
 endif()

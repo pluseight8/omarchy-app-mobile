@@ -62,7 +62,7 @@ def main() -> int:
                 "rounding": 13,
                 "roundingPower": 4.0,
                 "borderWidth": 2,
-                "activeBorder": "rgba(33ccffee) rgba(00ff99ee) 45deg",
+                "activeBorder": "rgba(33ccffee) rgba(00ff99ee) rgba(ffcc88ee) 45deg",
                 "activeBorderAngle": 45,
                 "inactiveBorder": "rgba(595959aa) 0deg",
                 "gapsIn": 5,
@@ -91,13 +91,16 @@ def main() -> int:
 
     def run_android_instrumentation(state: service.ServiceState, qr: str, *, expected_theme: str,
                                    updated_theme: str = "", revoke: bool = False,
-                                   feature_smoke: bool = False) -> str:
-        encoded_qr = base64.b64encode(qr.encode("utf-8")).decode("ascii")
+                                   feature_smoke: bool = False,
+                                   assert_reconnect_theme: str = "") -> str:
         command = [
             "adb", "shell", "am", "instrument", "-w",
-            "-e", "qr64", encoded_qr,
-            "-e", "expectedTheme", expected_theme,
         ]
+        if assert_reconnect_theme:
+            command.extend(["-e", "assertReconnect", assert_reconnect_theme])
+        else:
+            encoded_qr = base64.b64encode(qr.encode("utf-8")).decode("ascii")
+            command.extend(["-e", "qr64", encoded_qr, "-e", "expectedTheme", expected_theme])
         if updated_theme:
             command.extend(["-e", "updatedTheme", updated_theme])
         if revoke:
@@ -240,6 +243,8 @@ def main() -> int:
         if "INSTRUMENTATION_STATUS: stage=failed" in combined:
             raise RuntimeError(f"Android pairing instrumentation reported failure:\n{combined}")
         if f"INSTRUMENTATION_STATUS: stage=paired" not in combined:
+            if assert_reconnect_theme and "INSTRUMENTATION_STATUS: stage=plugin_restart_reconnected" in combined:
+                return combined
             raise RuntimeError(f"Android client did not report a paired theme:\n{combined}")
         if updated_theme and "INSTRUMENTATION_STATUS: stage=theme_updated" not in combined:
             raise RuntimeError(f"Android client did not receive a live theme update:\n{combined}")
@@ -252,6 +257,95 @@ def main() -> int:
                 raise RuntimeError(f"Android client did not finish feature smoke:\n{combined}")
         return combined
 
+    def capture_synced_theme_render() -> None:
+        """Capture synced QML surfaces at normal and high Android density."""
+        paired_artifacts = ROOT / "ci-artifacts/android-smoke/paired-theme"
+        paired_artifacts.mkdir(parents=True, exist_ok=True)
+        def dump_ui(name: str, output_dir: Path) -> Path:
+            device_path = f"/sdcard/omaapp-{name}.xml"
+            local_path = output_dir / f"{name}.xml"
+            subprocess.run(["adb", "shell", "uiautomator", "dump", "--compressed", device_path],
+                           check=True, capture_output=True, text=True, timeout=20)
+            subprocess.run(["adb", "pull", device_path, str(local_path)],
+                           check=True, capture_output=True, text=True, timeout=20)
+            return local_path
+
+        def render_style(label: str, output_dir: Path, expected_width: int, expected_height: int) -> None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["adb", "shell", "am", "force-stop", "app.omaapp"],
+                           check=True, timeout=15)
+            subprocess.run(
+                ["adb", "shell", "am", "start", "-W", "-n",
+                 "app.omaapp/app.omaapp.OmaAppActivity"],
+                check=True, capture_output=True, text=True, timeout=30,
+            )
+            time.sleep(8)
+
+            navigation = dump_ui(f"{label}-navigation", output_dir)
+            target = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/ci/android_accessibility_tap_target.py"),
+                 str(navigation), "Style"],
+                check=True, capture_output=True, text=True, timeout=15,
+            ).stdout.strip()
+            x, y = target.split()
+            subprocess.run(["adb", "shell", "input", "tap", x, y],
+                           check=True, timeout=15)
+            time.sleep(2)
+
+            style_ui = dump_ui(f"{label}-style", output_dir)
+            style_text = style_ui.read_text(encoding="utf-8")
+            shape_samples = all(f"p={power}" in style_text for power in ("1.0", "2.0", "4.0"))
+            if ("Power 4.0" not in style_text or "45°" not in style_text
+                    or "3 stops" not in style_text or not shape_samples):
+                raise RuntimeError(
+                    f"The {label} synced style screen did not expose rounding_power=4, the 45 degree "
+                    "angle, all three gradient stops, and the power 1/2/4 render samples."
+                )
+            screenshot = subprocess.run(
+                ["adb", "exec-out", "screencap", "-p"],
+                check=True, capture_output=True, timeout=20,
+            ).stdout
+            image_path = output_dir / "style.png"
+            image_path.write_bytes(screenshot)
+            if len(screenshot) < 1024:
+                raise RuntimeError(f"Android returned an empty {label} synced-theme screenshot.")
+
+            width = subprocess.run(
+                ["adb", "shell", "wm", "size"], check=True, capture_output=True,
+                text=True, timeout=15,
+            ).stdout
+            if f"{expected_width}x{expected_height}" not in width:
+                raise RuntimeError(f"Android display size is wrong for {label}: {width.strip()}")
+
+            pid = subprocess.run(
+                ["adb", "shell", "pidof", "app.omaapp"],
+                check=True, capture_output=True, text=True, timeout=15,
+            ).stdout.strip().split()
+            if not pid:
+                raise RuntimeError(f"OmaApp exited before the {label} theme could be rendered.")
+            logcat = subprocess.run(
+                ["adb", "logcat", "-d", "-v", "threadtime", f"--pid={pid[0]}", "-t", "10000"],
+                check=True, capture_output=True, text=True, timeout=20,
+            ).stdout
+            (output_dir / "style-logcat.txt").write_text(logcat, encoding="utf-8")
+            if "HyprlandSurface shader failed:" in logcat:
+                raise RuntimeError(f"The {label} theme preview reported a ShaderEffect error.")
+
+        try:
+            render_style("density-160", paired_artifacts, 412, 892)
+            high_dpi_artifacts = paired_artifacts / "density-240"
+            high_dpi_artifacts.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["adb", "shell", "wm", "size", "618x1338"],
+                           check=True, timeout=15)
+            subprocess.run(["adb", "shell", "wm", "density", "240"],
+                           check=True, timeout=15)
+            render_style("density-240", high_dpi_artifacts, 618, 1338)
+        finally:
+            subprocess.run(["adb", "shell", "wm", "size", "reset"],
+                           check=False, capture_output=True, text=True, timeout=15)
+            subprocess.run(["adb", "shell", "wm", "density", "reset"],
+                           check=False, capture_output=True, text=True, timeout=15)
+
     with tempfile.TemporaryDirectory(prefix="omaapp-pairing-smoke-") as temporary:
         wallpaper_path = Path(temporary) / "ci-wallpaper.png"
         wallpaper_path.write_bytes(_one_pixel_png())
@@ -260,6 +354,78 @@ def main() -> int:
         shared_files.mkdir(parents=True)
         (shared_files / "from-computer.txt").write_text(
             "from Omarchy computer CI", encoding="utf-8")
+        fixture_bin = Path(temporary) / "bin"
+        fixture_bin.mkdir()
+        fixture_state = Path(temporary) / "fixture-state"
+        fixture_state.mkdir()
+        clipboard_path = fixture_state / "clipboard.txt"
+        clipboard_path.write_text("from computer", encoding="utf-8")
+        workspace_path = fixture_state / "workspaces.json"
+        workspace_path.write_text(json.dumps([
+            {"id": 1, "name": "1", "monitor": "CI", "focused": True, "windows": 2},
+            {"id": 2, "name": "2", "monitor": "CI", "focused": False, "windows": 1},
+        ]), encoding="utf-8")
+        media_path = fixture_state / "media.json"
+        media_path.write_text(json.dumps({
+            "status": "Playing", "artist": "CI Artist", "title": "Before next",
+            "album": "OmaApp", "actions": [],
+        }), encoding="utf-8")
+
+        def write_cli(name: str, source: str) -> None:
+            executable = fixture_bin / name
+            executable.write_text("#!/usr/bin/env python3\n" + source, encoding="utf-8")
+            executable.chmod(0o755)
+
+        write_cli("wl-paste", f"""
+import pathlib, sys
+if sys.argv[1:] != ["--no-newline", "--type", "text/plain;charset=utf-8"]:
+    raise SystemExit(2)
+sys.stdout.buffer.write(pathlib.Path({str(clipboard_path)!r}).read_bytes())
+""")
+        write_cli("wl-copy", f"""
+import pathlib, sys
+if sys.argv[1:] != ["--type", "text/plain;charset=utf-8"]:
+    raise SystemExit(2)
+pathlib.Path({str(clipboard_path)!r}).write_bytes(sys.stdin.buffer.read())
+""")
+        write_cli("hyprctl", f"""
+import json, pathlib, sys
+state = pathlib.Path({str(workspace_path)!r})
+workspaces = json.loads(state.read_text(encoding="utf-8"))
+if sys.argv[1:] == ["-j", "workspaces"]:
+    print(json.dumps(workspaces))
+elif len(sys.argv) == 4 and sys.argv[1:3] == ["dispatch", "workspace"]:
+    target = int(sys.argv[3])
+    if not any(item["id"] == target for item in workspaces):
+        raise SystemExit(1)
+    for item in workspaces:
+        item["focused"] = item["id"] == target
+    state.write_text(json.dumps(workspaces), encoding="utf-8")
+else:
+    raise SystemExit(2)
+""")
+        write_cli("playerctl", f"""
+import json, pathlib, sys
+state = pathlib.Path({str(media_path)!r})
+media = json.loads(state.read_text(encoding="utf-8"))
+if sys.argv[1:] == ["-l"]:
+    print("mpv")
+elif len(sys.argv) == 6 and sys.argv[1:3] == ["-p", "mpv"] and sys.argv[3:5] == ["metadata", "--format"]:
+    template = sys.argv[5]
+    if template != "{{status}}\\n{{artist}}\\n{{title}}\\n{{album}}":
+        raise SystemExit(2)
+    print("\\n".join(media[key] for key in ("status", "artist", "title", "album")))
+elif len(sys.argv) == 4 and sys.argv[1:3] == ["-p", "mpv"]:
+    action = sys.argv[3]
+    if action not in {{"play-pause", "play", "pause", "next", "previous", "stop"}}:
+        raise SystemExit(2)
+    media["actions"].append(action)
+    if action == "next":
+        media["title"] = "After next"
+    state.write_text(json.dumps(media), encoding="utf-8")
+else:
+    raise SystemExit(2)
+""")
         config_root = Path(temporary) / "config"
         command_directory = config_root / "omaapp"
         command_directory.mkdir(parents=True)
@@ -279,39 +445,14 @@ def main() -> int:
             encoding="utf-8",
         )
         state = service.ServiceState(Path(temporary), "0.0.0.0", 0)
-        clipboard_writes: list[bytes] = []
-        feature_commands: list[list[str]] = []
-
-        def fake_run_command(arguments, **kwargs):
-            if arguments[0] == "wl-paste":
-                return b"from computer"
-            if arguments[0] == "wl-copy":
-                clipboard_writes.append(kwargs.get("input_data", b""))
-                return b""
-            if arguments[0] in {"hyprctl", "playerctl"}:
-                feature_commands.append(arguments)
-                return b""
-            return None
-
         try:
             with patch.dict(os.environ, {
                     "XDG_DOWNLOAD_DIR": str(downloads_directory),
                     "XDG_CONFIG_HOME": str(config_root),
+                    "PATH": str(fixture_bin) + os.pathsep + os.environ.get("PATH", ""),
                 }), \
                     patch.object(service, "_advertised_ipv4", return_value="10.0.2.2"), \
                     patch.object(service, "_theme_snapshot", side_effect=snapshot), \
-                    patch.object(service, "_system_status", return_value={
-                        "memoryTotalBytes": 4096, "memoryAvailableBytes": 2048,
-                        "loadAverage": [0.1, 0.2, 0.3], "battery": None, "capturedAt": 1,
-                    }), \
-                    patch.object(service, "_hyprland_workspaces", return_value=[{
-                        "id": 2, "name": "2", "monitor": "CI", "focused": True, "windows": 1,
-                    }]), \
-                    patch.object(service, "_mpris_players", return_value=[{
-                        "player": "mpv", "status": "Playing", "artist": "CI",
-                        "title": "Smoke", "album": "OmaApp",
-                    }]), \
-                    patch.object(service, "_run_command", side_effect=fake_run_command), \
                     patch.object(
                         service, "_emit",
                         side_effect=lambda event: print(
@@ -324,22 +465,45 @@ def main() -> int:
                     state, first_qr, expected_theme="CI_Everforest", updated_theme="CI_Night",
                     feature_smoke=True,
                 )
-                if not clipboard_writes or clipboard_writes[-1] != b"OmaApp CI phone clipboard":
+                if clipboard_path.read_text(encoding="utf-8") != "OmaApp CI phone clipboard":
                     raise RuntimeError("Android did not send clipboard text to the computer.")
                 if marker_path.read_text(encoding="utf-8") != "approved":
                     raise RuntimeError("Android did not execute the configured safe command.")
-                if ["hyprctl", "dispatch", "workspace", "2"] not in feature_commands:
+                workspace_state = json.loads(workspace_path.read_text(encoding="utf-8"))
+                if not any(item["id"] == 2 and item["focused"] for item in workspace_state):
                     raise RuntimeError("Android did not activate the configured Hyprland workspace.")
-                if ["playerctl", "-p", "mpv", "next"] not in feature_commands:
-                    raise RuntimeError("Android did not send the configured MPRIS action.")
+                media_state = json.loads(media_path.read_text(encoding="utf-8"))
+                if media_state["title"] != "After next" or "next" not in media_state["actions"]:
+                    raise RuntimeError("Android MPRIS next action did not advance the test player.")
                 if not (shared_files / "from-phone.txt").is_file():
                     raise RuntimeError("The Omarchy plugin did not save the Android-uploaded file.")
+                if (shared_files / "from-phone.txt").read_text(encoding="utf-8") != "from OmaApp Android CI":
+                    raise RuntimeError("The Omarchy plugin changed the uploaded Android file contents.")
                 if len(state.devices) != 1 or not state.pending:
                     raise RuntimeError("The plugin did not retain the approved Android device.")
 
+                capture_synced_theme_render()
+
+                old_fingerprint = state.fingerprint
+                old_port = state.port
+                state.stop_server()
+                theme["name"] = "CI_AfterRestart"
+                restarted_state = service.ServiceState(Path(temporary), "0.0.0.0", old_port)
+                restarted_state.start_server()
+                if len(restarted_state.devices) != 1:
+                    raise RuntimeError("The plugin restart did not reload the saved Android trust token.")
+                if restarted_state.fingerprint.lower() != old_fingerprint.lower():
+                    raise RuntimeError("The plugin restart changed its persisted TLS certificate fingerprint.")
+                state = restarted_state
+                state.event_hub.publish("theme")
+                run_android_instrumentation(
+                    state, "", expected_theme="CI_AfterRestart",
+                    assert_reconnect_theme="CI_AfterRestart",
+                )
+
                 second_qr = qr_payload(state)
                 run_android_instrumentation(
-                    state, second_qr, expected_theme="CI_Night", revoke=True,
+                    state, second_qr, expected_theme="CI_AfterRestart", revoke=True,
                 )
                 if state.devices:
                     raise RuntimeError("The Android client did not revoke its saved device token.")

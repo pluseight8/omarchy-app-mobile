@@ -19,6 +19,7 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(int gridColumns READ gridColumns NOTIFY gridColumnsChanged)
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
+    Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
 
 public:
     enum Role {
@@ -44,6 +45,7 @@ public:
     int gridColumns() const;
     int homePageCount() const;
     QVariantMap homeWidgets() const;
+    QVariantMap gestures() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
@@ -52,7 +54,14 @@ public:
     Q_INVOKABLE QVariantList homePageApps(int page) const;
     Q_INVOKABLE bool setFavoritePage(const QString &packageName, const QString &activityName,
                                      int page);
+    Q_INVOKABLE bool placeFavorite(const QString &packageName, const QString &activityName,
+                                   int page, int index);
     Q_INVOKABLE void setHomeWidgetEnabled(const QString &widgetId, bool enabled);
+    Q_INVOKABLE bool setGestureEnabled(const QString &gestureId, bool enabled);
+    Q_INVOKABLE QString exportLayout() const;
+    Q_INVOKABLE bool importLayout(const QString &json);
+    Q_INVOKABLE bool copyLayoutBackup() const;
+    Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE bool launchPackage(const QString &packageName);
     Q_INVOKABLE bool launchActivity(const QString &packageName, const QString &activityName);
@@ -74,6 +83,7 @@ signals:
     void gridColumnsChanged();
     void homePagesChanged();
     void homeWidgetsChanged();
+    void gesturesChanged();
 
 private:
     struct Entry {
@@ -97,6 +107,7 @@ private:
     int m_gridColumns = 4;
     int m_homePageCount = 1;
     QVariantMap m_homeWidgets;
+    QVariantMap m_gestures;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;
 
@@ -107,4 +118,5 @@ private:
     void saveFolders();
     void notifyFavoriteRowsChanged();
     QString launcherIconUrl(const Entry &entry) const;
+    void syncDynamicShortcuts() const;
 };

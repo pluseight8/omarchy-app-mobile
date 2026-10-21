@@ -29,6 +29,7 @@ ApplicationWindow {
     property string selectedFolderName: ""
     property string deletingFolderId: ""
     property var editingHomeApp: null
+    property string layoutMessage: ""
 
     function openFolder(folderId, folderName) {
         selectedFolderId = folderId
@@ -131,9 +132,12 @@ ApplicationWindow {
         Theme.muted = parseHyprlandColor(colors.muted || colors.color8, Theme.muted)
 
         const border = String(geometry.activeBorder || colors.hyprland_active_border || "")
-        const borderStops = border.match(/rgba\([0-9a-f]{8}\)|rgb\([0-9a-f]{6}\)|#[0-9a-f]{6,8}/ig) || []
-        Theme.activeBorderStart = parseHyprlandColor(borderStops[0], Theme.accent)
-        Theme.activeBorderEnd = parseHyprlandColor(borderStops[1] || borderStops[0], Theme.activeBorderStart)
+        const borderColors = border.match(/rgba\([0-9a-f]{8}\)|rgb\([0-9a-f]{6}\)|#[0-9a-f]{6,8}/ig) || []
+        Theme.activeBorderStops = borderColors.length > 0
+                ? borderColors.slice(0, 10).map(value => parseHyprlandColor(value, Theme.accent))
+                : [Theme.accent]
+        Theme.activeBorderStart = Theme.activeBorderStops[0]
+        Theme.activeBorderEnd = Theme.activeBorderStops[Theme.activeBorderStops.length - 1]
         const angleMatch = border.match(/(-?\d+(?:\.\d+)?)deg\b/i)
         const angle = geometry.activeBorderAngle !== null && geometry.activeBorderAngle !== undefined
                 ? Number(geometry.activeBorderAngle)
@@ -517,6 +521,67 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: restoreLayoutDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 460)
+        height: Math.min(window.height - 72, 620)
+        title: qsTr("Restore Home layout")
+        standardButtons: Dialog.Close
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, widgets, grid, and gesture preferences.")
+                color: Theme.muted
+                wrapMode: Text.WordWrap
+            }
+
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Paste from clipboard")
+                onClicked: layoutBackupEditor.text = launcher.clipboardText()
+            }
+
+            TextArea {
+                id: layoutBackupEditor
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                wrapMode: TextEdit.NoWrap
+                selectByMouse: true
+                placeholderText: qsTr("OmaApp layout backup JSON")
+                Accessible.name: qsTr("Layout backup JSON to restore")
+            }
+
+            Label {
+                id: layoutRestoreError
+                Layout.fillWidth: true
+                visible: false
+                text: qsTr("This backup is invalid or was created by a newer version. No settings were changed.")
+                color: Theme.urgent
+                wrapMode: Text.WordWrap
+            }
+
+            Button {
+                Layout.fillWidth: true
+                text: qsTr("Restore layout")
+                onClicked: {
+                    if (launcher.importLayout(layoutBackupEditor.text)) {
+                        window.layoutMessage = qsTr("Home layout restored.")
+                        layoutRestoreError.visible = false
+                        restoreLayoutDialog.close()
+                    } else {
+                        layoutRestoreError.visible = true
+                    }
+                }
+            }
+        }
+    }
+
     Component.onCompleted: {
         launcher.refresh()
         applySyncedTheme()
@@ -582,6 +647,7 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            interactive: launcher.gestures.sectionSwipe !== false
             currentIndex: window.selectedPage
 
             onCurrentIndexChanged: {
@@ -602,6 +668,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 orientation: ListView.Horizontal
+                interactive: launcher.gestures.homeSwipe !== false
                 snapMode: ListView.SnapOneItem
                 highlightRangeMode: ListView.StrictlyEnforceRange
                 boundsBehavior: Flickable.StopAtBounds
@@ -664,6 +731,7 @@ ApplicationWindow {
                                 fillColor: Theme.surfaceRaised
                                 borderStart: Theme.activeBorderStart
                                 borderEnd: Theme.activeBorderEnd
+                                borderStops: Theme.activeBorderStops
                                 radius: Theme.defaultCornerRadius
                                 borderWidth: Theme.previewBorderWidth
 
@@ -870,9 +938,28 @@ ApplicationWindow {
                                     onClicked: launcher.launchActivity(modelData.packageName,
                                                                        modelData.activityName)
                                     onPressAndHold: {
-                                        window.editingHomeApp = modelData
-                                        homeAppDialog.open()
+                                        if (launcher.gestures.longPressEdit) {
+                                            window.editingHomeApp = modelData
+                                            homeAppDialog.open()
+                                        }
                                     }
+
+                                    Drag.active: homeAppDragHandler.active
+                                    Drag.dragType: Drag.Automatic
+                                    Drag.supportedActions: Qt.MoveAction
+                                    Drag.mimeData: ({
+                                        "application/x-omaapp-activity": JSON.stringify({
+                                            "packageName": modelData.packageName,
+                                            "activityName": modelData.activityName
+                                        })
+                                    })
+
+                                    DragHandler {
+                                        id: homeAppDragHandler
+                                        target: null
+                                        acceptedButtons: Qt.LeftButton
+                                    }
+
                                     contentItem: Column {
                                         spacing: 6
                                         Image {
@@ -900,6 +987,40 @@ ApplicationWindow {
                                         borderEnd: borderStart
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: parent.activeFocus ? 1 : 0
+                                    }
+                                }
+
+                                DropArea {
+                                    id: homePageDropArea
+                                    anchors.fill: parent
+                                    z: 10
+                                    keys: ["application/x-omaapp-activity"]
+
+                                    onDropped: function(drop) {
+                                        try {
+                                            const payload = JSON.parse(drop.getDataAsString(
+                                                "application/x-omaapp-activity"))
+                                            const row = Math.floor(drop.y / homeAppsGrid.cellHeight)
+                                            const column = Math.floor(drop.x / homeAppsGrid.cellWidth)
+                                            const targetIndex = row * launcher.gridColumns + column
+                                            if (launcher.placeFavorite(payload.packageName,
+                                                                       payload.activityName,
+                                                                       index, targetIndex)) {
+                                                drop.acceptProposedAction()
+                                            }
+                                        } catch (error) {
+                                            console.warn("OmaApp: ignored an invalid launcher drag payload")
+                                        }
+                                    }
+
+                                    HyprlandSurface {
+                                        anchors.fill: parent
+                                        visible: homePageDropArea.containsDrag
+                                        fillColor: "transparent"
+                                        borderStart: Theme.accent
+                                        borderEnd: Theme.accent
+                                        borderWidth: 2
+                                        radius: Theme.defaultCornerRadius
                                     }
                                 }
                             }
@@ -954,8 +1075,10 @@ ApplicationWindow {
                                                 onClicked: launcher.launchActivity(modelData.packageName,
                                                                                    modelData.activityName)
                                                 onPressAndHold: {
-                                                    window.editingHomeApp = modelData
-                                                    homeAppDialog.open()
+                                                    if (launcher.gestures.longPressEdit) {
+                                                        window.editingHomeApp = modelData
+                                                        homeAppDialog.open()
+                                                    }
                                                 }
                                                 contentItem: Column {
                                                     spacing: 5
@@ -1158,7 +1281,11 @@ ApplicationWindow {
                                     height: 82
                                     Accessible.name: qsTr("Launch %1").arg(modelData.name)
                                     onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
-                                    onPressAndHold: launcher.removeFavorite(modelData.packageName, modelData.activityName)
+                                    onPressAndHold: {
+                                        if (launcher.gestures.longPressEdit)
+                                            launcher.removeFavorite(modelData.packageName,
+                                                                    modelData.activityName)
+                                    }
 
                                     contentItem: Column {
                                         spacing: 5
@@ -1191,6 +1318,39 @@ ApplicationWindow {
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    DropArea {
+                        id: dockDropArea
+                        anchors.fill: parent
+                        z: 10
+                        keys: ["application/x-omaapp-activity"]
+
+                        onDropped: function(drop) {
+                            try {
+                                const payload = JSON.parse(drop.getDataAsString(
+                                    "application/x-omaapp-activity"))
+                                const targetIndex = Math.floor(drop.x / 80)
+                                if (launcher.placeFavorite(payload.packageName,
+                                                           payload.activityName,
+                                                           window.selectedHomePage,
+                                                           targetIndex)) {
+                                    drop.acceptProposedAction()
+                                }
+                            } catch (error) {
+                                console.warn("OmaApp: ignored an invalid dock drag payload")
+                            }
+                        }
+
+                        HyprlandSurface {
+                            anchors.fill: parent
+                            visible: dockDropArea.containsDrag
+                            fillColor: "transparent"
+                            borderStart: Theme.accent
+                            borderEnd: Theme.accent
+                            borderWidth: 2
+                            radius: Theme.defaultCornerRadius
                         }
                     }
 
@@ -1334,7 +1494,26 @@ ApplicationWindow {
                             display: AbstractButton.TextUnderIcon
                             spacing: 7
                             onClicked: launcher.launch(index)
-                            onPressAndHold: launcher.toggleFavorite(index, window.selectedHomePage)
+                            onPressAndHold: {
+                                if (launcher.gestures.longPressPin)
+                                    launcher.toggleFavorite(index, window.selectedHomePage)
+                            }
+
+                            Drag.active: appDragHandler.active
+                            Drag.dragType: Drag.Automatic
+                            Drag.supportedActions: Qt.MoveAction
+                            Drag.mimeData: ({
+                                "application/x-omaapp-activity": JSON.stringify({
+                                    "packageName": packageName,
+                                    "activityName": activityName
+                                })
+                            })
+
+                            DragHandler {
+                                id: appDragHandler
+                                target: null
+                                acceptedButtons: Qt.LeftButton
+                            }
 
                             contentItem: Column {
                                 spacing: 7
@@ -1856,6 +2035,7 @@ ApplicationWindow {
                         fillColor: Theme.surfaceRaised
                         borderStart: Theme.activeBorderStart
                         borderEnd: Theme.activeBorderEnd
+                        borderStops: Theme.activeBorderStops
                         radius: Theme.previewRadius
                         roundingPower: Theme.previewPower
                         borderWidth: Theme.previewBorderWidth
@@ -1883,24 +2063,62 @@ ApplicationWindow {
                                     color: Theme.muted
                                     font.pixelSize: 12
                                 }
-                                Rectangle {
-                                    width: 22
-                                    height: 16
-                                    radius: 4
-                                    color: Theme.activeBorderStart
-                                    Accessible.name: qsTr("First synced border color")
+                                Repeater {
+                                    model: Theme.activeBorderStops
+                                    delegate: Rectangle {
+                                        required property int index
+                                        required property color modelData
+                                        width: 22
+                                        height: 16
+                                        radius: 4
+                                        color: modelData
+                                        Accessible.name: qsTr("Synced border color %1").arg(index + 1)
+                                    }
                                 }
-                                Rectangle {
-                                    width: 22
-                                    height: 16
-                                    radius: 4
-                                    color: Theme.activeBorderEnd
-                                    Accessible.name: qsTr("Second synced border color")
+                                Text {
+                                    text: qsTr("%1 stops").arg(Theme.activeBorderStops.length)
+                                    color: Theme.muted
+                                    font.pixelSize: 11
                                 }
                                 Text {
                                     text: qsTr("%1°").arg(Math.round(Theme.borderGradientAngle))
                                     color: Theme.muted
                                     font.pixelSize: 12
+                                }
+                            }
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Repeater {
+                            model: [1.0, 2.0, 4.0]
+
+                            delegate: ColumnLayout {
+                                required property real modelData
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                HyprlandSurface {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 42
+                                    fillColor: Theme.surfaceRaised
+                                    borderStops: Theme.activeBorderStops
+                                    borderGradientAngle: Theme.borderGradientAngle
+                                    radius: 14
+                                    roundingPower: modelData
+                                    borderWidth: Theme.previewBorderWidth
+                                    Accessible.name: qsTr("Rounding power %1 preview").arg(modelData.toFixed(1))
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "p=" + modelData.toFixed(1)
+                                    color: Theme.muted
+                                    font.pixelSize: 10
+                                    Accessible.name: qsTr("Rounding power %1").arg(modelData.toFixed(1))
                                 }
                             }
                         }
@@ -2233,6 +2451,104 @@ ApplicationWindow {
                                 checked: launcher.homeWidgets[modelData.id] === true
                                 onToggled: launcher.setHomeWidgetEnabled(modelData.id, checked)
                             }
+                        }
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: gestureSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: gestureSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 6
+                        Text {
+                            text: qsTr("Gestures")
+                            color: Theme.foreground
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                        }
+                        Repeater {
+                            model: [
+                                { id: "sectionSwipe", label: qsTr("Swipe between Home, Apps, Devices, Style, and Settings") },
+                                { id: "homeSwipe", label: qsTr("Swipe between Home pages") },
+                                { id: "longPressPin", label: qsTr("Long press an app to pin or unpin it") },
+                                { id: "longPressEdit", label: qsTr("Long press a Home shortcut to move or remove it") }
+                            ]
+                            delegate: CheckBox {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                text: modelData.label
+                                Accessible.name: modelData.label
+                                checked: launcher.gestures[modelData.id] !== false
+                                onToggled: launcher.setGestureEnabled(modelData.id, checked)
+                            }
+                        }
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: layoutBackupSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: layoutBackupSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 8
+                        Text {
+                            text: qsTr("Layout backup")
+                            color: Theme.foreground
+                            font.pixelSize: 17
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Copy a versioned JSON backup of your local Home layout and keep it somewhere safe. Restore by pasting that JSON here.")
+                            color: Theme.muted
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button {
+                                Layout.fillWidth: true
+                                text: qsTr("Copy backup")
+                                Accessible.name: qsTr("Copy Home layout backup to clipboard")
+                                onClicked: window.layoutMessage = launcher.copyLayoutBackup()
+                                    ? qsTr("Backup JSON copied to clipboard.")
+                                    : qsTr("The clipboard is unavailable.")
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: qsTr("Restore")
+                                Accessible.name: qsTr("Restore Home layout from JSON backup")
+                                onClicked: {
+                                    layoutBackupEditor.clear()
+                                    layoutRestoreError.visible = false
+                                    restoreLayoutDialog.open()
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: window.layoutMessage.length > 0
+                            text: window.layoutMessage
+                            color: Theme.accent
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
