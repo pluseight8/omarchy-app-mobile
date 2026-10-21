@@ -17,6 +17,8 @@ import zlib
 from pathlib import Path
 from unittest.mock import patch
 
+from android_accessibility_dump import dump_accessibility_xml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "omarchy-plugin"))
@@ -264,11 +266,7 @@ def main() -> int:
         def dump_ui(name: str, output_dir: Path) -> Path:
             device_path = f"/sdcard/omaapp-{name}.xml"
             local_path = output_dir / f"{name}.xml"
-            subprocess.run(["adb", "shell", "uiautomator", "dump", "--compressed", device_path],
-                           check=True, capture_output=True, text=True, timeout=20)
-            subprocess.run(["adb", "pull", device_path, str(local_path)],
-                           check=True, capture_output=True, text=True, timeout=20)
-            return local_path
+            return dump_accessibility_xml(device_path, local_path)
 
         def render_style(label: str, output_dir: Path, expected_width: int, expected_height: int) -> None:
             output_dir.mkdir(parents=True, exist_ok=True)
