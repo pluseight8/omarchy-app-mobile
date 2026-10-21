@@ -27,6 +27,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         super.onCreate(arguments);
         testArguments = arguments == null ? new Bundle() : new Bundle(arguments);
         Log.i(TAG, "Instrumentation arguments received.");
+        // Instrumentation invokes onStart on its test thread only after this call.
         start();
     }
 
