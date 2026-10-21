@@ -68,8 +68,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        // The pinned Kotlin Gradle plugin targets the JDK 17 toolchain used
+        // by CI. Keep javac on the same bytecode target for the integrated
+        // OWL runtime and Qt's Android sources.
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     lintOptions {
