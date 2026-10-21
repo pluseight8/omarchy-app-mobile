@@ -203,11 +203,11 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          # Qt's QRhi backend line is emitted with an auxiliary thread/process
-          # identity on Android; keep the full buffer so the backend assertion
-          # cannot silently miss it.
+          # main.cpp logs the selected QRhi API after scene-graph initialization.
+          # Assert the app's API report rather than relying on optional Qt debug
+          # category output, which differs between Android Qt packages.
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
-          grep -F 'qt.scenegraph.general: Creating QRhi with backend ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
+          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
             exit 1
           fi

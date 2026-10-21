@@ -5,7 +5,7 @@ import OmaApp.Native 1.0
 HyprlandSurfaceItem {
     fillColor: Theme.surface
     borderStart: Theme.outline
-    borderEnd: borderStart
+    borderEnd: Theme.outline
     borderStops: []
     borderGradientAngle: Theme.borderGradientAngle
     radius: Theme.defaultCornerRadius

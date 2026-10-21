@@ -35,7 +35,7 @@ def png_file(path: Path, pixels: tuple[tuple[tuple[int, int, int, int], ...], ..
 
 
 def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = None,
-                      square_corners: bool = False) -> None:
+                      square_corners: bool = False, missing_top_border: bool = False) -> None:
     width = round(412 * scale)
     height = round(892 * scale)
     background = (16, 19, 21, 255)
@@ -62,6 +62,9 @@ def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = N
             edge_distance = min(logical_x - left, right - logical_x,
                                 logical_y - top, bottom - logical_y)
             if edge_distance < 2.0:
+                if missing_top_border and logical_y < top + 2.0:
+                    rows[y][x] = background
+                    continue
                 if angle is None:
                     color = (202, 204, 204, 255)
                 else:
@@ -215,6 +218,14 @@ class VisualRegressionTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "gradient is missing"):
                 verify_style_surface_rendered(image, require_gradient=True, gradient_angle=37.0)
+
+    def test_style_probe_rejects_a_missing_straight_border_edge(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style-missing-top-border.png"
+            style_probe_image(image, missing_top_border=True)
+
+            with self.assertRaisesRegex(ValueError, "preview border is missing"):
+                verify_style_surface_rendered(image)
 
     def test_style_probe_rejects_transparent_surface(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

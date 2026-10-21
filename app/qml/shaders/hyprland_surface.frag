@@ -28,12 +28,13 @@ float superellipseDistance(vec2 corner, float power)
 
 float roundedCoverage(vec2 point, vec2 size, float cornerRadius, float power)
 {
-    if (cornerRadius <= 0.0)
-        return 1.0;
-
     float r = min(cornerRadius, min(size.x, size.y) * 0.5);
     vec2 corner = abs(point - size * 0.5) - (size * 0.5 - r);
-    if (min(corner.x, corner.y) <= 0.0)
+    // Only skip the superellipse distance test inside its central rectangle.
+    // When one axis is past that rectangle and the other is still inside it,
+    // max(corner, 0) must continue to measure the straight edge. Returning
+    // full coverage here erased every non-rounded part of the border.
+    if (max(corner.x, corner.y) <= 0.0)
         return 1.0;
 
     float distance = superellipseDistance(corner, power);

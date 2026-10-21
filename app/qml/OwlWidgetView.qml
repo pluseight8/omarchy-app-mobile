@@ -101,7 +101,7 @@ Item {
         anchors.fill: parent
         fillColor: root.colorValue(root.document.background, Theme.surface)
         borderStart: Theme.outline
-        borderEnd: borderStart
+        borderEnd: Theme.outline
         radius: Theme.defaultCornerRadius
         borderWidth: 1
 

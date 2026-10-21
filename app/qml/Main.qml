@@ -1178,7 +1178,7 @@ ApplicationWindow {
                                     background: HyprlandSurface {
                                         fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                         borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                        borderEnd: borderStart
+                                        borderEnd: parent.activeFocus ? Theme.accent : "transparent"
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: parent.activeFocus ? 1 : 0
                                     }
@@ -1299,7 +1299,7 @@ ApplicationWindow {
                                                     fillColor: parent.down ? Theme.surfaceRaised
                                                                           : Theme.controlSurface
                                                     borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                                    borderEnd: borderStart
+                                                    borderEnd: parent.activeFocus ? Theme.accent : "transparent"
                                                     radius: Theme.defaultCornerRadius
                                                     borderWidth: parent.activeFocus ? 1 : 0
                                                 }
@@ -1364,7 +1364,7 @@ ApplicationWindow {
                                         background: HyprlandSurface {
                                             fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                             borderStart: Theme.outline
-                                            borderEnd: borderStart
+                                            borderEnd: Theme.outline
                                             radius: Theme.defaultCornerRadius
                                             borderWidth: 1
                                         }
@@ -1506,7 +1506,7 @@ ApplicationWindow {
                                     background: HyprlandSurface {
                                             fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                         borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                        borderEnd: borderStart
+                                        borderEnd: parent.activeFocus ? Theme.accent : "transparent"
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: parent.activeFocus ? 1 : 0
                                     }
@@ -1628,7 +1628,7 @@ ApplicationWindow {
                                     background: HyprlandSurface {
                                         fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                         borderStart: parent.activeFocus ? Theme.accent : Theme.outline
-                                        borderEnd: borderStart
+                                        borderEnd: parent.activeFocus ? Theme.accent : Theme.outline
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: 1
                                     }
@@ -1768,7 +1768,7 @@ ApplicationWindow {
                             background: HyprlandSurface {
                                         fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
                                 borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                borderEnd: borderStart
+                                borderEnd: parent.activeFocus ? Theme.accent : "transparent"
                                 radius: Theme.defaultCornerRadius
                                 borderWidth: parent.activeFocus ? 1 : 0
                             }
@@ -2569,7 +2569,7 @@ ApplicationWindow {
                                     background: HyprlandSurface {
                                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                                         borderStart: parent.checked ? Theme.accent : Theme.outline
-                                        borderEnd: borderStart
+                                        borderEnd: parent.checked ? Theme.accent : Theme.outline
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: 1
                                     }
@@ -2893,7 +2893,7 @@ ApplicationWindow {
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
-                        borderEnd: borderStart
+                        borderEnd: parent.checked ? Theme.accent : "transparent"
                         radius: Theme.defaultCornerRadius
                         borderWidth: parent.checked ? 1 : 0
                     }
