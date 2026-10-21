@@ -162,6 +162,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || !"circle".equals(drawing.optJSONObject(0).optString("op"))) {
             throw new IllegalStateException("OWL canvas drawing commands were not evaluated.");
         }
+        JSONArray circleArgs = drawing.optJSONObject(0).optJSONArray("args");
+        if (circleArgs == null || circleArgs.length() != 3
+                || circleArgs.optDouble(0, Double.NaN) != 48.0
+                || circleArgs.optDouble(1, Double.NaN) != 16.0
+                || circleArgs.optDouble(2, Double.NaN) != 6.0) {
+            throw new IllegalStateException("OWL canvas width and height were not evaluated in its local scope.");
+        }
         JSONObject unsafe = new JSONObject(OwlBridge.render(
                 "widget \"network\" { source data = http(\"https://example.invalid\") every 30s "
                         + "Text { text: data } }", 320.0, 156.0, theme.toString()));

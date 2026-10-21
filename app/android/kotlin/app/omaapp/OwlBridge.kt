@@ -1,5 +1,6 @@
 package app.omaapp
 
+import android.util.Log
 import dev.omalauncher.widgets.lang.Bool
 import dev.omalauncher.widgets.lang.Budget
 import dev.omalauncher.widgets.lang.Col
@@ -96,6 +97,7 @@ object OwlBridge {
         } catch (error: StackOverflowError) {
             errorJson("widget is nested too deeply")
         } catch (error: Exception) {
+            if (BuildConfig.DEBUG) Log.e("OwlBridge", "Unexpected offline OWL render failure", error)
             errorJson(error.message ?: "widget could not be rendered")
         }
     }
@@ -130,7 +132,15 @@ object OwlBridge {
                         props.put(name, toJson(value))
                     }
                     val children = JSONArray()
-                    appendNodes(item.children, env, host, children, depth + 1)
+                    val childEnv = if (item.kind == "Canvas") {
+                        fun dimension(name: String, fallback: Double): Double =
+                            (props.opt(name) as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
+                                ?: fallback
+                        env.child(Num(dimension("width", width)), Num(dimension("height", height)))
+                    } else {
+                        env
+                    }
+                    appendNodes(item.children, childEnv, host, children, depth + 1)
                     target.put(
                         JSONObject()
                             .put("type", item.kind)
