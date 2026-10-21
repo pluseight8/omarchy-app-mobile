@@ -160,7 +160,9 @@ jobs:
           export ANDROID_USER_HOME="$RUNNER_TEMP/omaapp-user"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
-          mkdir -p "$ANDROID_AVD_HOME"
+          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
+          mkdir -p "$ANDROID_AVD_HOME" "$smoke_artifacts"
+          trap 'status=$?; failed_command="$BASH_COMMAND"; trap - ERR; { printf "Android smoke failed at: %s (exit %s)\n" "$failed_command" "$status"; printf "ADB devices:\n"; adb devices -l; if [[ -n "${emulator_pid:-}" ]]; then printf "Emulator process:\n"; ps -p "$emulator_pid" -o pid=,stat=,args=; fi; printf "Emulator log tail:\n"; tail -n 80 "$smoke_artifacts/emulator.log"; } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true; timeout 10s adb logcat -d -v threadtime -t 1000 > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true; cat "$smoke_artifacts/failure-diagnostics.txt" >&2; cat "$smoke_artifacts/failure-logcat.txt" >&2 2>/dev/null || true; exit "$status"' ERR
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | tee avds.txt
@@ -175,7 +177,8 @@ jobs:
             echo 'KVM is unavailable; using software CPU emulation.'
             emulator_args+=(-accel off)
           fi
-          "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" &
+          "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" > "$smoke_artifacts/emulator.log" 2>&1 &
+          emulator_pid=$!
           timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
             if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
@@ -186,8 +189,6 @@ jobs:
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
           adb shell wm size 412x892
           adb shell wm density 160
-          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
-          mkdir -p "$smoke_artifacts"
           apk="$(find build/android-emulator -type f -name '*.apk' -print -quit)"
           test -n "$apk"
           adb install "$apk"
@@ -356,6 +357,7 @@ jobs:
             --baselines tests/visual_baselines/android-paired --screens style \
             --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
             --require-gradient --gradient-angle 37
+          trap - ERR
 
       - name: Upload Android smoke screenshots
         if: always()
