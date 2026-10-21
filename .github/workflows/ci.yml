@@ -111,7 +111,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rhi_backend: [OpenGL, Vulkan]
+        include:
+          - rhi_backend: OpenGL
+            gpu_mode: swangle
+          - rhi_backend: Vulkan
+            gpu_mode: swiftshader
     permissions:
       contents: read
     steps:
@@ -170,9 +174,9 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod a+rw /dev/kvm
           fi
-          # SwiftShader exposes both GLES and Vulkan so the matrix checks the
-          # Qt Quick surface material on each Android RHI backend.
-          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader -wipe-data)
+          # Use ANGLE for the OpenGL RHI smoke and SwiftShader's Vulkan driver
+          # for the Vulkan RHI smoke. Both modes are software-rendered.
+          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu "${{ matrix.gpu_mode }}" -wipe-data)
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
             echo 'KVM is unavailable; using software CPU emulation.'
             emulator_args+=(-accel off)
