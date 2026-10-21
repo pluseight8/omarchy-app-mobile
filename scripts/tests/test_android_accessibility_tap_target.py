@@ -35,6 +35,12 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             enabled="true" text="OK" bounds="[0,0][64,48]" /></hierarchy>"""
         self.assertEqual(self.find(xml, "OK"), (32, 24))
 
+    def test_finds_focusable_field_with_composed_accessible_name(self):
+        xml = """<hierarchy><node package="app.omaapp" clickable="false" focusable="true"
+            enabled="true" content-desc="New folder name, Folder name"
+            bounds="[28,416][383,455]" /></hierarchy>"""
+        self.assertEqual(self.find(xml, "New folder name"), (205, 435))
+
 
 if __name__ == "__main__":
     unittest.main()

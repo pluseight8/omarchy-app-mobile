@@ -15,10 +15,17 @@ BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 def find_target(xml_path: Path, target: str) -> tuple[int, int]:
     root = ET.parse(xml_path).getroot()
     for node in root.iter("node"):
+        actionable = (node.attrib.get("clickable") == "true"
+                      or node.attrib.get("focusable") == "true")
+        labels = {
+            label.strip()
+            for attribute in ("content-desc", "text")
+            for label in node.attrib.get(attribute, "").split(",")
+        }
         if (node.attrib.get("package") != "app.omaapp"
-                or node.attrib.get("clickable") != "true"
+                or not actionable
                 or node.attrib.get("enabled") == "false"
-                or target not in (node.attrib.get("content-desc", ""), node.attrib.get("text", ""))):
+                or target not in labels):
             continue
 
         match = BOUNDS.fullmatch(node.attrib.get("bounds", ""))
