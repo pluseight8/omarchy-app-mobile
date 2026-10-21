@@ -23,14 +23,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     @Override
     public void onCreate(Bundle arguments) {
+        Log.i(TAG, "Instrumentation onCreate entered.");
         super.onCreate(arguments);
         testArguments = arguments == null ? new Bundle() : new Bundle(arguments);
+        Log.i(TAG, "Instrumentation arguments received.");
     }
 
     @Override
     public void onStart() {
-        super.onStart();
         Log.i(TAG, "Instrumentation onStart entered.");
+        super.onStart();
         Bundle result = new Bundle();
         try {
             Context context = getTargetContext().getApplicationContext();

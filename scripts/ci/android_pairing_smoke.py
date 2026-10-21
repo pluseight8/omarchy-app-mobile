@@ -178,6 +178,23 @@ def main() -> int:
                 print("Android pairing logcat diagnostics:", flush=True)
                 for line in relevant[-80:]:
                     print(line, flush=True)
+            for label, command in (
+                ("Android process list", ["adb", "shell", "ps", "-A"]),
+                ("Android instrumentation state", [
+                    "adb", "shell", "dumpsys", "activity", "instrumentation",
+                ]),
+            ):
+                result = subprocess.run(
+                    command, check=False, capture_output=True, text=True, timeout=15,
+                )
+                print(label + ":", flush=True)
+                selected = [
+                    line for line in result.stdout.splitlines()
+                    if "app.omaapp" in line or "Instrumentation" in line
+                    or "instrumentation" in line
+                ]
+                for line in selected[-80:]:
+                    print(line, flush=True)
             process.kill()
         return_code = process.wait(timeout=5)
         reader.join(timeout=1)
