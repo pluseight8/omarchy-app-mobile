@@ -158,7 +158,7 @@ jobs:
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-release-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           if [[ -e /dev/kvm ]]; then sudo chmod a+rw /dev/kvm; fi
-          emulator_args=(-avd omaapp-release-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader -wipe-data)
+          emulator_args=(-avd omaapp-release-smoke -no-window -no-audio -no-boot-anim -gpu software -wipe-data)
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then emulator_args+=(-accel off); fi
           "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" &
           timeout 600s adb wait-for-device
