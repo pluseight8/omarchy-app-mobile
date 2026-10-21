@@ -246,7 +246,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         throw new IllegalStateException("Timed out waiting for pairing revocation.");
     }
 
-    private static void runFeatureSmoke(Context context) throws Exception {
+    private void runFeatureSmoke(Context context) throws Exception {
         JSONObject credentials = PairingStore.readCredential(context);
         if (credentials == null || !credentials.has("token")) {
             throw new IllegalStateException("Feature smoke requires a paired device token.");
@@ -386,7 +386,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return false;
     }
 
-    private static void runLauncherShortcutSmoke(Context context) throws Exception {
+    private void runLauncherShortcutSmoke(Context context) throws Exception {
         ShortcutManager shortcuts = context.getSystemService(ShortcutManager.class);
         if (shortcuts == null) {
             throw new IllegalStateException("Android dynamic shortcuts are not available.");
