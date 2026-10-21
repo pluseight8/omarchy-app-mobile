@@ -86,6 +86,40 @@ class VisualRegressionTests(unittest.TestCase):
         self.assertEqual(changed, 1)
         self.assertGreater(fraction, 0)
 
+    def test_home_clock_and_date_are_masked(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "home.png"
+            baseline = Path(directory) / "baseline.png"
+            dark = (0, 0, 0, 255)
+            bright = (255, 255, 255, 255)
+            rows = [[dark] * 412 for _ in range(892)]
+            baseline_rows = tuple(tuple(row) for row in rows)
+            rows[220][100] = bright
+            png_file(actual, tuple(tuple(row) for row in rows))
+            png_file(baseline, baseline_rows)
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 0)
+        self.assertEqual(fraction, 0)
+
+    def test_home_changes_outside_clock_area_are_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "home.png"
+            baseline = Path(directory) / "baseline.png"
+            dark = (0, 0, 0, 255)
+            bright = (255, 255, 255, 255)
+            rows = [[dark] * 412 for _ in range(892)]
+            baseline_rows = tuple(tuple(row) for row in rows)
+            rows[300][100] = bright
+            png_file(actual, tuple(tuple(row) for row in rows))
+            png_file(baseline, baseline_rows)
+
+            changed, fraction = compare_images(actual, baseline)
+
+        self.assertEqual(changed, 1)
+        self.assertGreater(fraction, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

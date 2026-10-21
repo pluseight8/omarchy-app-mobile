@@ -12,6 +12,7 @@ from pathlib import Path
 
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SCREENS = ("home", "apps", "devices", "style", "settings")
+HOME_DYNAMIC_REGIONS = ((34, 184, 250, 266),)  # Local time and date.
 
 
 def decode_png(path: Path) -> tuple[int, int, int, list[bytes]]:
@@ -91,11 +92,15 @@ def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
 
     changed = total = 0
     bytes_per_pixel = actual_channels
+    dynamic_regions = HOME_DYNAMIC_REGIONS if actual.stem == "home" else ()
     for y, (actual_row, base_row) in enumerate(zip(actual_rows, base_rows)):
         # Mask Android's clock/status icons and gesture navigation hint.
         if y < 42 or y >= actual_height - 32:
             continue
         for x in range(actual_width):
+            if any(left <= x < right and top <= y < bottom
+                   for left, top, right, bottom in dynamic_regions):
+                continue
             left = x * bytes_per_pixel
             delta = max(abs(actual_row[left + channel] - base_row[left + channel])
                         for channel in range(min(3, bytes_per_pixel)))
