@@ -68,8 +68,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
     }
 
-    private static JSONObject awaitTheme(Context context, String expectedTheme,
-                                         long timeoutMillis, boolean requestRefresh) throws Exception {
+    private JSONObject awaitTheme(Context context, String expectedTheme,
+                                  long timeoutMillis, boolean requestRefresh) throws Exception {
         if (expectedTheme.isEmpty() || expectedTheme.length() > 80) {
             throw new IllegalArgumentException("An expected theme name is required.");
         }
