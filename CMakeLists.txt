@@ -97,6 +97,7 @@ if(BUILD_TESTING AND NOT ANDROID)
         shared/geometry/tests/tst_surfacemesh.cpp
         shared/geometry/HyprlandSurfaceMesh.cpp
     )
+    target_include_directories(surface_mesh_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(surface_mesh_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
     add_test(NAME surface_mesh_tests COMMAND surface_mesh_tests)
 
