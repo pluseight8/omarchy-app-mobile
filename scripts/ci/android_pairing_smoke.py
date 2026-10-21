@@ -101,6 +101,7 @@ def main() -> int:
         if revoke:
             command.extend(["-e", "revoke", "true"])
         command.append("app.omaapp/app.omaapp.PairingTestInstrumentation")
+        print("Starting Android pairing instrumentation.", flush=True)
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
         )
@@ -116,7 +117,10 @@ def main() -> int:
         reader.start()
         output: list[str] = []
         updated = False
-        deadline = time.monotonic() + 100
+        # Two serial theme waits may each take 60 seconds; leave room for the
+        # approval, reconnect, and Android instrumentation startup overhead.
+        deadline = time.monotonic() + 150
+        next_diagnostic = time.monotonic() + 10
         while process.poll() is None and time.monotonic() < deadline:
             try:
                 line = output_queue.get(timeout=0.1)
@@ -137,9 +141,24 @@ def main() -> int:
                 ]
             for request_id in pending_ids:
                 if state.decide_pair_request(request_id, approve=True):
-                    print("Approved the Android pairing request through the plugin host flow.")
+                    print("Approved the Android pairing request through the plugin host flow.", flush=True)
+
+            if time.monotonic() >= next_diagnostic:
+                with state.lock:
+                    pending_count = sum(
+                        request.get("status") == "pending"
+                        for request in state.pending.values()
+                    )
+                    device_count = len(state.devices)
+                print(
+                    "Waiting for Android pairing: "
+                    f"pending={pending_count}, devices={device_count}, theme_reads={theme_reads}.",
+                    flush=True,
+                )
+                next_diagnostic = time.monotonic() + 10
 
         if process.poll() is None:
+            print("Android pairing instrumentation exceeded its 150-second deadline.", flush=True)
             process.kill()
         return_code = process.wait(timeout=5)
         reader.join(timeout=1)
@@ -171,7 +190,13 @@ def main() -> int:
         try:
             with patch.object(service, "_advertised_ipv4", return_value="10.0.2.2"), \
                     patch.object(service, "_theme_snapshot", side_effect=snapshot), \
-                    patch.object(service, "_emit", side_effect=lambda _event: None):
+                    patch.object(
+                        service, "_emit",
+                        side_effect=lambda event: print(
+                            "Pairing service event: " + json.dumps(event, sort_keys=True),
+                            flush=True,
+                        ),
+                    ):
                 first_qr = qr_payload(state)
                 run_android_instrumentation(
                     state, first_qr, expected_theme="CI_Everforest", updated_theme="CI_Night",

@@ -41,6 +41,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
             String qr = new String(Base64.decode(encodedQr, Base64.NO_WRAP), StandardCharsets.UTF_8);
             PairingBridge.beginPairing(context, qr);
+            reportProgress(context, "started");
 
             String expectedTheme = testArguments.getString("expectedTheme", "");
             JSONObject connected = awaitTheme(context, expectedTheme, PAIRING_TIMEOUT_MILLIS, false);
@@ -73,6 +74,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalArgumentException("An expected theme name is required.");
         }
         long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        long nextProgress = 0;
         JSONObject lastState = new JSONObject();
         while (SystemClock.elapsedRealtime() < deadline) {
             if (requestRefresh) {
@@ -89,10 +91,28 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 validateSnapshot(lastState, snapshot, theme);
                 return lastState;
             }
+            if (SystemClock.elapsedRealtime() >= nextProgress) {
+                reportProgress(context, "waiting_for_" + expectedTheme);
+                nextProgress = SystemClock.elapsedRealtime() + 5_000L;
+            }
             SystemClock.sleep(250L);
         }
         throw new IllegalStateException("Timed out waiting for theme " + expectedTheme
                 + "; last phase=" + lastState.optString("phase"));
+    }
+
+    private void reportProgress(Context context, String stage) throws Exception {
+        JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+        JSONObject snapshot = state.optJSONObject("snapshot");
+        JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
+        Bundle status = new Bundle();
+        status.putString("stage", stage);
+        status.putString("phase", state.optString("phase"));
+        status.putString("theme", theme == null ? "" : theme.optString("name"));
+        status.putString("hasPendingRequest", state.optString("hasPendingRequest"));
+        status.putString("hasPairedDevice", state.optString("hasPairedDevice"));
+        status.putString("lastError", state.optString("lastError"));
+        sendStatus(1, status);
     }
 
     private static void validateSnapshot(JSONObject state, JSONObject snapshot, JSONObject theme)
