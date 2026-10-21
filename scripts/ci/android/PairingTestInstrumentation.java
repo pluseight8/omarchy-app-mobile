@@ -2,17 +2,32 @@ package app.omaapp;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
+import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HttpsURLConnection;
 
 /** Debug APK instrumentation used by CI to exercise the real Android pairing client. */
 public final class PairingTestInstrumentation extends Instrumentation {
@@ -42,6 +57,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
+            Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+            if (launch == null) {
+                throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+            }
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            context.startActivity(launch);
+            SystemClock.sleep(2_000L);
 
             String encodedQr = testArguments.getString("qr64", "");
             if (encodedQr.isEmpty() || encodedQr.length() > 4096) {
@@ -61,6 +83,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (!updatedTheme.isEmpty()) {
                 JSONObject updated = awaitTheme(context, updatedTheme, PAIRING_TIMEOUT_MILLIS, true);
                 report("theme_updated", updated);
+            }
+
+            if (Boolean.parseBoolean(testArguments.getString("featureSmoke"))) {
+                runFeatureSmoke(context);
             }
 
             if (Boolean.parseBoolean(testArguments.getString("revoke"))) {
@@ -172,6 +198,284 @@ public final class PairingTestInstrumentation extends Instrumentation {
             SystemClock.sleep(250L);
         }
         throw new IllegalStateException("Timed out waiting for pairing revocation.");
+    }
+
+    private static void runFeatureSmoke(Context context) throws Exception {
+        JSONObject credentials = PairingStore.readCredential(context);
+        if (credentials == null || !credentials.has("token")) {
+            throw new IllegalStateException("Feature smoke requires a paired device token.");
+        }
+
+        reportStage("feature_permissions_waiting");
+        JSONObject enabled = awaitFeatures(context, credentials, null, true, 30_000L);
+        JSONObject permissions = enabled.getJSONObject("permissions");
+        String[] permissionNames = {
+            "clipboard", "files.send", "files.receive", "media.control", "system.read",
+            "workspace.control", "commands"
+        };
+        for (String permission : permissionNames) {
+            if (!permissions.optBoolean(permission)) {
+                throw new IllegalStateException("The host did not grant " + permission + ".");
+            }
+        }
+
+        JSONObject system = requireJson(credentials, "/v1/system", "GET", null, 200);
+        if (!system.has("capturedAt") || !system.has("memoryTotalBytes")
+                || !system.has("memoryAvailableBytes") || !system.has("battery")
+                || !system.has("loadAverage")) {
+            throw new IllegalStateException("The computer status response is incomplete.");
+        }
+        JSONObject workspaces = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
+        if (workspaces.optJSONArray("workspaces") == null) {
+            throw new IllegalStateException("The Hyprland workspace response is invalid.");
+        }
+        JSONObject media = requireJson(credentials, "/v1/media", "GET", null, 200);
+        if (media.optJSONArray("players") == null) {
+            throw new IllegalStateException("The MPRIS response is invalid.");
+        }
+
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            throw new IllegalStateException("Android clipboard service is unavailable.");
+        }
+        setClipboardOnMainThread(clipboard, "OmaApp CI phone clipboard");
+        PairingBridge.pushClipboard(context);
+        awaitFeatureMessage(context, "Sending command to the computer…", 2_000L);
+        awaitFeatureMessage(context, "Phone clipboard sent to the computer.", 15_000L);
+        JSONObject computerClipboard = requireJson(credentials, "/v1/clipboard", "GET", null, 200);
+        if (!"from computer".equals(computerClipboard.optString("text"))) {
+            throw new IllegalStateException("The computer clipboard response did not contain text.");
+        }
+        PairingBridge.pullClipboard(context);
+        awaitFeatureMessage(context, "Reading computer clipboard…", 2_000L);
+        awaitClipboard(clipboard, "from computer", 15_000L);
+        PersistableBundle clipboardExtras = clipboard.getPrimaryClip().getDescription().getExtras();
+        if (clipboardExtras == null || !clipboardExtras.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE)) {
+            throw new IllegalStateException("Incoming clipboard text was not marked sensitive.");
+        }
+
+        PairingBridge.activateWorkspace(context, 2);
+        awaitAction(context);
+        PairingBridge.mediaAction(context, "mpv", "next");
+        awaitAction(context);
+        PairingBridge.executeCommand(context, "ci-safe");
+        awaitAction(context);
+
+        transferFiles(credentials);
+
+        PairingBridge.mediaAction(context, "mpv;id", "next");
+        awaitFeatureMessage(context, "This media action is not allowed.", 2_000L);
+        PairingBridge.executeCommand(context, "../etc/passwd");
+        awaitFeatureMessage(context, "This computer command is not configured.", 2_000L);
+
+        for (String permission : permissionNames) {
+            String safePermission = permission.replace('.', '_');
+            reportStage("feature_disable_requested_" + safePermission);
+            JSONObject disabled = awaitFeatures(context, credentials, permission, false, 30_000L);
+            JSONObject remaining = disabled.getJSONObject("permissions");
+            for (String other : permissionNames) {
+                if (permission.equals(other)) {
+                    if (remaining.optBoolean(other)) {
+                        throw new IllegalStateException("Permission remained enabled: " + permission);
+                    }
+                } else if (!remaining.optBoolean(other)) {
+                    throw new IllegalStateException("Disabling " + permission + " also disabled " + other);
+                }
+            }
+            boolean post = "files.receive".equals(permission) || "commands".equals(permission);
+            JSONObject body = "files.receive".equals(permission) ? new JSONObject()
+                    : ("commands".equals(permission)
+                            ? new JSONObject().put("commandId", "ci-safe") : null);
+            String path = deniedPath(permission);
+            PairingBridge.HttpResult denied = PairingBridge.executeJson(credentials, path,
+                    post ? "POST" : "GET", body, true);
+            if (denied.status != 403
+                    || !"permission_required".equals(denied.body.optString("error"))) {
+                throw new IllegalStateException("Disabled permission did not reject " + path + ".");
+            }
+            if ("files.send".equals(permission)) {
+                uploadFile(credentials, "receive-remains-enabled.txt",
+                        "the other file permission remains enabled".getBytes(StandardCharsets.UTF_8));
+            } else if ("files.receive".equals(permission)) {
+                requireJson(credentials, "/v1/files", "GET", null, 200);
+            }
+        }
+        reportStage("features_passed");
+    }
+
+    private static JSONObject awaitFeatures(Context context, JSONObject credentials,
+                                            String permission, boolean expected, long timeoutMillis)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        JSONObject last = new JSONObject();
+        while (SystemClock.elapsedRealtime() < deadline) {
+            PairingBridge.HttpResult result = PairingBridge.executeJson(
+                    credentials, "/v1/features", "GET", null, true);
+            if (result.status != 200) {
+                throw new IllegalStateException("Could not read computer feature permissions.");
+            }
+            last = result.body;
+            JSONObject permissions = last.optJSONObject("permissions");
+            if (permissions != null && (permission == null
+                    ? allPermissionsEqual(permissions, expected)
+                    : permissions.optBoolean(permission) == expected)) {
+                return last;
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("Timed out waiting for host feature permission update: "
+                + permission + "; last state=" + last.optString("permissions"));
+    }
+
+    private static boolean allPermissionsEqual(JSONObject permissions, boolean expected) {
+        String[] names = {"clipboard", "files.send", "files.receive", "media.control",
+                "system.read", "workspace.control", "commands"};
+        for (String name : names) {
+            if (permissions.optBoolean(name) != expected) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static JSONObject requireJson(JSONObject credentials, String path, String method,
+                                           JSONObject body, int expectedStatus) throws Exception {
+        PairingBridge.HttpResult result = PairingBridge.executeJson(
+                credentials, path, method, body, true);
+        if (result.status != expectedStatus) {
+            throw new IllegalStateException(path + " returned HTTP " + result.status + ".");
+        }
+        return result.body;
+    }
+
+    private static void transferFiles(JSONObject credentials) throws Exception {
+        uploadFile(credentials, "from-phone.txt",
+                "from OmaApp Android CI".getBytes(StandardCharsets.UTF_8));
+
+        JSONObject fileList = requireJson(credentials, "/v1/files", "GET", null, 200);
+        JSONArray files = fileList.optJSONArray("files");
+        boolean foundComputerFile = false;
+        if (files != null) {
+            for (int index = 0; index < files.length(); ++index) {
+                JSONObject file = files.optJSONObject(index);
+                if (file != null && "from-computer.txt".equals(file.optString("name"))) {
+                    foundComputerFile = true;
+                    break;
+                }
+            }
+        }
+        if (!foundComputerFile) {
+            throw new IllegalStateException("The computer file listing omitted its shared file.");
+        }
+        HttpsURLConnection download = PairingBridge.openConnection(
+                credentials, "/v1/files/from-computer.txt", "GET", true);
+        try {
+            if (download.getResponseCode() != 200) {
+                throw new IllegalStateException("Android could not download the shared computer file.");
+            }
+            try (InputStream input = download.getInputStream();
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (output.size() + count > 1024 * 1024) {
+                        throw new IllegalStateException("The shared computer test file is too large.");
+                    }
+                    output.write(buffer, 0, count);
+                }
+                if (!"from Omarchy computer CI".equals(
+                        new String(output.toByteArray(), StandardCharsets.UTF_8))) {
+                    throw new IllegalStateException("The downloaded computer file did not match.");
+                }
+            }
+        } finally {
+            download.disconnect();
+        }
+    }
+
+    private static void uploadFile(JSONObject credentials, String name, byte[] content)
+            throws Exception {
+        HttpsURLConnection upload = PairingBridge.openConnection(
+                credentials, "/v1/files", "POST", true);
+        try {
+            upload.setDoOutput(true);
+            upload.setFixedLengthStreamingMode(content.length);
+            upload.setRequestProperty("Content-Type", "application/octet-stream");
+            upload.setRequestProperty("X-OmaApp-File-Name", name);
+            try (OutputStream output = upload.getOutputStream()) {
+                output.write(content);
+            }
+            if (upload.getResponseCode() != 201) {
+                throw new IllegalStateException("Android file upload was rejected.");
+            }
+        } finally {
+            upload.disconnect();
+        }
+    }
+
+    private static String deniedPath(String permission) {
+        switch (permission) {
+            case "clipboard": return "/v1/clipboard";
+            case "files.send": return "/v1/files";
+            case "media.control": return "/v1/media";
+            case "system.read": return "/v1/system";
+            case "workspace.control": return "/v1/workspaces";
+            case "commands": return "/v1/commands/execute";
+            case "files.receive": return "/v1/files";
+            default: throw new IllegalArgumentException("Unknown feature permission: " + permission);
+        }
+    }
+
+    private static void setClipboardOnMainThread(ClipboardManager clipboard, String text)
+            throws Exception {
+        CountDownLatch completed = new CountDownLatch(1);
+        new Handler(Looper.getMainLooper()).post(() -> {
+            clipboard.setPrimaryClip(ClipData.newPlainText("OmaApp CI", text));
+            completed.countDown();
+        });
+        if (!completed.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Timed out setting the Android clipboard.");
+        }
+    }
+
+    private static void awaitClipboard(ClipboardManager clipboard, String expected,
+                                       long timeoutMillis) throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            ClipData clip = clipboard.getPrimaryClip();
+            if (clip != null && clip.getItemCount() > 0
+                    && expected.contentEquals(clip.getItemAt(0).getText())) {
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        throw new IllegalStateException("The computer clipboard text did not reach Android.");
+    }
+
+    private static void awaitFeatureMessage(Context context, String expected, long timeoutMillis)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            String message = context.getSharedPreferences(PairingBridge.PREFERENCES, Context.MODE_PRIVATE)
+                    .getString("feature_message", "");
+            if (expected.equals(message)) {
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        throw new IllegalStateException("Timed out waiting for Android feature result: " + expected);
+    }
+
+    private static void awaitAction(Context context) throws Exception {
+        awaitFeatureMessage(context, "Sending command to the computer…", 2_000L);
+        awaitFeatureMessage(context, "Computer action completed.", 15_000L);
+    }
+
+    private void reportStage(String stage) {
+        Bundle status = new Bundle();
+        status.putString("stage", stage);
+        Log.i(TAG, "Feature smoke stage: " + stage);
+        sendStatus(1, status);
     }
 
     private void report(String stage, JSONObject state) throws Exception {

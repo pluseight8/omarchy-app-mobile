@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import queue
 import struct
 import subprocess
@@ -89,7 +90,8 @@ def main() -> int:
         return json.dumps(payload, separators=(",", ":"))
 
     def run_android_instrumentation(state: service.ServiceState, qr: str, *, expected_theme: str,
-                                   updated_theme: str = "", revoke: bool = False) -> str:
+                                   updated_theme: str = "", revoke: bool = False,
+                                   feature_smoke: bool = False) -> str:
         encoded_qr = base64.b64encode(qr.encode("utf-8")).decode("ascii")
         command = [
             "adb", "shell", "am", "instrument", "-w",
@@ -100,6 +102,8 @@ def main() -> int:
             command.extend(["-e", "updatedTheme", updated_theme])
         if revoke:
             command.extend(["-e", "revoke", "true"])
+        if feature_smoke:
+            command.extend(["-e", "featureSmoke", "true"])
         command.append("app.omaapp/app.omaapp.PairingTestInstrumentation")
         listed = subprocess.run(
             ["adb", "shell", "pm", "list", "instrumentation"],
@@ -122,10 +126,12 @@ def main() -> int:
         reader.start()
         output: list[str] = []
         updated = False
-        # Two serial theme waits may each take 60 seconds; leave room for the
-        # approval, reconnect, and Android instrumentation startup overhead.
-        deadline = time.monotonic() + 150
+        # Leave room for theme refresh, feature permissions, binary transfers, and revocation.
+        deadline = time.monotonic() + 240
         next_diagnostic = time.monotonic() + 10
+        granted_features = False
+        disabled_features: set[str] = set()
+        feature_permissions = tuple(service.DEVICE_PERMISSIONS)
         while process.poll() is None and time.monotonic() < deadline:
             try:
                 line = output_queue.get(timeout=0.1)
@@ -138,6 +144,28 @@ def main() -> int:
                     with theme_lock:
                         theme["name"] = updated_theme
                     updated = True
+                if (feature_smoke and not granted_features
+                        and "INSTRUMENTATION_STATUS: stage=feature_permissions_waiting" in line):
+                    if len(state.devices) != 1:
+                        raise RuntimeError("The Android test device was not paired before feature grants.")
+                    device_id = next(iter(state.devices))
+                    for permission in feature_permissions:
+                        if not state.set_permission(device_id, permission, True):
+                            raise RuntimeError(f"Could not grant Android test permission {permission}.")
+                    granted_features = True
+                    print("Granted separate Omarchy permissions for Android feature smoke.", flush=True)
+                if feature_smoke:
+                    for permission in feature_permissions:
+                        stage_permission = permission.replace(".", "_")
+                        stage = f"INSTRUMENTATION_STATUS: stage=feature_disable_requested_{stage_permission}"
+                        if stage in line and permission not in disabled_features:
+                            if len(state.devices) != 1:
+                                raise RuntimeError("The Android test device disappeared before revoking a grant.")
+                            device_id = next(iter(state.devices))
+                            if not state.set_permission(device_id, permission, False):
+                                raise RuntimeError(f"Could not disable Android test permission {permission}.")
+                            disabled_features.add(permission)
+                            print(f"Disabled only the {permission} permission for Android test.", flush=True)
 
             with state.lock:
                 pending_ids = [
@@ -163,7 +191,7 @@ def main() -> int:
                 next_diagnostic = time.monotonic() + 10
 
         if process.poll() is None:
-            print("Android pairing instrumentation exceeded its 150-second deadline.", flush=True)
+            print("Android pairing instrumentation exceeded its 240-second deadline.", flush=True)
             logs = subprocess.run(
                 ["adb", "logcat", "-d", "-t", "1000"],
                 check=False, capture_output=True, text=True, timeout=15,
@@ -217,15 +245,73 @@ def main() -> int:
             raise RuntimeError(f"Android client did not receive a live theme update:\n{combined}")
         if revoke and "INSTRUMENTATION_STATUS: stage=revoked" not in combined:
             raise RuntimeError(f"Android client did not report revocation:\n{combined}")
+        if feature_smoke:
+            if not granted_features or disabled_features != set(feature_permissions):
+                raise RuntimeError("Android feature permission transitions did not complete.")
+            if "INSTRUMENTATION_STATUS: stage=features_passed" not in combined:
+                raise RuntimeError(f"Android client did not finish feature smoke:\n{combined}")
         return combined
 
     with tempfile.TemporaryDirectory(prefix="omaapp-pairing-smoke-") as temporary:
         wallpaper_path = Path(temporary) / "ci-wallpaper.png"
         wallpaper_path.write_bytes(_one_pixel_png())
+        downloads_directory = Path(temporary) / "downloads"
+        shared_files = downloads_directory / "OmaApp"
+        shared_files.mkdir(parents=True)
+        (shared_files / "from-computer.txt").write_text(
+            "from Omarchy computer CI", encoding="utf-8")
+        config_root = Path(temporary) / "config"
+        command_directory = config_root / "omaapp"
+        command_directory.mkdir(parents=True)
+        marker_path = Path(temporary) / "safe-command-ran.txt"
+        command_script = Path(temporary) / "safe-command.py"
+        command_script.write_text(
+            "import pathlib, sys\n"
+            "pathlib.Path(sys.argv[1]).write_text('approved', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
+        (command_directory / "commands.toml").write_text(
+            "[[command]]\n"
+            'id = "ci-safe"\n'
+            'label = "CI approved command"\n'
+            f"argv = [{json.dumps(sys.executable)}, {json.dumps(str(command_script))}, "
+            f"{json.dumps(str(marker_path))}]\n",
+            encoding="utf-8",
+        )
         state = service.ServiceState(Path(temporary), "0.0.0.0", 0)
+        clipboard_writes: list[bytes] = []
+        feature_commands: list[list[str]] = []
+
+        def fake_run_command(arguments, **kwargs):
+            if arguments[0] == "wl-paste":
+                return b"from computer"
+            if arguments[0] == "wl-copy":
+                clipboard_writes.append(kwargs.get("input_data", b""))
+                return b""
+            if arguments[0] in {"hyprctl", "playerctl"}:
+                feature_commands.append(arguments)
+                return b""
+            return None
+
         try:
-            with patch.object(service, "_advertised_ipv4", return_value="10.0.2.2"), \
+            with patch.dict(os.environ, {
+                    "XDG_DOWNLOAD_DIR": str(downloads_directory),
+                    "XDG_CONFIG_HOME": str(config_root),
+                }), \
+                    patch.object(service, "_advertised_ipv4", return_value="10.0.2.2"), \
                     patch.object(service, "_theme_snapshot", side_effect=snapshot), \
+                    patch.object(service, "_system_status", return_value={
+                        "memoryTotalBytes": 4096, "memoryAvailableBytes": 2048,
+                        "loadAverage": [0.1, 0.2, 0.3], "battery": None, "capturedAt": 1,
+                    }), \
+                    patch.object(service, "_hyprland_workspaces", return_value=[{
+                        "id": 2, "name": "2", "monitor": "CI", "focused": True, "windows": 1,
+                    }]), \
+                    patch.object(service, "_mpris_players", return_value=[{
+                        "player": "mpv", "status": "Playing", "artist": "CI",
+                        "title": "Smoke", "album": "OmaApp",
+                    }]), \
+                    patch.object(service, "_run_command", side_effect=fake_run_command), \
                     patch.object(
                         service, "_emit",
                         side_effect=lambda event: print(
@@ -236,7 +322,18 @@ def main() -> int:
                 first_qr = qr_payload(state)
                 run_android_instrumentation(
                     state, first_qr, expected_theme="CI_Everforest", updated_theme="CI_Night",
+                    feature_smoke=True,
                 )
+                if not clipboard_writes or clipboard_writes[-1] != b"OmaApp CI phone clipboard":
+                    raise RuntimeError("Android did not send clipboard text to the computer.")
+                if marker_path.read_text(encoding="utf-8") != "approved":
+                    raise RuntimeError("Android did not execute the configured safe command.")
+                if ["hyprctl", "dispatch", "workspace", "2"] not in feature_commands:
+                    raise RuntimeError("Android did not activate the configured Hyprland workspace.")
+                if ["playerctl", "-p", "mpv", "next"] not in feature_commands:
+                    raise RuntimeError("Android did not send the configured MPRIS action.")
+                if not (shared_files / "from-phone.txt").is_file():
+                    raise RuntimeError("The Omarchy plugin did not save the Android-uploaded file.")
                 if len(state.devices) != 1 or not state.pending:
                     raise RuntimeError("The plugin did not retain the approved Android device.")
 
@@ -250,7 +347,9 @@ def main() -> int:
                     raise RuntimeError("The client did not fetch an updated theme snapshot.")
         finally:
             state.stop_server()
-    print("Android TLS pairing, live theme update, reconnect, and revocation passed.")
+    print("Android pairing, live theme update, clipboard, file transfer, MPRIS, system status, "
+          "Hyprland workspace control, safe commands, independent permissions, reconnect, "
+          "and revocation passed.")
     return 0
 
 
