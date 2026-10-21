@@ -63,7 +63,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 report("theme_updated", updated);
             }
 
-            if (testArguments.getBoolean("revoke", false)) {
+            if (Boolean.parseBoolean(testArguments.getString("revoke"))) {
                 PairingBridge.revoke(context);
                 awaitRevocation(context);
                 result.putString("stage", "revoked");
