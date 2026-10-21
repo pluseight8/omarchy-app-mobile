@@ -167,7 +167,7 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod a+rw /dev/kvm
           fi
-          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu host -wipe-data)
+          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swangle -wipe-data)
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
             echo 'KVM is unavailable; using software CPU emulation.'
             emulator_args+=(-accel off)
