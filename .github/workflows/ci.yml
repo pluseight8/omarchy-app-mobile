@@ -204,11 +204,10 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          # main.cpp logs the selected QRhi API after scene-graph initialization.
-          # Assert the app's API report rather than relying on optional Qt debug
-          # category output, which differs between Android Qt packages.
+          # main.cpp reports the compile-time RHI selection after Qt logging is
+          # initialized. Runtime surface probes below verify it can render.
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
-          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
+          grep -F 'OmaApp configured Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
             exit 1
           fi

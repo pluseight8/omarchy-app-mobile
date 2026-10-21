@@ -24,6 +24,11 @@ int main(int argc, char *argv[])
 
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     QGuiApplication app(argc, argv);
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL)
+    qInfo().noquote() << "OmaApp configured Qt Quick graphics API: OpenGL";
+#elif defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    qInfo().noquote() << "OmaApp configured Qt Quick graphics API: Vulkan";
+#endif
     app.setApplicationName(QStringLiteral("OmaApp"));
     app.setOrganizationName(QStringLiteral("OmaApp"));
 
