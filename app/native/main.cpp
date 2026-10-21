@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
     if (!engine.rootObjects().isEmpty()) {
         if (auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst())) {
-            QObject::connect(window, &QQuickWindow::sceneGraphInitialized, window, [window] {
+            const auto logGraphicsApi = [window] {
                 const auto api = window->rendererInterface()->graphicsApi();
                 const char *name = "Unknown";
                 switch (api) {
@@ -55,7 +55,13 @@ int main(int argc, char *argv[])
                 default: break;
                 }
                 qInfo().noquote() << "OmaApp initialized Qt Quick graphics API:" << name;
-            }, Qt::DirectConnection);
+            };
+            if (window->isSceneGraphInitialized()) {
+                logGraphicsApi();
+            } else {
+                QObject::connect(window, &QQuickWindow::sceneGraphInitialized, window,
+                                 logGraphicsApi, Qt::DirectConnection);
+            }
         }
     }
 #endif

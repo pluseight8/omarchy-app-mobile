@@ -1040,7 +1040,7 @@ ApplicationWindow {
                                     Item { Layout.fillWidth: true }
                                     Text {
                                         Layout.preferredWidth: 190
-                                        Layout.maximumWidth: parent.width * 0.6
+                                        Layout.maximumWidth: window.width * 0.6
                                         text: launcher.favorites.length > 0
                                               ? qsTr("%1 shortcuts").arg(launcher.favorites.length)
                                               : qsTr("Hold an app in All apps to add it")
@@ -1484,6 +1484,7 @@ ApplicationWindow {
                             required property int index
                             required property string name
                             required property string packageName
+                            required property string activityName
                             required property string iconUrl
                             required property bool favorite
 
