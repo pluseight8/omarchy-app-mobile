@@ -45,7 +45,6 @@ jobs:
           host: all_os
           target: android
           arch: android_arm64_v8a
-          modules: qtshadertools
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
@@ -53,12 +52,13 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            printf 'Expected a stable version tag such as v1.2.3.\n' >&2
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            printf 'Expected a semantic version tag such as v0.1.0-alpha.1.\n' >&2
             exit 1
           fi
           version="${RELEASE_TAG#v}"
-          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          numeric_version="${version%%-*}"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$numeric_version" -DOMAAPP_VERSION_NAME="$version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android --target apk --parallel 2
 
       - name: Sign and verify APK
@@ -102,7 +102,6 @@ jobs:
           host: all_os
           target: android
           arch: android_x86_64
-          modules: qtshadertools
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
@@ -122,7 +121,8 @@ jobs:
           fi
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-upgrade-seed -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$older_version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-upgrade-seed --target apk --parallel 2
-          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-release-x86_64 -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          numeric_version="${version%%-*}"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-release-x86_64 -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION="$numeric_version" -DOMAAPP_VERSION_NAME="$version" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-release-x86_64 --target apk --parallel 2
           mkdir -p "$RUNNER_TEMP/omaapp-upgrade-test"
           seed_source="$(find build/android-upgrade-seed -type f -name '*.apk' -print -quit)"

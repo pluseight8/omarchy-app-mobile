@@ -328,8 +328,6 @@ def main() -> int:
                 check=True, capture_output=True, text=True, timeout=20,
             ).stdout
             (output_dir / "style-logcat.txt").write_text(logcat, encoding="utf-8")
-            if "HyprlandSurface shader failed:" in logcat:
-                raise RuntimeError(f"The {label} theme preview reported a ShaderEffect error.")
 
         try:
             render_style("density-160", paired_artifacts, 412, 892)

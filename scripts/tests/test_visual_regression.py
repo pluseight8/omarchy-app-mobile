@@ -156,7 +156,7 @@ class VisualRegressionTests(unittest.TestCase):
 
             verify_style_surface_rendered(image)
 
-    def test_style_probe_rejects_transparent_shader_surface(self) -> None:
+    def test_style_probe_rejects_transparent_surface(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / "style.png"
             rows = [[(16, 19, 21, 255)] * 412 for _ in range(892)]

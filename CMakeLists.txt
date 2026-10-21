@@ -3,6 +3,9 @@ cmake_minimum_required(VERSION 3.24)
 if(NOT DEFINED OMAAPP_VERSION OR OMAAPP_VERSION STREQUAL "")
     set(OMAAPP_VERSION "0.1.0")
 endif()
+if(NOT DEFINED OMAAPP_VERSION_NAME OR OMAAPP_VERSION_NAME STREQUAL "")
+    set(OMAAPP_VERSION_NAME "${OMAAPP_VERSION}")
+endif()
 
 project(OmaApp VERSION "${OMAAPP_VERSION}" LANGUAGES CXX)
 
@@ -10,7 +13,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 qt_standard_project_setup(REQUIRES 6.10)
 
 set(OMAAPP_TEST_RHI_BACKEND "" CACHE STRING
@@ -28,6 +31,10 @@ qt_add_executable(omaapp
     app/native/LauncherModel.h
     app/native/PairingModel.cpp
     app/native/PairingModel.h
+    shared/geometry/HyprlandSurfaceItem.cpp
+    shared/geometry/HyprlandSurfaceItem.h
+    shared/geometry/HyprlandSurfaceMesh.cpp
+    shared/geometry/HyprlandSurfaceMesh.h
     shared/geometry/HyprlandGeometry.cpp
     shared/geometry/HyprlandGeometry.h
 )
@@ -41,21 +48,6 @@ qt_add_qml_module(omaapp
         app/qml/Main.qml
         app/qml/Theme.qml
         app/qml/HyprlandSurface.qml
-)
-
-# Qt's ShaderEffect needs precompiled QSB on Android and every Qt 6 graphics
-# API. qt_add_shaders packages SPIR-V plus the OpenGL ES, Vulkan, Metal, and
-# Direct3D variants in one resource.
-qt_add_shaders(omaapp omaapp_rounding_shaders
-    # Android's SwiftShader test context exposes OpenGL ES 3.0. Keep the
-    # GLES 2.0 variant for older devices and bake an ES 3.0 variant as well so
-    # Qt can select the native language level for modern Android backends.
-    GLSL "100 es,300 es,120,150"
-    PREFIX "/shaders"
-    BASE app/qml/shaders
-    FILES
-        app/qml/shaders/hyprland_rounded.vert
-        app/qml/shaders/hyprland_rounded.frag
 )
 
 if(OMAAPP_TEST_RHI_BACKEND STREQUAL "OpenGL")
@@ -86,7 +78,7 @@ if(ANDROID)
         QT_ANDROID_APP_NAME "OmaApp"
         QT_ANDROID_MIN_SDK_VERSION 29
         QT_ANDROID_TARGET_SDK_VERSION 36
-        QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
+        QT_ANDROID_VERSION_NAME "${OMAAPP_VERSION_NAME}"
         QT_ANDROID_VERSION_CODE "${OMAAPP_ANDROID_VERSION_CODE}"
     )
 endif()
@@ -100,6 +92,13 @@ if(BUILD_TESTING AND NOT ANDROID)
     )
     target_link_libraries(geometry_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME geometry_tests COMMAND geometry_tests)
+
+    qt_add_executable(surface_mesh_tests
+        shared/geometry/tests/tst_surfacemesh.cpp
+        shared/geometry/HyprlandSurfaceMesh.cpp
+    )
+    target_link_libraries(surface_mesh_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+    add_test(NAME surface_mesh_tests COMMAND surface_mesh_tests)
 
     qt_add_executable(launcher_model_tests
         app/native/tests/tst_launchermodel.cpp

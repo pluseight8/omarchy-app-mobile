@@ -20,9 +20,11 @@ The implementation keeps one plugin package. The bundled helper is launched by t
 
 ## Hyprland geometry
 
-The C++ geometry reference implements Hyprland's Lp superellipse distance and smoothing band, and its unit tests cover the 1–10 rounding-power range. The Android UI currently uses Qt's native rounded rectangles and solid border because custom shader and gradient surfaces produced artifacts in emulator screenshots. OmaApp still reads and caches the rounding power and both border colors/angle, and the Style preview displays them, but it does not yet render the exact superellipse or gradient. Restore that rendering only after the Android screenshot test stays clean.
+`HyprlandSurfaceMesh` creates a tessellated Lp superellipse, applies the radius correction from Hyprland's border decoration, and samples up to ten OkLabA border stops at the configured gradient angle. Qt Quick draws the premultiplied-alpha vertex-color mesh through its standard scene-graph material, so the mesh is rendered by each selected RHI backend without a custom `ShaderEffect` pipeline. The fringe width and curvature tessellation scale with the physical pixel ratio. Unit tests check the contour equation for rounding powers from 1 through 10, gradient endpoints and angles, high-DPI refinement, and antialias bounds.
 
-Hyprland is BSD-3-Clause. The rounding mask equation is adapted from `rounding.glsl`; the original notice and license terms ship in `THIRD_PARTY.md` and the APK documentation.
+The previous custom shader experiment exposed a platform gap: CI's Android Vulkan backend drew the shader output, while OpenGL ES/SwiftShader reported a compiled shader and uploaded uniforms but produced no pixels. The platform-independent material path avoids relying on that custom shader link state. CI now checks that the actual style preview fill and border render under both Android OpenGL and Vulkan, in addition to the existing screenshot baselines.
+
+Hyprland is BSD-3-Clause. The rounding equation, border-radius correction and gradient projection are adapted from the upstream rendering sources; notices ship in `THIRD_PARTY.md` and the APK documentation. Hyprland's compositor pixel smoothing and HDR color-management path are not reproduced exactly; the Android mesh uses a one-physical-pixel antialias fringe and standard Qt Quick blending.
 
 ## License review
 

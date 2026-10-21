@@ -26,6 +26,7 @@ The superellipse and rounding edge model in shared/geometry follows the public H
 
 - Source: https://github.com/hyprwm/Hyprland/blob/main/src/render/shaders/glsl/rounding.glsl
 - Related border behavior: https://github.com/hyprwm/Hyprland/blob/main/src/render/shaders/glsl/border.glsl
+- Radius correction: https://github.com/hyprwm/Hyprland/blob/main/src/render/decorations/CHyprBorderDecoration.cpp
 - License: BSD 3-Clause
 - Copyright: Copyright (c) 2022-2026, vaxerski
 
@@ -41,7 +42,7 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-The Qt ShaderEffect ports Hyprland's superellipse distance, edge smoothing, rounded border coverage, arbitrary-angle ten-stop OkLabA gradient interpolation, and the compositor's gamma-2.2 gradient conversion into Qt's QSB pipeline. It uses the same radius and rounding-power range in physical pixels after display-scale conversion. It does not reproduce compositor transforms or Hyprland's HDR color-management path.
+The Qt Quick surface mesh samples the exact Lp superellipse equation used by Hyprland for rounding powers 1–10, applies its outer-radius correction, and evaluates ten-stop OkLabA gradients at each mesh vertex. Qt Quick rasterizes the premultiplied-alpha vertex-color mesh on the selected GPU backend, with a one-physical-pixel antialias fringe. It does not reproduce compositor transforms or Hyprland's HDR color-management path.
 
 ## Qt
 

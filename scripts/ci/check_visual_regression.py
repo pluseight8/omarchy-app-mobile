@@ -145,7 +145,7 @@ def verify_style_surface_rendered(image: Path) -> None:
     width, height, channels, rows = decode_png(image)
     if width * 892 != height * 412 or width < 412 or height < 892:
         raise ValueError(
-            f"style shader probe expects a 412x892 logical viewport, got {width}x{height}"
+            f"style surface probe expects a 412x892 logical viewport, got {width}x{height}"
         )
 
     def rgb(point: tuple[int, int]) -> tuple[int, int, int]:
@@ -198,7 +198,7 @@ def main() -> int:
     if args.verify_style_surface:
         try:
             verify_style_surface_rendered(args.screenshots / "style.png")
-            print("style shader probe: preview fill and border are visible")
+            print("style surface probe: preview fill and border are visible")
         except (OSError, ValueError, zlib.error) as error:
             failures.append(str(error))
 
