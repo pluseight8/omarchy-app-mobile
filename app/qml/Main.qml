@@ -13,6 +13,15 @@ ApplicationWindow {
     minimumHeight: 560
     title: qsTr("OmaApp")
     color: Theme.background
+    palette.window: Theme.background
+    palette.windowText: Theme.foreground
+    palette.base: Theme.surface
+    palette.text: Theme.foreground
+    palette.button: Theme.surfaceRaised
+    palette.buttonText: Theme.foreground
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.background
+    palette.placeholderText: Theme.muted
 
     property int selectedPage: 0
     property int selectedHomePage: 0
@@ -718,11 +727,14 @@ ApplicationWindow {
                                         }
                                         Item { Layout.fillWidth: true }
                                         Text {
+                                            Layout.preferredWidth: 88
                                             text: pairing.connected ? qsTr("CONNECTED")
                                                   : pairing.hasPairedDevice ? qsTr("OFFLINE") : qsTr("NOT PAIRED")
                                             color: pairing.connected ? Theme.accent : Theme.muted
                                             font.pixelSize: 10
                                             font.weight: Font.DemiBold
+                                            horizontalAlignment: Text.AlignRight
+                                            elide: Text.ElideRight
                                         }
                                     }
                                     Text {
@@ -740,6 +752,7 @@ ApplicationWindow {
                                     }
                                     Button {
                                         Layout.alignment: Qt.AlignRight
+                                        Layout.preferredWidth: 128
                                         text: pairing.hasPairedDevice ? qsTr("Open devices") : qsTr("Pair computer")
                                         Accessible.name: pairing.hasPairedDevice
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
@@ -764,15 +777,16 @@ ApplicationWindow {
                                         font.weight: Font.DemiBold
                                     }
                                     Item { Layout.fillWidth: true }
-                                    Text {
-                                        visible: (pairing.features.players || []).length === 0
-                                        text: window.featureEnabled("media")
-                                              ? qsTr("No active media player on the computer.")
-                                              : qsTr("Enable media permission in the Omarchy plugin to use these controls.")
-                                        color: Theme.muted
-                                        font.pixelSize: 11
-                                        wrapMode: Text.WordWrap
-                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: (pairing.features.players || []).length === 0
+                                    text: window.featureEnabled("media")
+                                          ? qsTr("No active media player on the computer.")
+                                          : qsTr("Enable media permission in the Omarchy plugin to use these controls.")
+                                    color: Theme.muted
+                                    font.pixelSize: 11
+                                    wrapMode: Text.WordWrap
                                 }
                                 Repeater {
                                     model: pairing.features.players || []
@@ -827,6 +841,7 @@ ApplicationWindow {
                                 }
                                 Item { Layout.fillWidth: true }
                                 Button {
+                                    Layout.preferredWidth: 104
                                     text: qsTr("All apps")
                                     Accessible.name: qsTr("Open all installed apps")
                                     onClicked: {
@@ -903,11 +918,15 @@ ApplicationWindow {
                                     }
                                     Item { Layout.fillWidth: true }
                                     Text {
+                                        Layout.preferredWidth: 190
+                                        Layout.maximumWidth: parent.width * 0.6
                                         text: launcher.favorites.length > 0
                                               ? qsTr("%1 shortcuts").arg(launcher.favorites.length)
                                               : qsTr("Hold an app in All apps to add it")
                                         color: Theme.muted
                                         font.pixelSize: 11
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
                                     }
                                 }
 
