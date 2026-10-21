@@ -41,7 +41,7 @@ jobs:
 
       - name: Lint QML
         run: |
-          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml app/qml/OwlWidgetView.qml app/qml/OwlNode.qml
+          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml app/qml/OwlWidgetView.qml app/qml/OwlNodeLoader.qml app/qml/OwlNode.qml
 
       - name: Validate Omarchy plugin manifest
         run: python3 scripts/validate_plugin_manifest.py omarchy-plugin

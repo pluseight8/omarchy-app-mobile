@@ -26,7 +26,7 @@ Item {
 
         Repeater {
             model: node.nodeType === "Column" || node.nodeType === "" ? node.nodeChildren : []
-            delegate: OwlNode {
+            delegate: OwlNodeLoader {
                 required property var modelData
                 nodeData: modelData
                 widgetRoot: node.widgetRoot
@@ -58,7 +58,7 @@ Item {
                    : alignment === "top" || alignment.startsWith("top") ? 0
                      : (boxContent.height - height) / 2
 
-                OwlNode {
+                OwlNodeLoader {
                     id: child
                     anchors.fill: parent
                     nodeData: alignedChild.modelData
@@ -75,7 +75,7 @@ Item {
         spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
         Repeater {
             model: node.nodeType === "Row" ? node.nodeChildren : []
-            delegate: OwlNode {
+            delegate: OwlNodeLoader {
                 required property var modelData
                 nodeData: modelData
                 widgetRoot: node.widgetRoot

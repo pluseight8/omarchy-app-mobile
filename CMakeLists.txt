@@ -48,6 +48,7 @@ qt_add_qml_module(omaapp
         app/qml/Main.qml
         app/qml/Theme.qml
         app/qml/HyprlandSurface.qml
+        app/qml/OwlNodeLoader.qml
         app/qml/OwlNode.qml
         app/qml/OwlWidgetView.qml
 )
