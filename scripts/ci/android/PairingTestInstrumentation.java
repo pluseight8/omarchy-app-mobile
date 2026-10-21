@@ -7,6 +7,7 @@ import android.content.pm.ApplicationInfo;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Base64;
+import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 
 /** Debug APK instrumentation used by CI to exercise the real Android pairing client. */
 public final class PairingTestInstrumentation extends Instrumentation {
+    private static final String TAG = "OmaAppPairingSmoke";
     private static final long PAIRING_TIMEOUT_MILLIS = 60_000L;
     private static final long REVOCATION_TIMEOUT_MILLIS = 20_000L;
     private Bundle testArguments = new Bundle();
@@ -28,9 +30,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
     @Override
     public void onStart() {
         super.onStart();
+        Log.i(TAG, "Instrumentation onStart entered.");
         Bundle result = new Bundle();
         try {
             Context context = getTargetContext().getApplicationContext();
+            Log.i(TAG, "Target application context is ready.");
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
@@ -40,7 +44,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 throw new IllegalArgumentException("A bounded pairing QR payload is required.");
             }
             String qr = new String(Base64.decode(encodedQr, Base64.NO_WRAP), StandardCharsets.UTF_8);
+            Log.i(TAG, "Starting PairingBridge.beginPairing.");
             PairingBridge.beginPairing(context, qr);
+            Log.i(TAG, "PairingBridge.beginPairing returned.");
             reportProgress(context, "started");
 
             String expectedTheme = testArguments.getString("expectedTheme", "");
@@ -61,6 +67,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
             finish(Activity.RESULT_OK, result);
         } catch (Exception error) {
+            Log.e(TAG, "Pairing instrumentation failed.", error);
             result.putString("stage", "failed");
             result.putString("error", error.getClass().getSimpleName() + ": " + error.getMessage());
             sendStatus(2, result);
@@ -112,6 +119,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
         status.putString("hasPendingRequest", state.optString("hasPendingRequest"));
         status.putString("hasPairedDevice", state.optString("hasPairedDevice"));
         status.putString("lastError", state.optString("lastError"));
+        Log.i(TAG, stage + ": phase=" + state.optString("phase")
+                + ", theme=" + (theme == null ? "" : theme.optString("name"))
+                + ", pending=" + state.optString("hasPendingRequest")
+                + ", paired=" + state.optString("hasPairedDevice")
+                + ", error=" + state.optString("lastError"));
         sendStatus(1, status);
     }
 

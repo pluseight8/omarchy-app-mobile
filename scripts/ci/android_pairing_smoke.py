@@ -101,6 +101,11 @@ def main() -> int:
         if revoke:
             command.extend(["-e", "revoke", "true"])
         command.append("app.omaapp/app.omaapp.PairingTestInstrumentation")
+        listed = subprocess.run(
+            ["adb", "shell", "pm", "list", "instrumentation"],
+            check=True, capture_output=True, text=True, timeout=15,
+        )
+        print("Installed Android instrumentation: " + listed.stdout.strip(), flush=True)
         print("Starting Android pairing instrumentation.", flush=True)
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -159,6 +164,20 @@ def main() -> int:
 
         if process.poll() is None:
             print("Android pairing instrumentation exceeded its 150-second deadline.", flush=True)
+            logs = subprocess.run(
+                ["adb", "logcat", "-d", "-t", "1000"],
+                check=False, capture_output=True, text=True, timeout=15,
+            ).stdout.splitlines()
+            relevant = [
+                line for line in logs
+                if "OmaAppPairingSmoke" in line
+                or "AndroidRuntime" in line
+                or "app.omaapp" in line
+            ]
+            if relevant:
+                print("Android pairing logcat diagnostics:", flush=True)
+                for line in relevant[-80:]:
+                    print(line, flush=True)
             process.kill()
         return_code = process.wait(timeout=5)
         reader.join(timeout=1)
