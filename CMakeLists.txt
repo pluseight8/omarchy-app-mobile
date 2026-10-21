@@ -13,7 +13,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
 qt_standard_project_setup(REQUIRES 6.10)
 
 set(OMAAPP_TEST_RHI_BACKEND "" CACHE STRING
@@ -31,10 +31,10 @@ qt_add_executable(omaapp
     app/native/LauncherModel.h
     app/native/PairingModel.cpp
     app/native/PairingModel.h
+    app/native/OwlModel.cpp
+    app/native/OwlModel.h
     shared/geometry/HyprlandSurfaceItem.cpp
     shared/geometry/HyprlandSurfaceItem.h
-    shared/geometry/HyprlandSurfaceMesh.cpp
-    shared/geometry/HyprlandSurfaceMesh.h
     shared/geometry/HyprlandGeometry.cpp
     shared/geometry/HyprlandGeometry.h
 )
@@ -48,6 +48,27 @@ qt_add_qml_module(omaapp
         app/qml/Main.qml
         app/qml/Theme.qml
         app/qml/HyprlandSurface.qml
+        app/qml/OwlNode.qml
+        app/qml/OwlWidgetView.qml
+)
+
+qt_add_resources(omaapp omaapp_widget_store
+    PREFIX "/owl/widgets"
+    BASE app/widgets
+    FILES
+        app/widgets/clock.owl
+        app/widgets/canvas.owl
+)
+
+# QSGMaterialShader loads these precompiled variants at runtime. The same QSB
+# sources are translated by Qt for OpenGL, Vulkan, Metal, and Direct3D.
+qt_add_shaders(omaapp omaapp_surface_shaders
+    GLSL "300 es,120,150"
+    PREFIX "/shaders"
+    BASE app/qml/shaders
+    FILES
+        app/qml/shaders/hyprland_surface.vert
+        app/qml/shaders/hyprland_surface.frag
 )
 
 if(OMAAPP_TEST_RHI_BACKEND STREQUAL "OpenGL")
@@ -93,14 +114,6 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_link_libraries(geometry_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME geometry_tests COMMAND geometry_tests)
 
-    qt_add_executable(surface_mesh_tests
-        shared/geometry/tests/tst_surfacemesh.cpp
-        shared/geometry/HyprlandSurfaceMesh.cpp
-    )
-    target_include_directories(surface_mesh_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(surface_mesh_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
-    add_test(NAME surface_mesh_tests COMMAND surface_mesh_tests)
-
     qt_add_executable(launcher_model_tests
         app/native/tests/tst_launchermodel.cpp
         app/native/LauncherModel.cpp
@@ -108,4 +121,19 @@ if(BUILD_TESTING AND NOT ANDROID)
     )
     target_link_libraries(launcher_model_tests PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
     add_test(NAME launcher_model_tests COMMAND launcher_model_tests)
+
+    qt_add_executable(owl_model_tests
+        app/native/tests/tst_owlmodel.cpp
+        app/native/OwlModel.cpp
+        app/native/OwlModel.h
+    )
+    qt_add_resources(owl_model_tests omaapp_widget_store_tests
+        PREFIX "/owl/widgets"
+        BASE app/widgets
+        FILES
+            app/widgets/clock.owl
+            app/widgets/canvas.owl
+    )
+    target_link_libraries(owl_model_tests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME owl_model_tests COMMAND owl_model_tests)
 endif()

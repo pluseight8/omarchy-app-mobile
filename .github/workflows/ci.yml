@@ -41,7 +41,7 @@ jobs:
 
       - name: Lint QML
         run: |
-          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml
+          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml app/qml/OwlWidgetView.qml app/qml/OwlNode.qml
 
       - name: Validate Omarchy plugin manifest
         run: python3 scripts/validate_plugin_manifest.py omarchy-plugin
@@ -351,10 +351,11 @@ jobs:
           python3 scripts/ci/android_pairing_smoke.py
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
             --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
-            --verify-style-surface
+            --verify-style-surface --require-gradient --gradient-angle 37
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme/density-240" \
             --baselines tests/visual_baselines/android-paired --screens style \
-            --expected-size 618 1338 --allow-missing-baseline --verify-style-surface
+            --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
+            --require-gradient --gradient-angle 37
 
       - name: Upload Android smoke screenshots
         if: always()

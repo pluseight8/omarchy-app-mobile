@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import OmaApp.Native 1.0
 
-HyprlandSurfaceMesh {
+HyprlandSurfaceItem {
     fillColor: Theme.surface
     borderStart: Theme.outline
     borderEnd: borderStart

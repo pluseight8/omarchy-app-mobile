@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import struct
 import sys
 import zlib
@@ -140,8 +141,10 @@ def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
     return changed, changed / max(1, total)
 
 
-def verify_style_surface_rendered(image: Path) -> None:
-    """Fail if the rounded Omarchy preview is transparent on its page."""
+def verify_style_surface_rendered(
+    image: Path, *, require_gradient: bool = False, gradient_angle: float = 45.0
+) -> None:
+    """Check that the GPU surface clips corners and renders its border."""
     width, height, channels, rows = decode_png(image)
     if width * 892 != height * 412 or width < 412 or height < 892:
         raise ValueError(
@@ -169,6 +172,44 @@ def verify_style_surface_rendered(image: Path) -> None:
             "HyprlandSurface preview border is missing: its top edge matches the page background"
         )
 
+    # The Omarchy preview occupies the same stable region on both supported CI
+    # densities. Sampling all four extreme corners catches square clipping and
+    # the diagonal cut-through that the old vertex mesh showed on some RHIs.
+    corners = ((22, 199), (389, 199), (22, 354), (389, 354))
+    for point in corners:
+        corner = rgb(point)
+        if sum(abs(channel - base) for channel, base in zip(corner, background)) > 24:
+            raise ValueError(
+                f"HyprlandSurface rounded clipping is missing at corner {point}: "
+                "the corner is filled instead of transparent"
+            )
+
+    if require_gradient:
+        # The fixture has a three-stop 37 degree gradient. Verify that its
+        # horizontal top edge changes color and that two points on the same
+        # gradient isocontour agree. This tests the continuous arbitrary-angle
+        # shader path instead of only checking the QML labels.
+        left_top = rgb((50, 200))
+        right_top = rgb((362, 200))
+        if sum(abs(left - right) for left, right in zip(left_top, right_top)) < 48:
+            raise ValueError(
+                "HyprlandSurface gradient is missing: the 37 degree top edge has no color change"
+            )
+
+        radians = gradient_angle * 3.141592653589793 / 180.0
+        sine = math.sin(radians)
+        if sine <= 0.0:
+            raise ValueError("The gradient angle must be between 0 and 360 degrees")
+        top_x = 22 + 184
+        top_y = 200
+        left_y = round(199 + 156 * (0.5 * (1.0 - sine) / sine))
+        top_mid = rgb((top_x, top_y))
+        left_match = rgb((23, left_y))
+        if sum(abs(left - right) for left, right in zip(top_mid, left_match)) > 30:
+            raise ValueError(
+                "HyprlandSurface gradient angle is inconsistent across the same color contour"
+            )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -179,6 +220,10 @@ def main() -> int:
                         help="which captured screens to compare")
     parser.add_argument("--verify-style-surface", action="store_true",
                         help="assert the Omarchy preview fill and border are actually rendered")
+    parser.add_argument("--require-gradient", action="store_true",
+                        help="also verify the synced fixture's arbitrary-angle gradient render")
+    parser.add_argument("--gradient-angle", type=float, default=37.0,
+                        help="gradient angle used by the paired-theme fixture (default: 37)")
     parser.add_argument("--expected-size", nargs=2, type=int, metavar=("WIDTH", "HEIGHT"),
                         default=(412, 892),
                         help="expected physical screenshot size (default: 412 892)")
@@ -197,7 +242,11 @@ def main() -> int:
     missing_baselines = []
     if args.verify_style_surface:
         try:
-            verify_style_surface_rendered(args.screenshots / "style.png")
+            verify_style_surface_rendered(
+                args.screenshots / "style.png",
+                require_gradient=args.require_gradient,
+                gradient_angle=args.gradient_angle,
+            )
             print("style surface probe: preview fill and border are visible")
         except (OSError, ValueError, zlib.error) as error:
             failures.append(str(error))

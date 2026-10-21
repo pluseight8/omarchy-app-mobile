@@ -60,7 +60,7 @@ public:
     Q_INVOKABLE bool setGestureEnabled(const QString &gestureId, bool enabled);
     Q_INVOKABLE QString exportLayout() const;
     Q_INVOKABLE bool importLayout(const QString &json);
-    Q_INVOKABLE bool copyLayoutBackup() const;
+    Q_INVOKABLE bool copyLayoutBackup(const QString &owlWidgetBackup = QString()) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE void launch(int row);
     Q_INVOKABLE bool launchPackage(const QString &packageName);

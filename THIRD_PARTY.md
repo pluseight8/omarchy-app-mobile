@@ -8,17 +8,20 @@ OmaApp acknowledges the original Omalauncher project by Simon Schubert:
 - License: MIT
 - Copyright notice in that project: Copyright (c) 2026 Simon Schubert and contributors
 
-No Omalauncher source file has been copied into this first prototype. The required acknowledgment is included in both README files. Any later ported source must retain its original notices.
+The Android APK includes the upstream OWL language compiler and expression evaluator from `owl/src/main/kotlin/dev/omalauncher/widgets/lang` at commit `96192005c8df113c9b720f750aed0bd51a3b3b49`. OmaApp uses this portable core to compile and render offline widgets; it does not include Omalauncher's PRoot/Linux guest or Compose UI.
+
+- Source: https://github.com/SimonSchubert/omalauncher/tree/96192005c8df113c9b720f750aed0bd51a3b3b49/owl
+- License: MIT
+- Copyright notice: Copyright (c) 2026 Simon Schubert and contributors
+- License text: `app/android/kotlin/dev/omalauncher/widgets/lang/LICENSE-MIT`
 
 ## Omarchy
 
-The app's initial fallback color values are adapted from Omarchy's shell Color.qml:
+OmaApp adapts the theme token and font-size behavior from Omarchy Shell's `Color.qml` and `Style.qml`. Its border treatment follows the `Border` and `BorderSurface` interface while using a Qt Quick scene-graph shader for Hyprland's per-pixel superellipse surface. The plugin bar reads `Style.font` from the installed Omarchy Shell. No Omarchy QML file is copied into the APK or plugin.
 
-- Source: https://github.com/omacom/omarchy/blob/quattro/shell/Commons/Color.qml
+- Source: https://github.com/omacom/omarchy/tree/quattro/shell
 - License: MIT
 - Copyright: Copyright (c) David Heinemeier Hansson
-
-No Omarchy QML component is vendored in this prototype. Preserve the MIT notice if QML code is later copied or adapted.
 
 ## Hyprland geometry
 
@@ -26,6 +29,7 @@ The superellipse and rounding edge model in shared/geometry follows the public H
 
 - Source: https://github.com/hyprwm/Hyprland/blob/main/src/render/shaders/glsl/rounding.glsl
 - Related border behavior: https://github.com/hyprwm/Hyprland/blob/main/src/render/shaders/glsl/border.glsl
+- Gradient conversion and projection: https://github.com/hyprwm/Hyprland/blob/main/src/render/shaders/glsl/gradient.glsl
 - Radius correction: https://github.com/hyprwm/Hyprland/blob/main/src/render/decorations/CHyprBorderDecoration.cpp
 - License: BSD 3-Clause
 - Copyright: Copyright (c) 2022-2026, vaxerski
@@ -42,7 +46,7 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-The Qt Quick surface mesh samples the exact Lp superellipse equation used by Hyprland for rounding powers 1–10, applies its outer-radius correction, and evaluates ten-stop OkLabA gradients at each mesh vertex. Qt Quick rasterizes the premultiplied-alpha vertex-color mesh on the selected GPU backend, with a one-physical-pixel antialias fringe. It does not reproduce compositor transforms or Hyprland's HDR color-management path.
+`HyprlandSurfaceItem` uses Qt Quick's QSGMaterialShader and QSB resources to evaluate the Hyprland Lp contour and OkLabA border gradient per fragment. This avoids mesh interpolation seams and supports Qt RHI translation for OpenGL ES, Vulkan, Metal and Direct3D. The antialias band scales with device pixel ratio. The implementation does not reproduce compositor transforms, per-window state or Hyprland HDR color management.
 
 ## Qt
 

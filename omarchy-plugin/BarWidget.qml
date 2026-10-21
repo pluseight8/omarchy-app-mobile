@@ -200,7 +200,8 @@ BarWidget {
                         Layout.fillWidth: true
                         text: qsTr("OmaApp")
                         color: Color.popups.text
-                        font.pixelSize: 18
+                        font.pixelSize: Style.fontPx(1.5)
+                        font.family: Style.font.family
                         font.weight: Font.DemiBold
                     }
                     Button {
@@ -270,7 +271,8 @@ BarWidget {
                     visible: root.pairingQrData.length > 0 && root.pendingRequestId.length === 0
                     text: qsTr("The QR code contains a temporary pairing secret. Approve only a device you can see.")
                     color: Color.popups.text
-                    font.pixelSize: 12
+                    font.pixelSize: Style.font.body
+                    font.family: Style.font.family
                     wrapMode: Text.WordWrap
                     horizontalAlignment: Text.AlignHCenter
                 }
@@ -335,7 +337,8 @@ BarWidget {
                     Layout.fillWidth: true
                     text: qsTr("Device permissions")
                     color: Color.popups.text
-                    font.pixelSize: 18
+                    font.pixelSize: Style.fontPx(1.5)
+                    font.family: Style.font.family
                     font.weight: Font.DemiBold
                 }
                 Button {

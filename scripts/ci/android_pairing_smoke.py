@@ -59,14 +59,17 @@ def main() -> int:
                     "foreground": "#d3c6aa",
                     "accent": "#a7c080",
                 },
-                "shell": {"spacing": {"scale": 1.0, "row-gap": 7, "panel-gap": 17}},
+                "shell": {
+                    "spacing": {"scale": 1.0, "row-gap": 7, "panel-gap": 17},
+                    "font": {"base-size": 14, "body": 13, "caption": 11},
+                },
             },
             "hyprland": {
                 "rounding": 13,
                 "roundingPower": 4.0,
                 "borderWidth": 2,
-                "activeBorder": "rgba(33ccffee) rgba(00ff99ee) rgba(ffcc88ee) 45deg",
-                "activeBorderAngle": 45,
+                "activeBorder": "rgba(33ccffee) rgba(00ff99ee) rgba(ffcc88ee) 37deg",
+                "activeBorderAngle": 37,
                 "inactiveBorder": "rgba(595959aa) 0deg",
                 "gapsIn": 5,
                 "gapsOut": 10,
@@ -294,11 +297,12 @@ def main() -> int:
             style_ui = dump_ui(f"{label}-style", output_dir)
             style_text = style_ui.read_text(encoding="utf-8")
             shape_samples = all(f"p={power}" in style_text for power in ("1.0", "2.0", "4.0"))
-            if ("Power 4.0" not in style_text or "45°" not in style_text
-                    or "3 stops" not in style_text or not shape_samples):
+            if ("Power 4.0" not in style_text or "37°" not in style_text
+                    or "3 stops" not in style_text or "14 px base font" not in style_text
+                    or not shape_samples):
                 raise RuntimeError(
-                    f"The {label} synced style screen did not expose rounding_power=4, the 45 degree "
-                    "angle, all three gradient stops, and the power 1/2/4 render samples."
+                    f"The {label} synced style screen did not expose rounding_power=4, the 37 degree "
+                    "angle, all three gradient stops, the synced font base size, and the power 1/2/4 render samples."
                 )
             screenshot = subprocess.run(
                 ["adb", "exec-out", "screencap", "-p"],
@@ -308,7 +312,9 @@ def main() -> int:
             image_path.write_bytes(screenshot)
             if len(screenshot) < 1024:
                 raise RuntimeError(f"Android returned an empty {label} synced-theme screenshot.")
-            verify_style_surface_rendered(image_path)
+            verify_style_surface_rendered(
+                image_path, require_gradient=True, gradient_angle=37.0
+            )
 
             width = subprocess.run(
                 ["adb", "shell", "wm", "size"], check=True, capture_output=True,

@@ -60,6 +60,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
+            runOwlRuntimeSmoke();
             if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
                 runLauncherShortcutSmoke(context);
                 result.putString("stage", "launcher_shortcuts_passed");
@@ -121,6 +122,65 @@ public final class PairingTestInstrumentation extends Instrumentation {
             sendStatus(2, result);
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+
+    private static void runOwlRuntimeSmoke() throws Exception {
+        String clockSource = "widget \"CI clock\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  source now = clock every 1s\n"
+                + "  size: 2x1\n"
+                + "  background: surface\n"
+                + "  Column {\n"
+                + "    Text { text: fmtTime(now, \"HH:mm\"); style: huge; color: accent }\n"
+                + "    Canvas { width: 96; height: 32; circle(width / 2, height / 2, 6, fill: accent) }\n"
+                + "  }\n"
+                + "}\n";
+        JSONObject theme = new JSONObject()
+                .put("foreground", "#cacccc")
+                .put("background", "#101315")
+                .put("accent", "#a7c080")
+                .put("surface", "#202326");
+        JSONObject rendered = new JSONObject(OwlBridge.render(clockSource, 320.0, 156.0,
+                theme.toString()));
+        if (rendered.has("error") || !"CI clock".equals(rendered.optString("name"))) {
+            throw new IllegalStateException("The embedded OWL clock did not compile and render: "
+                    + rendered.optString("error"));
+        }
+        JSONArray nodes = rendered.optJSONArray("nodes");
+        if (nodes == null || nodes.length() != 1
+                || !"Column".equals(nodes.optJSONObject(0).optString("type"))) {
+            throw new IllegalStateException("OWL layout nodes were not returned to the launcher.");
+        }
+        JSONArray children = nodes.optJSONObject(0).optJSONArray("children");
+        if (children == null || children.length() != 2
+                || !"Text".equals(children.optJSONObject(0).optString("type"))
+                || !"Canvas".equals(children.optJSONObject(1).optString("type"))) {
+            throw new IllegalStateException("OWL text and canvas nodes were not rendered.");
+        }
+        JSONArray drawing = children.optJSONObject(1).optJSONArray("children");
+        if (drawing == null || drawing.length() != 1
+                || !"circle".equals(drawing.optJSONObject(0).optString("op"))) {
+            throw new IllegalStateException("OWL canvas drawing commands were not evaluated.");
+        }
+        JSONObject unsafe = new JSONObject(OwlBridge.render(
+                "widget \"network\" { source data = http(\"https://example.invalid\") every 30s "
+                        + "Text { text: data } }", 320.0, 156.0, theme.toString()));
+        if (!unsafe.has("error")) {
+            throw new IllegalStateException("The offline OWL runtime accepted a network source.");
+        }
+        String boxSource = "widget \"CI box\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  size: 2x1\n"
+                + "  Box { align: bottomEnd; width: 64; height: 32; Text { text: \"Overlay\" } }\n"
+                + "}\n";
+        JSONObject box = new JSONObject(OwlBridge.render(boxSource, 320.0, 156.0, theme.toString()));
+        JSONArray boxNodes = box.optJSONArray("nodes");
+        if (box.has("error") || boxNodes == null || boxNodes.length() != 1
+                || !"Box".equals(boxNodes.optJSONObject(0).optString("type"))
+                || !"bottomEnd".equals(boxNodes.optJSONObject(0).optJSONObject("props").optString("align"))) {
+            throw new IllegalStateException("OWL Box alignment and overlay layout did not compile.");
+        }
+        Log.i(TAG, "Embedded OWL compiler, offline clock, canvas, Box layout, and network rejection passed.");
     }
 
     private JSONObject awaitTheme(Context context, String expectedTheme,
@@ -207,9 +267,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
         JSONObject colors = theme.optJSONObject("colors");
         JSONObject shell = theme.optJSONObject("shell");
         JSONObject spacing = shell == null ? null : shell.optJSONObject("spacing");
+        JSONObject font = shell == null ? null : shell.optJSONObject("font");
         JSONObject geometry = snapshot.optJSONObject("hyprland");
         if (colors == null || !"#a7c080".equals(colors.optString("accent"))
                 || spacing == null || spacing.optInt("row-gap", -1) != 7
+                || font == null || font.optInt("base-size", -1) != 14
+                || font.optInt("body", -1) != 13 || font.optInt("caption", -1) != 11
                 || spacing.optInt("panel-gap", -1) != 17
                 || geometry == null || geometry.optInt("rounding", -1) != 13
                 || Math.abs(geometry.optDouble("roundingPower", -1) - 4.0) > 0.001

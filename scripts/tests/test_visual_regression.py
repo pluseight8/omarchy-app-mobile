@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 import zlib
+import math
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
@@ -31,6 +32,48 @@ def png_file(path: Path, pixels: tuple[tuple[tuple[int, int, int, int], ...], ..
         b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
         + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
     )
+
+
+def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = None,
+                      square_corners: bool = False) -> None:
+    width = round(412 * scale)
+    height = round(892 * scale)
+    background = (16, 19, 21, 255)
+    fill = (12, 14, 16, 255)
+    rows = [[background] * width for _ in range(height)]
+    left, top, card_width, card_height, radius = 22.0, 199.0, 368.0, 156.0, 24.0
+    right, bottom = left + card_width, top + card_height
+    sine = math.sin(math.radians(angle or 45.0))
+
+    for y in range(height):
+        logical_y = (y + 0.5) / scale
+        if logical_y < top or logical_y >= bottom:
+            continue
+        for x in range(width):
+            logical_x = (x + 0.5) / scale
+            if logical_x < left or logical_x >= right:
+                continue
+            if not square_corners:
+                nearest_x = min(max(logical_x, left + radius), right - radius)
+                nearest_y = min(max(logical_y, top + radius), bottom - radius)
+                if ((logical_x - nearest_x) ** 2 + (logical_y - nearest_y) ** 2
+                        > radius ** 2):
+                    continue
+            edge_distance = min(logical_x - left, right - logical_x,
+                                logical_y - top, bottom - logical_y)
+            if edge_distance < 2.0:
+                if angle is None:
+                    color = (202, 204, 204, 255)
+                else:
+                    u = (logical_x - left) / card_width
+                    v = (logical_y - top) / card_height
+                    progress = v * sine + u * (1.0 - sine)
+                    tone = round(40 + 200 * progress)
+                    color = (tone, tone, tone, 255)
+                rows[y][x] = color
+            else:
+                rows[y][x] = fill
+    png_file(path, tuple(tuple(row) for row in rows))
 
 
 class VisualRegressionTests(unittest.TestCase):
@@ -146,15 +189,32 @@ class VisualRegressionTests(unittest.TestCase):
     def test_style_probe_requires_visible_surface_fill_and_border(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / "style.png"
-            rows = [[(16, 19, 21, 255)] * 412 for _ in range(892)]
-            for y in range(200, 355):
-                for x in range(22, 390):
-                    rows[y][x] = (12, 14, 16, 255)
-            for x in range(22, 390):
-                rows[199][x] = (202, 204, 204, 255)
-            png_file(image, tuple(tuple(row) for row in rows))
+            style_probe_image(image)
 
             verify_style_surface_rendered(image)
+
+    def test_style_probe_rejects_unrounded_corner_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style-square.png"
+            style_probe_image(image, square_corners=True)
+
+            with self.assertRaisesRegex(ValueError, "rounded clipping is missing"):
+                verify_style_surface_rendered(image)
+
+    def test_paired_style_probe_checks_arbitrary_gradient_direction(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style-gradient.png"
+            style_probe_image(image, angle=37.0)
+
+            verify_style_surface_rendered(image, require_gradient=True, gradient_angle=37.0)
+
+    def test_paired_style_probe_rejects_a_flat_gradient(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style-flat.png"
+            style_probe_image(image)
+
+            with self.assertRaisesRegex(ValueError, "gradient is missing"):
+                verify_style_surface_rendered(image, require_gradient=True, gradient_angle=37.0)
 
     def test_style_probe_rejects_transparent_surface(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -168,16 +228,7 @@ class VisualRegressionTests(unittest.TestCase):
     def test_style_probe_supports_high_density_capture(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / "style.png"
-            background = (16, 19, 21, 255)
-            fill = (12, 14, 16, 255)
-            border = (202, 204, 204, 255)
-            rows = [[background] * 618 for _ in range(1338)]
-            for y in range(300, 532):
-                for x in range(33, 585):
-                    rows[y][x] = fill
-            for x in range(33, 585):
-                rows[299][x] = border
-            png_file(image, tuple(tuple(row) for row in rows))
+            style_probe_image(image, scale=1.5)
 
             verify_style_surface_rendered(image)
 

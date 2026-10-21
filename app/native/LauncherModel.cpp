@@ -17,7 +17,7 @@ namespace {
 constexpr qsizetype maximumFolders = 24;
 constexpr qsizetype maximumFolderItems = 128;
 constexpr int maximumHomePages = 5;
-constexpr qsizetype maximumBackupBytes = 64 * 1024;
+constexpr qsizetype maximumBackupBytes = 2 * 1024 * 1024;
 constexpr qsizetype maximumFavoriteApps = 512;
 const QStringList homeWidgetIds{QStringLiteral("clock"), QStringLiteral("computer"),
                                 QStringLiteral("media")};
@@ -549,12 +549,22 @@ bool LauncherModel::importLayout(const QString &json)
     return true;
 }
 
-bool LauncherModel::copyLayoutBackup() const
+bool LauncherModel::copyLayoutBackup(const QString &owlWidgetBackup) const
 {
     QClipboard *clipboard = QGuiApplication::clipboard();
     if (!clipboard)
         return false;
-    clipboard->setText(exportLayout(), QClipboard::Clipboard);
+    QJsonObject payload = QJsonDocument::fromJson(exportLayout().toUtf8()).object();
+    if (!owlWidgetBackup.isEmpty()) {
+        const QJsonDocument widgetDocument = QJsonDocument::fromJson(owlWidgetBackup.toUtf8());
+        if (!widgetDocument.isObject())
+            return false;
+        payload.insert(QStringLiteral("owlWidgets"), widgetDocument.object());
+    }
+    const QString backup = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    if (backup.toUtf8().size() > maximumBackupBytes)
+        return false;
+    clipboard->setText(backup, QClipboard::Clipboard);
     return true;
 }
 

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "HyprlandSurfaceMesh.h"
-
 #include <QColor>
 #include <QQuickItem>
 #include <QVariantList>
@@ -51,8 +49,6 @@ protected:
     QSGNode *updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *) override;
 
 private:
-    HyprlandSurfaceMesh::Parameters parameters() const;
-
     QColor m_fillColor = Qt::transparent;
     QColor m_borderStart = Qt::transparent;
     QColor m_borderEnd = Qt::transparent;

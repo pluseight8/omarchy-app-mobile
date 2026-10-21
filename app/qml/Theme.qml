@@ -23,7 +23,32 @@ QtObject {
     property real spacingGroup: 16
     property real spacingSection: 24
     property real spacingScale: 1
+    property bool spacingScaleWithFont: true
     property real fontBaseSize: 12
+    property var fontOverrides: ({})
+    property string fontFamily: "monospace"
+
+    function space(designSize) {
+        const fontScale = spacingScaleWithFont ? fontBaseSize / 12 : 1
+        return Math.max(0, Number(designSize) * spacingScale * fontScale)
+    }
+
+    function fontSize(designSize) {
+        const tokenBySize = ({
+            "10": "caption",
+            "11": "body-small",
+            "12": "body",
+            "13": "subtitle",
+            "14": "title",
+            "16": "heading",
+            "18": "icon-large"
+        })
+        const token = tokenBySize[String(designSize)]
+        const override = token ? Number(fontOverrides[token]) : NaN
+        if (Number.isFinite(override) && override > 0)
+            return Math.round(override)
+        return Math.max(1, Math.round(Number(designSize) * fontBaseSize / 12))
+    }
     property real controlFillAlpha: 0.04
     property real selectedFillAlpha: 0.18
     property real launcherBackgroundAlpha: 1

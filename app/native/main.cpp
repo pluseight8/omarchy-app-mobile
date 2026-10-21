@@ -2,6 +2,7 @@
 #include "PairingModel.h"
 #include "shared/geometry/HyprlandGeometry.h"
 #include "shared/geometry/HyprlandSurfaceItem.h"
+#include "OwlModel.h"
 
 #include <QDebug>
 #include <QGuiApplication>
@@ -29,7 +30,8 @@ int main(int argc, char *argv[])
     HyprlandGeometry geometry;
     qmlRegisterType<LauncherModel>("OmaApp.Native", 1, 0, "LauncherModel");
     qmlRegisterType<PairingModel>("OmaApp.Native", 1, 0, "PairingModel");
-    qmlRegisterType<HyprlandSurfaceItem>("OmaApp.Native", 1, 0, "HyprlandSurfaceMesh");
+    qmlRegisterType<OwlModel>("OmaApp.Native", 1, 0, "OwlModel");
+    qmlRegisterType<HyprlandSurfaceItem>("OmaApp.Native", 1, 0, "HyprlandSurfaceItem");
     qmlRegisterSingletonInstance("OmaApp.Native", 1, 0, "Geometry", &geometry);
 
     QQmlApplicationEngine engine;
