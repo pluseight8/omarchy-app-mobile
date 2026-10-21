@@ -4,7 +4,7 @@
 
 ![OmaApp project banner](assets/hero.svg)
 
-OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick. The app and plugin now have a first working-source implementation of QR pairing and live theme sync; this slice still needs emulator and real-device verification.
+OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick. The launcher and secure theme-pairing flow now pass GitHub Actions builds and an Android x86_64 emulator smoke test; physical-device verification remains.
 
 ## Current state
 
@@ -14,10 +14,10 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
 - Remote commands, clipboard, file sharing, media, notifications, workspace control, terminal, and desktop streaming are not implemented.
-- CI builds an arm64 debug APK and includes x86_64 emulator coverage for install, launch, app enumeration, pin persistence, app launch, and HOME selection. Folder UI and persistence are being added to the emulator smoke. The debug artifact is separate from a signed release; no signed release has been published.
+- CI builds an arm64 debug APK and exercises install, HOME selection, app enumeration and launch, pin and folder persistence, TLS pairing, theme and wallpaper sync, reconnect, and revocation on an x86_64 emulator ([run 44 passed](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557)). The debug artifact is separate from a signed release; no signed release has been published.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-This workspace has Qt 6.11.2 desktop tools, `qmllint`, and `adb`, but no CMake, JDK, Android SDK, emulator, or attached Android device. GitHub Actions builds an arm64 debug APK; the emulator smoke job is the installation/runtime check.
+This workspace has Qt 6.11.2 desktop tools, `qmllint`, and `adb`, but no CMake, JDK, Android SDK, emulator, or attached Android device. GitHub Actions builds the arm64 debug APK and runs the installation/runtime smoke test.
 
 ## Build the desktop preview
 

@@ -12,8 +12,8 @@
 - [x] Add lazy-loaded Android app icons, persistent pinned launcher activities, and refresh control; local C++ compile, QML lint/format, and plugin tests pass.
 - [x] Review emulator run `39490160786`: APK installation, HOME selection, 8-app enumeration, icon caching, pin persistence across process restart, app launch, and return to HOME all passed before pairing smoke.
 - [x] Add persisted app folders with create, rename, add/remove installed apps, and delete actions; local Qt model tests and QML lint pass.
-- [ ] Verify folder creation, app membership, and folder persistence in the Android emulator smoke job.
-- [ ] Verify the CI Android pairing harness completes TLS pairing, theme/geometry/wallpaper sync, reconnect, and revocation.
+- [x] Verify folder creation, app membership, and persistence after restart in the [Android emulator smoke job](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
+- [x] Verify CI TLS pairing, theme/geometry/wallpaper sync, live update, reconnect, and revocation in [emulator run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
 - [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
 
 ## Secure Omarchy pairing and live theme sync
@@ -25,7 +25,7 @@
 - [x] Sync supported colors, active border gradient, wallpaper, border width, rounding, rounding power, and spacing; retain the last snapshot offline.
 - [x] Add HTTPS protocol tests for approval, rejection, expiry, reconnect, limits, theme parsing, authentication, and revocation.
 - [x] Run all available local repository checks after this change; Python tests, plugin validation, shell syntax, QML lint, Python compilation, and whitespace checks pass.
-- [ ] Verify current desktop and Android jobs in GitHub Actions.
+- [x] Verify desktop, arm64 build, and x86_64 Android emulator jobs in [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
 - [ ] Test real phone ↔ Omarchy exchange and observe theme refresh after changing a theme.
 
 ## Remaining product work
@@ -37,5 +37,5 @@
 
 ## Environment limits at this checkpoint
 
-- This workspace has no CMake, JDK, Android SDK, Android emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed.
+- This workspace has no CMake, JDK, Android SDK, emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed. GitHub Actions run 44 passed the emulator smoke test.
 - Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.

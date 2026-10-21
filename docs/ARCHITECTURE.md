@@ -26,6 +26,6 @@ Launcher favorites and folders are stored locally through `QSettings`. Folder me
 
 ## Not yet verified or implemented
 
-The source and protocol tests do not establish that pairing works on a real Omarchy computer and Android device. This workspace has `adb` and Qt desktop tools but no CMake, JDK, Android SDK, emulator, or attached phone; GrapheneOS has not been tested. GitHub Actions provides the APK build and emulator smoke test.
+[GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557) passed the arm64 APK build and x86_64 emulator smoke, including pairing, theme and wallpaper sync, reconnect, and revocation. This verifies the Android client against the CI plugin fixture; this workspace has no CMake, JDK, Android SDK, emulator, or attached phone, and GrapheneOS has not been tested.
 
 There is no remote command, clipboard, file, notification, media, workspace, terminal, desktop-streaming, or plugin-management endpoint. These features need their own permission model, tests, and threat review before implementation.

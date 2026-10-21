@@ -15,7 +15,7 @@ The Android launcher and arm64 debug packaging already exist. Direct QR pairing 
 - The service reads the active Omarchy theme files and Hyprland options. Android polls every four seconds and caches the last successful theme and wallpaper.
 - The protocol has no remote command, clipboard, file-transfer, notification, media, terminal, or desktop-control endpoint.
 
-The pairing implementation is committed, and focused Python protocol tests pass locally. Run `39490160786` passed the desktop and arm64 jobs and confirmed Android install, app enumeration, icon caching, pin persistence, app launch, and HOME return. Its pairing harness failed before contacting the plugin because the Android shell split a theme argument containing spaces. The next run removes spaces from its test theme names and adds folder UI/persistence coverage. This machine has `adb` but no CMake, Android SDK, emulator, or attached device, so real pairing and live theme refresh still need an Android phone on the Omarchy network.
+The pairing implementation is committed, and focused Python protocol tests pass locally. [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557) passed desktop checks, the arm64 build, and the x86_64 emulator smoke. It verified app install and HOME selection, app enumeration and launch, persisted pins and folders, TLS-pinned pairing, host approval, theme colors/spacing/geometry/wallpaper, live theme update, reconnect, and token revocation. This machine has `adb` but no CMake, Android SDK, emulator, or attached device, so a physical phone-to-Omarchy session and GrapheneOS compatibility remain unverified.
 
 ## Work sequence
 
@@ -25,17 +25,18 @@ The pairing implementation is committed, and focused Python protocol tests pass 
 - [x] Implement current Omarchy color/shell reads, Hyprland geometry reads, wallpaper transfer, four-second refresh, and offline cache.
 - [x] Update plugin install checks, security documentation, and current task status.
 - [x] Run Python protocol tests, shell syntax, manifest validation, and QML lint locally.
-- [ ] Build the arm64 Android app in CI and fix Java/QML/C++ issues found there.
+- [x] Build the arm64 Android app in CI and fix Java/QML/C++ issues found there.
 - [x] Add an x86_64 emulator smoke test for install, launch, app enumeration, app launch, and HOME role selection.
 - [x] Review the emulator launcher result: install, enumeration, HOME, icons, persisted pin, app launch, and HOME return all passed in CI.
-- [ ] Complete the CI pairing/theme-sync/reconnect/revoke smoke and a phone-to-computer pairing on an Omarchy session.
+- [x] Complete the CI pairing/theme-sync/reconnect/revoke smoke in the Android emulator.
+- [ ] Verify phone-to-computer pairing and theme refresh on a physical Android device connected to an Omarchy session.
 
 ### 2. Improve daily Android launcher use
 
 - [x] Add cached Android app icons, persistent pinned launcher activities, and refresh control.
 - [x] Add persisted app folders with create, rename, app membership, and delete operations.
 - [x] Verify icon loading and pinned-app persistence in emulator run `39490160786`.
-- [ ] Verify app-folder UI and persistence in the Android emulator smoke job.
+- [x] Verify app-folder UI and persistence in the [Android emulator smoke job](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
 - [ ] Review the launcher grid and search on compact and large Android screens.
 - [ ] Add home pages, configurable gestures, settings, shortcuts, and compatible Omalauncher features, preserving MIT notices.
 - [ ] Port compatible OWL widgets and their editor after Android lifecycle and permission needs are defined.

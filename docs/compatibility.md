@@ -6,7 +6,7 @@ The source Omalauncher repository is an Android application written in Kotlin an
 
 ## Qt and Quickshell
 
-Qt 6.11.2 desktop development tools, QtTest, `qmllint`, and `adb` are available in this workspace. CMake, a JDK, Android SDK, and emulator are not installed here, so this machine cannot build or install the APK locally. GitHub Actions builds the debug arm64 APK and runs Android emulator checks. The latest emulator run confirmed app listing, launching, icon caching, HOME selection, and pinned-app persistence; its pairing harness exposed an argument-quoting issue that is being fixed. A physical phone is not connected.
+Qt 6.11.2 desktop development tools, QtTest, `qmllint`, and `adb` are available in this workspace. CMake, a JDK, Android SDK, and emulator are not installed here, so this machine cannot build or install the APK locally. [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557) passed desktop checks, the debug arm64 build, and x86_64 emulator coverage for launcher use, folder persistence, TLS pairing, theme and wallpaper sync, reconnect, and revocation. A physical phone is not connected, so GrapheneOS and device-to-Omarchy behavior remain unverified.
 
 The current Quickshell build documentation requires Linux desktop dependencies such as libdrm and Wayland, and the project relies on private Qt APIs tied to a specific Qt build. Its current CMake configuration enables Linux desktop integrations and contains no Android build path. That makes the complete Quickshell executable a poor candidate for inclusion in an Android APK. Qt Quick remains a supported Android rendering host; portable QML style logic can be adapted, while desktop shell services stay in the Omarchy plugin.
 
