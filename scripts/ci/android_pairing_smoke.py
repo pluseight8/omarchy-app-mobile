@@ -18,6 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from android_accessibility_dump import dump_accessibility_xml
+from check_visual_regression import verify_style_surface_rendered
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -307,6 +308,7 @@ def main() -> int:
             image_path.write_bytes(screenshot)
             if len(screenshot) < 1024:
                 raise RuntimeError(f"Android returned an empty {label} synced-theme screenshot.")
+            verify_style_surface_rendered(image_path)
 
             width = subprocess.run(
                 ["adb", "shell", "wm", "size"], check=True, capture_output=True,

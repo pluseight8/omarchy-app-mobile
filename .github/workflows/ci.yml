@@ -367,10 +367,11 @@ jobs:
           adb shell pm clear app.omaapp
           python3 scripts/ci/android_pairing_smoke.py
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
-            --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline
+            --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
+            --verify-style-surface
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme/density-240" \
             --baselines tests/visual_baselines/android-paired --screens style \
-            --expected-size 618 1338 --allow-missing-baseline
+            --expected-size 618 1338 --allow-missing-baseline --verify-style-surface
 
       - name: Upload Android smoke screenshots
         if: always()

@@ -165,6 +165,22 @@ class VisualRegressionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "interior is missing"):
                 verify_style_surface_rendered(image)
 
+    def test_style_probe_supports_high_density_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "style.png"
+            background = (16, 19, 21, 255)
+            fill = (12, 14, 16, 255)
+            border = (202, 204, 204, 255)
+            rows = [[background] * 618 for _ in range(1338)]
+            for y in range(300, 532):
+                for x in range(33, 585):
+                    rows[y][x] = fill
+            for x in range(33, 585):
+                rows[299][x] = border
+            png_file(image, tuple(tuple(row) for row in rows))
+
+            verify_style_surface_rendered(image)
+
 
 if __name__ == "__main__":
     unittest.main()

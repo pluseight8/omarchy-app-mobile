@@ -57,6 +57,9 @@ Item {
         property real roundingPower: root.roundingPower
         property real borderWidth: root.safeBorderWidth * root.pixelRatio
 
+        // Compile both stages from the same GLSL target set and share their
+        // uniform block layout across graphics backends.
+        vertexShader: "qrc:/shaders/hyprland_rounded.vert.qsb"
         fragmentShader: "qrc:/shaders/hyprland_rounded.frag.qsb"
 
         onStatusChanged: {

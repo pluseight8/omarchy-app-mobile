@@ -143,13 +143,15 @@ def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
 def verify_style_surface_rendered(image: Path) -> None:
     """Fail if the rounded Omarchy preview is transparent on its page."""
     width, height, channels, rows = decode_png(image)
-    if (width, height) != (412, 892):
+    if width * 892 != height * 412 or width < 412 or height < 892:
         raise ValueError(
-            f"style shader probe expects 412x892 pixels, got {width}x{height}"
+            f"style shader probe expects a 412x892 logical viewport, got {width}x{height}"
         )
 
     def rgb(point: tuple[int, int]) -> tuple[int, int, int]:
         x, y = point
+        x = round((x + 0.5) * width / 412 - 0.5)
+        y = round((y + 0.5) * height / 892 - 0.5)
         start = x * channels
         return tuple(rows[y][start:start + 3])
 

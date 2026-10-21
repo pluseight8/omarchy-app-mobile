@@ -54,6 +54,7 @@ qt_add_shaders(omaapp omaapp_rounding_shaders
     PREFIX "/shaders"
     BASE app/qml/shaders
     FILES
+        app/qml/shaders/hyprland_rounded.vert
         app/qml/shaders/hyprland_rounded.frag
 )
 
