@@ -27,6 +27,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         super.onCreate(arguments);
         testArguments = arguments == null ? new Bundle() : new Bundle(arguments);
         Log.i(TAG, "Instrumentation arguments received.");
+        // Instrumentation invokes onStart on its test thread only after this call.
         start();
     }
 
@@ -62,7 +63,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 report("theme_updated", updated);
             }
 
-            if (testArguments.getBoolean("revoke", false)) {
+            if (Boolean.parseBoolean(testArguments.getString("revoke"))) {
                 PairingBridge.revoke(context);
                 awaitRevocation(context);
                 result.putString("stage", "revoked");
