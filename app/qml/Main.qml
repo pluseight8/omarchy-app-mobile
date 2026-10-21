@@ -1384,6 +1384,8 @@ ApplicationWindow {
             }
 
             ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 spacing: Math.min(Theme.spacingSection, 16)
 
                 ColumnLayout {
