@@ -3,7 +3,6 @@
 #include "shared/geometry/HyprlandGeometry.h"
 
 #include <QGuiApplication>
-#include <QQmlContext>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QtQml/qqml.h>
@@ -21,11 +20,6 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("OmaApp.Native", 1, 0, "Geometry", &geometry);
 
     QQmlApplicationEngine engine;
-#ifdef Q_OS_ANDROID
-    engine.rootContext()->setContextProperty("OmaAppIsAndroid", true);
-#else
-    engine.rootContext()->setContextProperty("OmaAppIsAndroid", false);
-#endif
     QObject::connect(
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,

@@ -49,9 +49,11 @@ The pairing implementation is committed, and focused Python protocol tests pass 
 
 ### 3. Improve Omarchy visual parity
 
-- [x] Use Hyprland's superellipse rounding equation and smoothing band in the Qt shader.
-- [x] Apply the active-border gradient angle and Hyprland rounding power range to the preview shader.
-- [ ] Compare the shader against current Hyprland rendering for gradient stops, transforms, border behavior, and color management.
+- [x] Implement and unit-test the Hyprland superellipse geometry reference in C++.
+- [x] Synchronize Hyprland rounding, rounding_power, and border-gradient values to Android.
+- [x] Replace the Android ShaderEffect surface after CI screenshots exposed diagonal artifacts; use native Qt Quick rectangles.
+- [ ] Render the C++ superellipse path on Android without shader artifacts and restore arbitrary border-gradient angles.
+- [ ] Compare Android and Omarchy surfaces for gradient stops, transforms, border behavior, and color management.
 - [ ] Review QML components and portable style logic for reuse from Omarchy shell; do not port Quickshell's Linux compositor runtime into Android.
 
 ### 4. Add optional connection features

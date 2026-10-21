@@ -9,7 +9,7 @@ Android APK
   ├── Java LauncherBridge ── Android PackageManager / app launch
   ├── Java QR scanner ── CameraX + bundled ML Kit QR model
   ├── Java PairingBridge ── TLS certificate pin / Android Keystore token
-  └── Qt ShaderEffect ── Hyprland-derived rounded surfaces and border gradient
+  └── native Qt Quick rounded surfaces and Omarchy border colors
 
 Omarchy plugin
   ├── Quickshell bar widget ── QR, device approval, revocation, independent permissions
@@ -22,7 +22,7 @@ The theme path reads Omarchy's active `colors.toml`, `shell.toml`, and backgroun
 
 Optional features each have a device-scoped grant, disabled by default: two-way text clipboard, receive/send files, MPRIS controls, system metrics, Hyprland workspace switching, and explicitly configured user commands. Clipboard transfer is user-initiated from the foreground app. Files are limited to 100 MiB and use Android's system document picker; the helper confines PC downloads to `~/Downloads/OmaApp`. MPRIS actions are allowlisted; workspace IDs are validated; configured commands use an executable and argument vector with a timeout and never pass through a shell.
 
-The Android app is Qt Quick, not a port of the Quickshell executable. Quickshell and Omarchy shell components have Linux/Wayland integration; the plugin runs inside Quickshell and the Android app reuses compatible visual behavior. No Quickshell binary/library is bundled in the APK.
+The Android app is Qt Quick, not a port of the Quickshell executable. Quickshell and Omarchy shell components have Linux/Wayland integration; the plugin runs inside Quickshell and the Android app reuses compatible visual behavior. Android surfaces currently use Qt's native rounded rectangles and two-axis border gradients. The custom superellipse shader is disabled after Android emulator screenshots showed diagonal rendering artifacts; matching arbitrary Hyprland rounding powers and border-gradient angles remains open work. No Quickshell binary/library is bundled in the APK.
 
 Launcher favorites and folders are stored locally through `QSettings`. Folder membership references Android launcher activities by package and activity name, so an unavailable app stays out of the folder view until it is installed again. Folder edits are bounded, validated, and independent of the Omarchy pairing connection.
 

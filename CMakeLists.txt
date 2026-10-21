@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 qt_standard_project_setup(REQUIRES 6.10)
 
 qt_add_executable(omaapp
@@ -32,15 +32,6 @@ qt_add_qml_module(omaapp
         app/qml/Main.qml
         app/qml/Theme.qml
         app/qml/HyprlandSurface.qml
-)
-
-# Qt 6's cross-API shader pipeline turns Vulkan-style GLSL into the QSB
-# package consumed by OpenGL, Vulkan, Metal, and Direct3D scene graph backends.
-qt_add_shaders(omaapp omaapp_rounding_shaders
-    PREFIX "/shaders"
-    BASE app/qml/shaders
-    FILES
-        app/qml/shaders/hyprland_rounded.frag
 )
 
 target_link_libraries(omaapp PRIVATE
