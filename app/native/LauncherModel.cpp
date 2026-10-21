@@ -14,6 +14,9 @@
 namespace {
 constexpr qsizetype maximumFolders = 24;
 constexpr qsizetype maximumFolderItems = 128;
+constexpr int maximumHomePages = 5;
+const QStringList homeWidgetIds{QStringLiteral("clock"), QStringLiteral("computer"),
+                                QStringLiteral("media")};
 
 QString favoriteKey(const QString &packageName, const QString &activityName)
 {
@@ -48,6 +51,24 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
     QSettings settings;
     m_favoritePackages = settings.value(QStringLiteral("launcher/favorites")).toStringList();
     m_gridColumns = qBound(3, settings.value(QStringLiteral("launcher/gridColumns"), 4).toInt(), 5);
+    m_homePageCount = qBound(1, settings.value(QStringLiteral("launcher/homePageCount"), 1).toInt(),
+                             maximumHomePages);
+    m_favoritePages = settings.value(QStringLiteral("launcher/favoritePages")).toMap();
+    for (auto it = m_favoritePages.begin(); it != m_favoritePages.end();) {
+        const int page = it.value().toInt();
+        if (!m_favoritePackages.contains(it.key()) || page < 0 || page >= m_homePageCount)
+            it = m_favoritePages.erase(it);
+        else
+            ++it;
+    }
+    m_homeWidgets = {{QStringLiteral("clock"), true}, {QStringLiteral("computer"), true},
+                     {QStringLiteral("media"), true}};
+    const QVariantMap savedWidgets = settings.value(QStringLiteral("launcher/homeWidgets")).toMap();
+    for (const QString &widgetId : homeWidgetIds) {
+        const auto saved = savedWidgets.constFind(widgetId);
+        if (saved != savedWidgets.cend() && saved.value().metaType().id() == QMetaType::Bool)
+            m_homeWidgets.insert(widgetId, saved.value().toBool());
+    }
     loadFolders();
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
@@ -151,6 +172,16 @@ int LauncherModel::gridColumns() const
     return m_gridColumns;
 }
 
+int LauncherModel::homePageCount() const
+{
+    return m_homePageCount;
+}
+
+QVariantMap LauncherModel::homeWidgets() const
+{
+    return m_homeWidgets;
+}
+
 void LauncherModel::setGridColumns(int columns)
 {
     const int boundedColumns = qBound(3, columns, 5);
@@ -163,6 +194,75 @@ void LauncherModel::setGridColumns(int columns)
     if (settings.status() != QSettings::NoError)
         qWarning() << "OmaApp: failed to save launcher grid columns" << settings.status();
     emit gridColumnsChanged();
+}
+
+void LauncherModel::setHomePageCount(int count)
+{
+    const int boundedCount = qBound(1, count, maximumHomePages);
+    if (m_homePageCount == boundedCount)
+        return;
+    m_homePageCount = boundedCount;
+    for (auto it = m_favoritePages.begin(); it != m_favoritePages.end(); ++it)
+        it.value() = qBound(0, it.value().toInt(), m_homePageCount - 1);
+
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/homePageCount"), m_homePageCount);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save home page count" << settings.status();
+    saveFavoritePages();
+    emit homePagesChanged();
+}
+
+QVariantList LauncherModel::homePageApps(int page) const
+{
+    if (page < 0 || page >= m_homePageCount)
+        return {};
+    QVariantList result;
+    for (const QString &key : m_favoritePackages) {
+        if (m_favoritePages.value(key, 0).toInt() != page)
+            continue;
+        const auto entry = std::find_if(m_entries.cbegin(), m_entries.cend(), [&key](const Entry &item) {
+            return favoriteKey(item.packageName, item.activityName) == key;
+        });
+        if (entry == m_entries.cend())
+            continue;
+        result.append(QVariantMap{
+            {QStringLiteral("name"), entry->name},
+            {QStringLiteral("packageName"), entry->packageName},
+            {QStringLiteral("activityName"), entry->activityName},
+            {QStringLiteral("iconUrl"), launcherIconUrl(*entry)},
+        });
+    }
+    return result;
+}
+
+bool LauncherModel::setFavoritePage(const QString &packageName, const QString &activityName, int page)
+{
+    if (page < 0 || page >= m_homePageCount || !validLauncherTarget(packageName, activityName))
+        return false;
+    const QString key = favoriteKey(packageName, activityName);
+    if (!m_favoritePackages.contains(key))
+        return false;
+    if (m_favoritePages.value(key, 0).toInt() == page)
+        return true;
+    m_favoritePages.insert(key, page);
+    saveFavoritePages();
+    emit homePagesChanged();
+    return true;
+}
+
+void LauncherModel::setHomeWidgetEnabled(const QString &widgetId, bool enabled)
+{
+    if (!homeWidgetIds.contains(widgetId) || m_homeWidgets.value(widgetId).toBool() == enabled)
+        return;
+    m_homeWidgets.insert(widgetId, enabled);
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/homeWidgets"), m_homeWidgets);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save home widgets" << settings.status();
+    emit homeWidgetsChanged();
 }
 
 QVariantList LauncherModel::availableApps(const QString &folderId, const QString &filter) const
@@ -371,6 +471,7 @@ void LauncherModel::refresh()
 #endif
     emit countChanged();
     emit favoritesChanged();
+    emit homePagesChanged();
     emit foldersChanged();
 #else
     beginResetModel();
@@ -380,6 +481,7 @@ void LauncherModel::refresh()
     endResetModel();
     emit countChanged();
     emit favoritesChanged();
+    emit homePagesChanged();
     emit foldersChanged();
 #endif
 }
@@ -434,21 +536,26 @@ bool LauncherModel::launchActivity(const QString &packageName, const QString &ac
 #endif
 }
 
-void LauncherModel::toggleFavorite(int row)
+void LauncherModel::toggleFavorite(int row, int homePage)
 {
     if (row < 0 || row >= m_visibleRows.size())
         return;
     const Entry &entry = m_entries.at(m_visibleRows.at(row));
     const QString key = favoriteKey(entry.packageName, entry.activityName);
-    if (m_favoritePackages.contains(key))
+    if (m_favoritePackages.contains(key)) {
         m_favoritePackages.removeAll(key);
-    else
+        m_favoritePages.remove(key);
+    } else {
         m_favoritePackages.append(key);
+        m_favoritePages.insert(key, qBound(0, homePage, m_homePageCount - 1));
+    }
     saveFavorites();
+    saveFavoritePages();
     notifyFavoriteRowsChanged();
     qInfo().noquote()
         << QStringLiteral("OmaApp: pinned app count %1").arg(m_favoritePackages.size());
     emit favoritesChanged();
+    emit homePagesChanged();
 }
 
 void LauncherModel::removeFavorite(const QString &packageName, const QString &activityName)
@@ -462,9 +569,12 @@ void LauncherModel::removeFavorite(const QString &packageName, const QString &ac
     if (!m_favoritePackages.contains(key))
         return;
     m_favoritePackages.removeAll(key);
+    m_favoritePages.remove(key);
     saveFavorites();
+    saveFavoritePages();
     notifyFavoriteRowsChanged();
     emit favoritesChanged();
+    emit homePagesChanged();
 }
 
 void LauncherModel::saveFavorites()
@@ -474,6 +584,15 @@ void LauncherModel::saveFavorites()
     settings.sync();
     if (settings.status() != QSettings::NoError)
         qWarning() << "OmaApp: failed to save pinned apps" << settings.status();
+}
+
+void LauncherModel::saveFavoritePages()
+{
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/favoritePages"), m_favoritePages);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save home app pages" << settings.status();
 }
 
 void LauncherModel::loadFolders()

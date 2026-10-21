@@ -100,6 +100,49 @@ private slots:
         QCOMPARE(restored.gridColumns(), 3);
     }
 
+    void homePageCountAndWidgetPreferencesPersistWithinSupportedRange()
+    {
+        {
+            LauncherModel model;
+            QCOMPARE(model.homePageCount(), 1);
+            QCOMPARE(model.homeWidgets().value(QStringLiteral("clock")).toBool(), true);
+            model.setHomePageCount(3);
+            model.setHomeWidgetEnabled(QStringLiteral("clock"), false);
+            model.setHomeWidgetEnabled(QStringLiteral("unknown-widget"), false);
+        }
+
+        LauncherModel restored;
+        QCOMPARE(restored.homePageCount(), 3);
+        QCOMPARE(restored.homeWidgets().value(QStringLiteral("clock")).toBool(), false);
+        QCOMPARE(restored.homeWidgets().value(QStringLiteral("computer")).toBool(), true);
+        QCOMPARE(restored.homeWidgets().value(QStringLiteral("unknown-widget")).isValid(), false);
+        restored.setHomePageCount(99);
+        QCOMPARE(restored.homePageCount(), 5);
+        restored.setHomePageCount(-1);
+        QCOMPARE(restored.homePageCount(), 1);
+        QVERIFY(restored.homePageApps(-1).isEmpty());
+        QVERIFY(restored.homePageApps(1).isEmpty());
+    }
+
+    void onlyPinnedAppsCanMoveBetweenHomePages()
+    {
+        LauncherModel model;
+        model.setHomePageCount(2);
+        QVERIFY(!model.setFavoritePage(QStringLiteral("com.example.app"),
+                                       QStringLiteral("com.example.app.Main"), 1));
+        QVERIFY(!model.setFavoritePage(QStringLiteral("com.example.app"),
+                                       QStringLiteral("com.example.app.Main"), -1));
+    }
+
+    void refreshingInstalledAppsUpdatesHomePageModels()
+    {
+        LauncherModel model;
+        QSignalSpy homePagesChanged(&model, &LauncherModel::homePagesChanged);
+        QVERIFY(homePagesChanged.isValid());
+        model.refresh();
+        QCOMPARE(homePagesChanged.count(), 1);
+    }
+
 private:
     QTemporaryDir m_settingsDirectory;
 };

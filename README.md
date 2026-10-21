@@ -8,13 +8,13 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 
 ## Current state
 
-- The Android app uses Qt 6.10+ / C++ / QML and includes Android launcher enumeration, app launch, cached system icons, app search, a pinned-app dock, folders, adjustable 3–5 column grid, swipe navigation, an optional HOME activity, and an on-demand QR scanner.
+- The Android app uses Qt 6.10+ / C++ / QML and includes a local Home screen with up to five swipeable pages, a pinned-app dock, full Android launcher icons, app search, folders, adjustable 3–5 column grid, and settings for the live clock/computer/media cards. Pinned apps can be moved between pages or removed with a long press. Android launcher data stays local, and the optional HOME activity works without an Omarchy computer.
 - Pairing is a direct HTTPS connection to the one Omarchy plugin. The first pairing requires approval in OmaApp and in the plugin; the client pins the QR's computer certificate and keeps its bearer token encrypted with Android Keystore.
 - The plugin reads active Omarchy colors, `shell.toml`, wallpaper, Hyprland border gradients, rounding, rounding power, gaps, animations, and Bezier curves. Theme/configuration and workspace events are event-driven; a slower 30-second foreground refresh covers metrics and missed events. OmaApp keeps the last successful theme while offline.
 - Clipboard, file transfer, MPRIS, system metrics, Hyprland workspace switching, and configured user commands are available behind independent per-device permissions. Clipboard is tapped and foreground-only; files use Android's system picker and a 100 MiB limit; arbitrary shell commands are never accepted.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
-- The original Omalauncher multi-page widget canvas, OWL interpreter/widget store, and dynamic Android shortcuts still need to be ported. OmaApp does not install Arch Linux ARM or PRoot.
+- The original Omalauncher drag-and-drop widget canvas, OWL interpreter/widget store, and dynamic Android app shortcuts still need to be ported. OmaApp does not install Arch Linux ARM or PRoot.
 - CI builds an arm64 debug APK and exercises install, HOME selection, app enumeration and launch, pin/folder persistence, TLS pairing, theme and wallpaper sync, reconnect, and revocation on an x86_64 emulator ([previous green run](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557)). New feature coverage is in the current PR's CI. A signed release has not yet been published.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 

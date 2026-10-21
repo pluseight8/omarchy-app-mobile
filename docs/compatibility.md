@@ -2,7 +2,7 @@
 
 ## Starting point
 
-The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It provides a home-screen launcher, themes, OWL widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp implements Android app enumeration/launch, HOME, system icons, search, a dock, persistent folders, 3–5 column grid settings, swipe navigation, and Omarchy pairing/theme sync. Its multi-page widget canvas, OWL interpreter/editor, and dynamic app shortcuts remain to port. No PRoot or Arch Linux ARM is included.
+The source Omalauncher repository is an Android application written in Kotlin and Jetpack Compose. It provides a home-screen launcher, themes, OWL widgets, settings, and an optional Arch Linux guest with PRoot and an in-app Wayland compositor. The requested migration removes that Linux guest and moves the user interface to Qt Quick/QML. OmaApp implements Android app enumeration/launch, HOME, system icons, search, a dock, persistent folders, up to five swipeable home pages, 3–5 column grid settings, local clock and live computer/media cards, and Omarchy pairing/theme sync. The original drag-and-drop OWL canvas, OWL interpreter/editor, and dynamic Android app shortcuts remain to port. No PRoot or Arch Linux ARM is included.
 
 ## Qt and Quickshell
 

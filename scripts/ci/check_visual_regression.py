@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
-SCREENS = ("apps", "devices", "style", "settings")
+SCREENS = ("home", "apps", "devices", "style", "settings")
 
 
 def decode_png(path: Path) -> tuple[int, int, int, list[bytes]]:

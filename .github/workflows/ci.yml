@@ -208,7 +208,7 @@ jobs:
           adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
           visual_artifacts="$smoke_artifacts/visual"
           mkdir -p "$visual_artifacts"
-          for screen in apps devices style settings; do
+          for screen in home apps devices style settings; do
             screen_label="${screen^}"
             adb shell uiautomator dump --compressed "/sdcard/omaapp-visual-$screen.xml" >/dev/null || true
             adb pull "/sdcard/omaapp-visual-$screen.xml" "$visual_artifacts/$screen.xml" >/dev/null
