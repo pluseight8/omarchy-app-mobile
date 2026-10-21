@@ -11,7 +11,7 @@ Item {
     property real radius: Theme.defaultCornerRadius
     property real roundingPower: Theme.defaultRoundingPower
     property real borderWidth: 1
-    readonly property bool shaderSupported: Qt.platform.os !== "android"
+    readonly property bool shaderSupported: !OmaAppIsAndroid
 
     ShaderEffect {
         anchors.fill: parent
