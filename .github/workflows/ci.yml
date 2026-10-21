@@ -232,6 +232,13 @@ jobs:
             sleep 1
             adb exec-out screencap -p > "$visual_artifacts/$screen.png"
           done
+          # Collect render-status transitions after the UI taps as well. The
+          # first startup snapshot can precede lazy ShaderEffect pipeline setup.
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
+          if grep -E 'HyprlandSurface shader failed:|Failed to (compile shader|build graphics pipeline state)' \
+            "$smoke_artifacts/renderer-logcat.txt"; then
+            exit 1
+          fi
           python3 scripts/ci/check_visual_regression.py "$visual_artifacts" --baselines tests/visual_baselines/android
           settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/settings.xml" 'Apps')"
           read -r settings_x settings_y <<< "$settings_target"

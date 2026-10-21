@@ -47,6 +47,10 @@ qt_add_qml_module(omaapp
 # API. qt_add_shaders packages SPIR-V plus the OpenGL ES, Vulkan, Metal, and
 # Direct3D variants in one resource.
 qt_add_shaders(omaapp omaapp_rounding_shaders
+    # Android's SwiftShader test context exposes OpenGL ES 3.0. Keep the
+    # GLES 2.0 variant for older devices and bake an ES 3.0 variant as well so
+    # Qt can select the native language level for modern Android backends.
+    GLSL "100 es,300 es,120,150"
     PREFIX "/shaders"
     BASE app/qml/shaders
     FILES
