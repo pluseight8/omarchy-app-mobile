@@ -441,6 +441,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
             } else if ("files.receive".equals(permission)) {
                 requireJson(credentials, "/v1/files", "GET", null, 200);
             }
+
+            reportStage("feature_enable_requested_" + safePermission);
+            JSONObject restored = awaitFeatures(context, credentials, permission, true, 30_000L);
+            disabledPermissions.remove(permission);
+            JSONObject restoredPermissions = restored.getJSONObject("permissions");
+            for (String other : permissionNames) {
+                boolean shouldRemainEnabled = !disabledPermissions.contains(other);
+                if (restoredPermissions.optBoolean(other) != shouldRemainEnabled) {
+                    throw new IllegalStateException("Restoring " + permission
+                            + " changed the state of " + other + ".");
+                }
+            }
         }
         reportStage("features_passed");
     }

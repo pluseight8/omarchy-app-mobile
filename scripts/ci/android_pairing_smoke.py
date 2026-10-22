@@ -140,6 +140,7 @@ def main() -> int:
         next_diagnostic = time.monotonic() + 10
         granted_features = False
         disabled_features: set[str] = set()
+        restored_features: set[str] = set()
         feature_permissions = tuple(service.DEVICE_PERMISSIONS)
         while process.poll() is None and time.monotonic() < deadline:
             try:
@@ -166,8 +167,13 @@ def main() -> int:
                 if feature_smoke:
                     for permission in feature_permissions:
                         stage_permission = permission.replace(".", "_")
-                        stage = f"INSTRUMENTATION_STATUS: stage=feature_disable_requested_{stage_permission}"
-                        if stage in line and permission not in disabled_features:
+                        disable_stage = (
+                            f"INSTRUMENTATION_STATUS: stage=feature_disable_requested_{stage_permission}"
+                        )
+                        enable_stage = (
+                            f"INSTRUMENTATION_STATUS: stage=feature_enable_requested_{stage_permission}"
+                        )
+                        if disable_stage in line and permission not in disabled_features:
                             if len(state.devices) != 1:
                                 raise RuntimeError("The Android test device disappeared before revoking a grant.")
                             device_id = next(iter(state.devices))
@@ -175,6 +181,14 @@ def main() -> int:
                                 raise RuntimeError(f"Could not disable Android test permission {permission}.")
                             disabled_features.add(permission)
                             print(f"Disabled only the {permission} permission for Android test.", flush=True)
+                        if enable_stage in line and permission not in restored_features:
+                            if len(state.devices) != 1:
+                                raise RuntimeError("The Android test device disappeared before restoring a grant.")
+                            device_id = next(iter(state.devices))
+                            if not state.set_permission(device_id, permission, True):
+                                raise RuntimeError(f"Could not restore Android test permission {permission}.")
+                            restored_features.add(permission)
+                            print(f"Restored only the {permission} permission for Android test.", flush=True)
 
             with state.lock:
                 pending_ids = [
@@ -257,7 +271,8 @@ def main() -> int:
         if revoke and "INSTRUMENTATION_STATUS: stage=revoked" not in combined:
             raise RuntimeError(f"Android client did not report revocation:\n{combined}")
         if feature_smoke:
-            if not granted_features or disabled_features != set(feature_permissions):
+            if (not granted_features or disabled_features != set(feature_permissions)
+                    or restored_features != set(feature_permissions)):
                 raise RuntimeError("Android feature permission transitions did not complete.")
             if "INSTRUMENTATION_STATUS: stage=features_passed" not in combined:
                 raise RuntimeError(f"Android client did not finish feature smoke:\n{combined}")
