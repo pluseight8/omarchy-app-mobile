@@ -1,6 +1,5 @@
 package app.omaapp
 
-import android.util.Log
 import dev.omalauncher.widgets.lang.Bool
 import dev.omalauncher.widgets.lang.Budget
 import dev.omalauncher.widgets.lang.Col
@@ -97,7 +96,6 @@ object OwlBridge {
         } catch (error: StackOverflowError) {
             errorJson("widget is nested too deeply")
         } catch (error: Exception) {
-            if (BuildConfig.DEBUG) Log.e("OwlBridge", "Unexpected offline OWL render failure", error)
             errorJson(error.message ?: "widget could not be rendered")
         }
     }
