@@ -266,6 +266,15 @@ jobs:
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
             fi
+            if [[ "$screen" == "settings" ]]; then
+              # The OWL-store smoke scrolls Settings to add the Canvas sampler.
+              # Return to its stable top before comparing the Settings baseline.
+              adb shell input swipe 205 250 205 760 450
+              adb shell input swipe 205 250 205 760 450
+              sleep 1
+              python3 scripts/ci/android_accessibility_dump.py \
+                /sdcard/omaapp-visual-settings-top.xml "$visual_artifacts/settings.xml"
+            fi
             adb exec-out screencap -p > "$visual_artifacts/$screen.png"
             if [[ "$screen" == "apps" ]]; then
               bash scripts/ci/android_launcher_home_smoke.sh "$smoke_artifacts" "$app_pid"
