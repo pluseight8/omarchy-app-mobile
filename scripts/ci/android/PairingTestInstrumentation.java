@@ -364,20 +364,22 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (clipboard == null) {
             throw new IllegalStateException("Android clipboard service is unavailable.");
         }
-        setClipboardOnMainThread(clipboard, "OmaApp CI phone clipboard");
-        PairingBridge.pushClipboard(context);
-        awaitFeatureMessage(context, "Sending command to the computer…", 2_000L);
-        awaitFeatureMessage(context, "Phone clipboard sent to the computer.", 15_000L);
-        JSONObject computerClipboard = requireJson(credentials, "/v1/clipboard", "GET", null, 200);
-        if (!"from computer".equals(computerClipboard.optString("text"))) {
-            throw new IllegalStateException("The computer clipboard response did not contain text.");
-        }
+        // The plugin exposes the actual desktop clipboard. Verify its initial value
+        // reaches Android before replacing that value with the phone clipboard.
+        setClipboardOnMainThread(clipboard, "");
         PairingBridge.pullClipboard(context);
-        awaitFeatureMessage(context, "Reading computer clipboard…", 2_000L);
         awaitClipboard(clipboard, "from computer", 15_000L);
         PersistableBundle clipboardExtras = clipboard.getPrimaryClip().getDescription().getExtras();
         if (clipboardExtras == null || !clipboardExtras.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE)) {
             throw new IllegalStateException("Incoming clipboard text was not marked sensitive.");
+        }
+
+        setClipboardOnMainThread(clipboard, "OmaApp CI phone clipboard");
+        PairingBridge.pushClipboard(context);
+        awaitFeatureMessage(context, "Phone clipboard sent to the computer.", 15_000L);
+        JSONObject computerClipboard = requireJson(credentials, "/v1/clipboard", "GET", null, 200);
+        if (!"OmaApp CI phone clipboard".equals(computerClipboard.optString("text"))) {
+            throw new IllegalStateException("Phone clipboard text did not reach the computer.");
         }
 
         PairingBridge.activateWorkspace(context, 2);
