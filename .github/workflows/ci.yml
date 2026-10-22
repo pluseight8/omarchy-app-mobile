@@ -208,8 +208,8 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          # main.cpp reports the compile-time RHI selection after Qt logging is
-          # initialized. Runtime surface probes below verify it can render.
+          # Check the requested API here, then check Qt's initialized graphics
+          # API after the style page renders its superellipse surface below.
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
           grep -F 'OmaApp configured Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
@@ -234,6 +234,7 @@ jobs:
           done
           # Retain logs from after the style screen has exercised the surface shader.
           adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
+          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
           fi

@@ -25,9 +25,9 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
     QGuiApplication app(argc, argv);
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL)
-    qInfo().noquote() << "OmaApp configured Qt Quick graphics API: OpenGL";
+    qWarning().noquote() << "OmaApp configured Qt Quick graphics API: OpenGL";
 #elif defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
-    qInfo().noquote() << "OmaApp configured Qt Quick graphics API: Vulkan";
+    qWarning().noquote() << "OmaApp configured Qt Quick graphics API: Vulkan";
 #endif
     app.setApplicationName(QStringLiteral("OmaApp"));
     app.setOrganizationName(QStringLiteral("OmaApp"));
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
                 case QSGRendererInterface::Software: name = "Software"; break;
                 default: break;
                 }
-                qInfo().noquote() << "OmaApp initialized Qt Quick graphics API:" << name;
+                qWarning().noquote() << "OmaApp initialized Qt Quick graphics API:" << name;
             };
             if (window->isSceneGraphInitialized()) {
                 logGraphicsApi();

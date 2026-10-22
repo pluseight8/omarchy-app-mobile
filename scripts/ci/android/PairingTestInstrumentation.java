@@ -285,7 +285,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || Math.abs(geometry.optDouble("roundingPower", -1) - 4.0) > 0.001
                 || geometry.optInt("borderWidth", -1) != 2
                 || geometry.optInt("gapsIn", -1) != 5 || geometry.optInt("gapsOut", -1) != 10
-                || !geometry.optString("activeBorder").contains("45deg")
+                || !geometry.optString("activeBorder").contains("37deg")
                 || geometry.optString("activeBorder").split("rgba\\(").length != 4) {
             throw new IllegalStateException("Theme colors, spacing, or Hyprland geometry did not sync.");
         }
