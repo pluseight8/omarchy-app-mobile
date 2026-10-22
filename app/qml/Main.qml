@@ -2753,8 +2753,10 @@ ApplicationWindow {
                                                      ? qsTr("Remove %1 from Home").arg(modelData.name)
                                                      : qsTr("Add %1 to Home").arg(modelData.name)
                                     onClicked: {
-                                        owl.setWidgetInstalled(modelData.id, !modelData.installed)
-                                        window.widgetMessage = modelData.installed
+                                        const wasInstalled = modelData.installed
+                                        const widgetId = modelData.id
+                                        owl.setWidgetInstalled(widgetId, !wasInstalled)
+                                        window.widgetMessage = wasInstalled
                                                 ? qsTr("Widget removed from Home.")
                                                 : qsTr("Widget added to Home.")
                                     }
