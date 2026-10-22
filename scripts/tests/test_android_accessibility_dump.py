@@ -88,6 +88,44 @@ class AndroidAccessibilityDumpTests(unittest.TestCase):
                 dump_accessibility_xml("/sdcard/screen.xml; touch /tmp/pwned", output)
         self.assertFalse(output.exists())
 
+    def test_applies_a_bounded_timeout_to_each_adb_command(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "screen.xml"
+            timeouts: list[float] = []
+
+            def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                timeouts.append(float(kwargs["timeout"]))
+                if command[:2] == ["adb", "pull"]:
+                    Path(command[-1]).write_text("<hierarchy><node /></hierarchy>", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            dump_accessibility_xml(
+                "/sdcard/screen.xml", output, command_timeout_seconds=3,
+                run=run, sleep=lambda _delay: None,
+            )
+
+        self.assertEqual(timeouts, [3, 3, 3, 3])
+
+    def test_retries_after_an_adb_command_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "screen.xml"
+            calls = 0
+
+            def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+                nonlocal calls
+                if command[2:4] == ["uiautomator", "dump"]:
+                    calls += 1
+                    raise subprocess.TimeoutExpired(command, timeout=2)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with self.assertRaisesRegex(RuntimeError, "Could not capture Android UI hierarchy"):
+                dump_accessibility_xml(
+                    "/sdcard/screen.xml", output, attempts=2, command_timeout_seconds=2,
+                    run=run, sleep=lambda _delay: None,
+                )
+
+        self.assertEqual(calls, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

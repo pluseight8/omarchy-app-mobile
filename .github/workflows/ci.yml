@@ -224,9 +224,10 @@ jobs:
             local label="$1"
             local device_xml="$2"
             local output_xml="$3"
-            for attempt in {1..45}; do
+            for attempt in {1..6}; do
               python3 scripts/ci/android_accessibility_dump.py \
-                --attempts 1 --delay-seconds 0 "$device_xml" "$output_xml" \
+                --attempts 1 --delay-seconds 0 --command-timeout-seconds 8 \
+                "$device_xml" "$output_xml" \
                 >/dev/null 2>&1 || true
               if python3 scripts/ci/android_accessibility_assert_checked.py \
                 "$output_xml" "$label" >/dev/null 2>&1; then
@@ -235,6 +236,8 @@ jobs:
               fi
               sleep 1
             done
+            printf 'Timed out waiting for Android UI tab %s; latest hierarchy is %s\n' \
+              "$label" "$output_xml" >&2
             python3 scripts/ci/android_accessibility_assert_checked.py "$output_xml" "$label"
           }
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"

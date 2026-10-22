@@ -51,6 +51,9 @@ bool validFolderName(const QString &name)
 
 LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
 {
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    qWarning().noquote() << "OmaApp startup: LauncherModel construction entered";
+#endif
 #ifdef Q_OS_ANDROID
     m_platformSupported = true;
 #endif
@@ -86,6 +89,9 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
     loadFolders();
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    qWarning().noquote() << "OmaApp startup: LauncherModel construction returned";
+#endif
 }
 
 int LauncherModel::rowCount(const QModelIndex &parent) const
@@ -733,12 +739,19 @@ void LauncherModel::setFilter(const QString &filter)
 void LauncherModel::refresh()
 {
 #ifdef Q_OS_ANDROID
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    qWarning().noquote() << "OmaApp startup: launcher refresh entered";
+#endif
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     const QJniObject json = QJniObject::callStaticObjectMethod(
         "app/omaapp/LauncherBridge", "listLauncherApps",
         "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
 
     const QByteArray payload = json.toString().toUtf8();
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    qWarning().noquote() << "OmaApp startup: launcher query returned" << payload.size()
+                         << "bytes";
+#endif
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(payload, &parseError);
     QList<Entry> nextEntries;

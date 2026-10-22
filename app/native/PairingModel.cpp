@@ -1,5 +1,6 @@
 #include "PairingModel.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -178,10 +179,21 @@ void PairingModel::executeCommand(const QString &commandId)
 void PairingModel::poll()
 {
 #ifdef Q_OS_ANDROID
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    static bool traceNextPoll = true;
+    const bool traceStartupPoll = traceNextPoll;
+    traceNextPoll = false;
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingModel first poll entered";
+#endif
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     QJniObject::callStaticMethod<void>(
         "app/omaapp/PairingBridge", "refresh",
         "(Landroid/content/Context;)V", context.object<jobject>());
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingBridge refresh returned";
+#endif
 
     const QJniObject scanned = QJniObject::callStaticObjectMethod(
         "app/omaapp/PairingBridge", "consumeScannedQr",
@@ -193,6 +205,10 @@ void PairingModel::poll()
     const QJniObject state = QJniObject::callStaticObjectMethod(
         "app/omaapp/PairingBridge", "stateJson",
         "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingBridge state returned";
+#endif
     const QJsonDocument document = QJsonDocument::fromJson(state.toString().toUtf8());
     if (!document.isObject())
         return;

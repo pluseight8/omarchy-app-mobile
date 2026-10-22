@@ -23,6 +23,7 @@ def dump_accessibility_xml(
     *,
     attempts: int = 4,
     delay_seconds: float = 1.0,
+    command_timeout_seconds: float = 20.0,
     run: Runner = subprocess.run,
     sleep: Callable[[float], None] = time.sleep,
 ) -> Path:
@@ -33,6 +34,8 @@ def dump_accessibility_xml(
         raise ValueError("attempts must be at least one")
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
+    if command_timeout_seconds <= 0:
+        raise ValueError("command timeout must be positive")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     errors: list[str] = []
@@ -41,14 +44,14 @@ def dump_accessibility_xml(
         try:
             cleanup = run(
                 ["adb", "shell", "rm", "-f", device_path],
-                check=False, capture_output=True, text=True, timeout=10,
+                check=False, capture_output=True, text=True, timeout=command_timeout_seconds,
             )
             if cleanup.returncode != 0:
                 raise RuntimeError("could not clear stale device hierarchy")
 
             dumped = run(
                 ["adb", "shell", "uiautomator", "dump", "--compressed", device_path],
-                check=False, capture_output=True, text=True, timeout=20,
+                check=False, capture_output=True, text=True, timeout=command_timeout_seconds,
             )
             if dumped.returncode != 0:
                 detail = (dumped.stderr or dumped.stdout).strip()
@@ -56,7 +59,7 @@ def dump_accessibility_xml(
 
             present = run(
                 ["adb", "shell", "test", "-s", device_path],
-                check=False, capture_output=True, text=True, timeout=10,
+                check=False, capture_output=True, text=True, timeout=command_timeout_seconds,
             )
             if present.returncode != 0:
                 detail = (dumped.stderr or dumped.stdout).strip()
@@ -65,7 +68,7 @@ def dump_accessibility_xml(
 
             pulled = run(
                 ["adb", "pull", device_path, str(output_path)],
-                check=False, capture_output=True, text=True, timeout=20,
+                check=False, capture_output=True, text=True, timeout=command_timeout_seconds,
             )
             if pulled.returncode != 0 or not output_path.is_file() or output_path.stat().st_size == 0:
                 detail = (pulled.stderr or pulled.stdout).strip()
@@ -91,11 +94,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("output_path", type=Path)
     parser.add_argument("--attempts", type=int, default=4)
     parser.add_argument("--delay-seconds", type=float, default=1.0)
+    parser.add_argument("--command-timeout-seconds", type=float, default=20.0)
     args = parser.parse_args(argv)
     try:
         result = dump_accessibility_xml(
             args.device_path, args.output_path,
             attempts=args.attempts, delay_seconds=args.delay_seconds,
+            command_timeout_seconds=args.command_timeout_seconds,
         )
     except (OSError, RuntimeError, ValueError) as error:
         print(error, file=sys.stderr)
