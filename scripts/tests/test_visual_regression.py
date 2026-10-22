@@ -35,13 +35,15 @@ def png_file(path: Path, pixels: tuple[tuple[tuple[int, int, int, int], ...], ..
 
 
 def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = None,
-                      square_corners: bool = False, missing_top_border: bool = False) -> None:
+                      square_corners: bool = False, missing_top_border: bool = False,
+                      bounds: tuple[float, float, float, float, float] =
+                      (22.0, 199.0, 368.0, 156.0, 24.0)) -> None:
     width = round(412 * scale)
     height = round(892 * scale)
     background = (16, 19, 21, 255)
     fill = (12, 14, 16, 255)
     rows = [[background] * width for _ in range(height)]
-    left, top, card_width, card_height, radius = 26.0, 232.0, 360.0, 156.0, 13.0
+    left, top, card_width, card_height, radius = bounds
     right, bottom = left + card_width, top + card_height
     sine = math.sin(math.radians(angle or 45.0))
 
@@ -196,6 +198,18 @@ class VisualRegressionTests(unittest.TestCase):
 
             verify_style_surface_rendered(image)
 
+    def test_style_probe_finds_compact_and_synced_theme_layouts(self) -> None:
+        layouts = (
+            (22.0, 199.0, 368.0, 156.0, 24.0),
+            (26.0, 232.0, 360.0, 156.0, 13.0),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            for index, bounds in enumerate(layouts):
+                image = Path(directory) / f"style-layout-{index}.png"
+                style_probe_image(image, bounds=bounds)
+
+                verify_style_surface_rendered(image)
+
     def test_style_probe_rejects_unrounded_corner_pixels(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / "style-square.png"
@@ -207,7 +221,7 @@ class VisualRegressionTests(unittest.TestCase):
     def test_paired_style_probe_checks_arbitrary_gradient_direction(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             image = Path(directory) / "style-gradient.png"
-            style_probe_image(image, angle=37.0)
+            style_probe_image(image, angle=37.0, bounds=(26.0, 232.0, 360.0, 156.0, 13.0))
 
             verify_style_surface_rendered(image, require_gradient=True, gradient_angle=37.0)
 
@@ -233,7 +247,7 @@ class VisualRegressionTests(unittest.TestCase):
             rows = [[(16, 19, 21, 255)] * 412 for _ in range(892)]
             png_file(image, tuple(tuple(row) for row in rows))
 
-            with self.assertRaisesRegex(ValueError, "interior is missing"):
+            with self.assertRaisesRegex(ValueError, "preview border is missing"):
                 verify_style_surface_rendered(image)
 
     def test_style_probe_supports_high_density_capture(self) -> None:

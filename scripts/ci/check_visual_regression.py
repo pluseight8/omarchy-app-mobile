@@ -158,9 +158,52 @@ def verify_style_surface_rendered(
         start = x * channels
         return tuple(rows[y][start:start + 3])
 
-    background = rgb((200, 180))
-    interior = rgb((200, 260))
-    border = rgb((200, 232))
+    # Theme tokens can move the preview vertically and change its inset. Find
+    # its long top/bottom border edges first, then the two long side edges.
+    # The old fixed (26, 232) probe sampled the fill when the local theme used
+    # its smaller spacing, and missed the surface entirely on that layout.
+    page_background = rgb((10, 180))
+
+    def contrast(point: tuple[int, int], base: tuple[int, int, int]) -> int:
+        return sum(abs(value - base_channel) for value, base_channel in zip(rgb(point), base))
+
+    row_scores = {
+        y: sum(contrast((x, y), page_background) > 48 for x in range(20, 392))
+        for y in range(100, 410)
+    }
+    edge_threshold = 170
+    edge_rows = [(y, score) for y, score in row_scores.items() if score >= edge_threshold]
+    edge_pairs = [
+        (min(top_score, bottom_score), top_score + bottom_score, top, bottom)
+        for top, top_score in edge_rows
+        for bottom, bottom_score in edge_rows
+        if 120 <= bottom - top <= 190
+    ]
+    if not edge_pairs:
+        raise ValueError("HyprlandSurface preview border is missing: no complete edge pair found")
+    _, _, top, bottom = max(edge_pairs, key=lambda pair: (pair[0], pair[1], -pair[2]))
+
+    mid_y = (top + bottom) // 2
+    background = rgb((10, mid_y))
+
+    def column_score(x: int) -> int:
+        return sum(contrast((x, y), background) > 48 for y in range(top + 16, bottom - 16))
+
+    left_scores = {x: column_score(x) for x in range(0, 100)}
+    right_scores = {x: column_score(x) for x in range(312, 412)}
+    left_max = max(left_scores.values())
+    right_max = max(right_scores.values())
+    if min(left_max, right_max) < 80:
+        raise ValueError("HyprlandSurface preview border is missing: no complete side edges found")
+
+    left_candidates = [x for x, score in left_scores.items() if score >= left_max - 1]
+    right_candidates = [x for x, score in right_scores.items() if score >= right_max - 1]
+    left = round(sum(left_candidates) / len(left_candidates))
+    right = round(sum(right_candidates) / len(right_candidates))
+    center_x = (left + right) // 2
+
+    interior = rgb((center_x, top + 60))
+    border = rgb((center_x, top))
     interior_contrast = sum(abs(a - b) for a, b in zip(interior, background))
     border_contrast = sum(abs(a - b) for a, b in zip(border, background))
     if interior_contrast < 8:
@@ -172,10 +215,9 @@ def verify_style_surface_rendered(
             "HyprlandSurface preview border is missing: its top edge matches the page background"
         )
 
-    # The Omarchy preview occupies the same stable region on both supported CI
-    # densities. These are its outer logical bounds; sampling the four corners
-    # catches square clipping and the old vertex-mesh diagonal on either RHI.
-    corners = ((26, 232), (386, 232), (26, 386), (386, 386))
+    # Sampling the discovered outer corners catches square clipping and the
+    # old vertex-mesh diagonal on either RHI without assuming a theme's spacing.
+    corners = ((left, top), (right, top), (left, bottom), (right, bottom))
     for point in corners:
         corner = rgb(point)
         if sum(abs(channel - base) for channel, base in zip(corner, background)) > 24:
@@ -189,8 +231,9 @@ def verify_style_surface_rendered(
         # horizontal top edge changes color and that two points on the same
         # gradient isocontour agree. This tests the continuous arbitrary-angle
         # shader path instead of only checking the QML labels.
-        left_top = rgb((50, 232))
-        right_top = rgb((362, 232))
+        inset = max(28, round((right - left) * 0.08))
+        left_top = rgb((left + inset, top))
+        right_top = rgb((right - inset, top))
         if sum(abs(left - right) for left, right in zip(left_top, right_top)) < 48:
             raise ValueError(
                 "HyprlandSurface gradient is missing: the 37 degree top edge has no color change"
@@ -200,20 +243,20 @@ def verify_style_surface_rendered(
         sine = math.sin(radians)
         if sine <= 0.0:
             raise ValueError("The gradient angle must be between 0 and 360 degrees")
-        left = 26.0
-        top = 232.0
-        width = 360.0
-        height = 156.0
-        top_x = 206
-        top_y = 232
-        top_u = (top_x + 0.5 - left) / width
-        top_v = (top_y + 0.5 - top) / height
-        left_u = (26 + 0.5 - left) / width
+        left_f = float(left)
+        top_f = float(top)
+        card_width = float(right - left)
+        card_height = float(bottom - top)
+        top_x = center_x
+        top_y = top
+        top_u = (top_x + 0.5 - left_f) / card_width
+        top_v = (top_y + 0.5 - top_f) / card_height
+        left_u = (left + 0.5 - left_f) / card_width
         left_v = (top_u * (1.0 - sine) + top_v * sine
                   - left_u * (1.0 - sine)) / sine
-        left_y = round(top + left_v * height - 0.5)
+        left_y = round(top_f + left_v * card_height - 0.5)
         top_mid = rgb((top_x, top_y))
-        left_match = rgb((26, left_y))
+        left_match = rgb((left, left_y))
         if sum(abs(left - right) for left, right in zip(top_mid, left_match)) > 30:
             raise ValueError(
                 "HyprlandSurface gradient angle is inconsistent across the same color contour"
