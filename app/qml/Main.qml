@@ -24,6 +24,7 @@ ApplicationWindow {
     palette.highlightedText: Theme.background
     palette.placeholderText: Theme.muted
 
+    property int selectedPage: 0
     property int selectedHomePage: 0
     property string selectedFolderId: ""
     property string selectedFolderName: ""
@@ -800,7 +801,12 @@ ApplicationWindow {
             Layout.fillHeight: true
             clip: true
             interactive: launcher.gestures.sectionSwipe !== false
-            currentIndex: navigationTabs.currentIndex
+            currentIndex: window.selectedPage
+
+            onCurrentIndexChanged: {
+                if (window.selectedPage !== currentIndex)
+                    window.selectedPage = currentIndex
+            }
 
             ListView {
                 id: homePageView
@@ -963,7 +969,7 @@ ApplicationWindow {
                                         text: pairing.hasPairedDevice ? qsTr("Open devices") : qsTr("Pair computer")
                                         Accessible.name: pairing.hasPairedDevice
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
-                                        onClicked: pages.setCurrentIndex(2)
+                                        onClicked: window.selectedPage = 2
                                     }
                                 }
                             }
@@ -1048,7 +1054,7 @@ ApplicationWindow {
                                 Button {
                                     text: qsTr("Manage")
                                     Accessible.name: qsTr("Manage OWL widgets")
-                                    onClicked: pages.setCurrentIndex(4)
+                                    onClicked: window.selectedPage = 4
                                 }
                             }
 
@@ -1086,7 +1092,7 @@ ApplicationWindow {
                                     Layout.preferredWidth: 104
                                     text: qsTr("All apps")
                                     Accessible.name: qsTr("Open all installed apps")
-                                    onClicked: pages.setCurrentIndex(1)
+                                    onClicked: window.selectedPage = 1
                                 }
                             }
 
@@ -2845,13 +2851,9 @@ ApplicationWindow {
         }
         }
 
-        TabBar {
-            id: navigationTabs
+        RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: Theme.space(32)
-            currentIndex: pages.currentIndex
             spacing: Theme.space(8)
-            background: Item {}
 
             Repeater {
                 model: [
@@ -2862,10 +2864,14 @@ ApplicationWindow {
                     { label: qsTr("Settings"), page: 4 }
                 ]
 
-                delegate: TabButton {
+                delegate: Button {
                     required property var modelData
+                    Layout.fillWidth: true
                     text: modelData.label
+                    checkable: true
+                    checked: window.selectedPage === modelData.page
                     Accessible.name: modelData.label
+                    onClicked: window.selectedPage = modelData.page
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
