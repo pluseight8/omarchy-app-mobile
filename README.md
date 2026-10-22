@@ -17,10 +17,10 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
 - OmaApp does not install Arch Linux ARM or PRoot. It does not bundle the Quickshell executable or Linux/Wayland modules into the APK.
-- Prior runs [#56](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39637228203) and [#57](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39638437527) passed for their earlier heads. Later mesh-renderer attempts [#72](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39678218709) and [#73](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39678562624) failed visual regression checks. The current PR replaces that mesh path with a fragment shader and adds shape/gradient checks; its CI result is required before Alpha. A signed release has not yet been published.
+- Pull request [#14](https://github.com/pluseight8/omarchy-app-mobile/pull/14) is the active release gate. Its current-head checks build desktop and arm64 APKs, then exercise launcher, pairing, theme sync, Hyprland rendering, and the paired-PC features in Android x86_64 emulators using OpenGL and Vulkan. Older run numbers refer to superseded commits; use the PR checks for the current result. A signed release has not yet been published.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This workspace has Qt desktop tools and `qmllint`, but lacks the Android build SDK and an attached Pixel device. GitHub Actions builds and runs the Android smoke tests.
+The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. The local Python service suite has 48 passing tests; QML lint and shell syntax checks pass. This workspace has Qt desktop tools and `qmllint`, but lacks the Android build SDK and an attached Pixel device. GitHub Actions builds and runs the Android smoke tests. Pixel 10 / GrapheneOS behavior remains unverified.
 
 ## Build the desktop preview
 

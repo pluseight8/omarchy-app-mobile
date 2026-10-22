@@ -20,6 +20,20 @@ adb shell input tap "$create_folder_x" "$create_folder_y"
 sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-new-folder-name.xml "$smoke_artifacts/window-new-folder-name.xml"
+python3 - "$smoke_artifacts/window-new-folder-name.xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+fields = [
+    node for node in root.iter("node")
+    if node.attrib.get("package") == "app.omaapp"
+    and node.attrib.get("class") == "android.widget.EditText"
+    and "New folder name" in node.attrib.get("content-desc", "")
+]
+if len(fields) != 1 or fields[0].attrib.get("focused") != "true":
+    raise SystemExit("Create-folder dialog did not focus its name field on open.")
+PY
 folder_name_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-new-folder-name.xml" 'New folder name')"
 read -r folder_name_x folder_name_y <<< "$folder_name_target"
 adb shell input tap "$folder_name_x" "$folder_name_y"

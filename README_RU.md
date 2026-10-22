@@ -17,10 +17,10 @@ OmaApp — Android-лаунчер и прямой компаньон Omarchy н�
 - Настольная версия — только предпросмотр. Список приложений на ней не подменяется фиктивными данными.
 - Сетевой слушатель запускается при запросе QR-кода или наличии сохранённых устройств. Python-помощник и генератор QR входят в состав одного плагина; отдельная программа или системная служба не устанавливаются.
 - OmaApp не устанавливает Arch Linux ARM или PRoot и не включает Quickshell executable или Linux/Wayland-модули в APK.
-- Прошлые runs [#56](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39637228203) и [#57](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39638437527) прошли на более ранних коммитах. Последующие попытки рендерера на mesh, [#72](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39678218709) и [#73](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39678562624), завершились ошибками визуальной регрессии. Текущий PR заменяет mesh фрагментным шейдером и проверяет форму/градиент; для Alpha нужен зелёный актуальный CI. Подписанного релиза пока нет.
+- Активный release gate — [PR #14](https://github.com/pluseight8/omarchy-app-mobile/pull/14). Проверки текущего commit собирают desktop и arm64 APK, затем проверяют launcher, pairing, синхронизацию темы, рендеринг Hyprland и функции сопряжённого ПК на Android x86_64 под OpenGL и Vulkan. Старые номера CI относятся к предыдущим коммитам; текущий результат виден в Checks PR. Подписанный релиз пока не опубликован.
 - В Android-приложение не включён Quickshell: приложение использует Qt Quick, а плагин Omarchy исполняется внутри Quickshell.
 
-Плагин уже установлен и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. В рабочем окружении есть Qt desktop tools и `qmllint`, но нет Android build SDK и подключённого Pixel. Android APK и smoke tests собираются и запускаются в GitHub Actions.
+Плагин уже установлен и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. Локальный набор из 48 Python-тестов сервиса проходит; `qmllint` и проверка shell-синтаксиса также проходят. В рабочем окружении есть Qt desktop tools, но нет Android build SDK и подключённого Pixel. APK и Android smoke tests собираются и запускаются в GitHub Actions. Проверка на Pixel 10 / GrapheneOS ещё не выполнена.
 
 ## Сборка настольного предпросмотра
 

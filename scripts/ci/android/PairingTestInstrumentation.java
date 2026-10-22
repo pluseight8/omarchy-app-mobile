@@ -26,7 +26,9 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -408,18 +410,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
         PairingBridge.executeCommand(context, "../etc/passwd");
         awaitFeatureMessage(context, "This computer command is not configured.", 2_000L);
 
+        Set<String> disabledPermissions = new HashSet<>();
         for (String permission : permissionNames) {
             String safePermission = permission.replace('.', '_');
             reportStage("feature_disable_requested_" + safePermission);
             JSONObject disabled = awaitFeatures(context, credentials, permission, false, 30_000L);
             JSONObject remaining = disabled.getJSONObject("permissions");
+            disabledPermissions.add(permission);
             for (String other : permissionNames) {
-                if (permission.equals(other)) {
-                    if (remaining.optBoolean(other)) {
-                        throw new IllegalStateException("Permission remained enabled: " + permission);
-                    }
-                } else if (!remaining.optBoolean(other)) {
-                    throw new IllegalStateException("Disabling " + permission + " also disabled " + other);
+                boolean shouldRemainEnabled = !disabledPermissions.contains(other);
+                if (remaining.optBoolean(other) != shouldRemainEnabled) {
+                    throw new IllegalStateException("Changing " + permission
+                            + " left " + other + " in an unexpected permission state.");
                 }
             }
             boolean post = "files.receive".equals(permission) || "commands".equals(permission);
