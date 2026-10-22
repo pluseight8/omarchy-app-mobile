@@ -97,6 +97,12 @@ Item {
         return Number.isFinite(parsed) ? parsed : fallback
     }
 
+    function imageSource(value) {
+        const source = typeof value === "string" ? value : ""
+        return /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(source)
+                ? source : ""
+    }
+
     HyprlandSurface {
         anchors.fill: parent
         fillColor: root.colorValue(root.document.background, Theme.surface)
@@ -108,6 +114,7 @@ Item {
         Item {
             anchors.fill: parent
             anchors.margins: root.scalar(root.document.padding, 14)
+            clip: true
             visible: root.renderError.length === 0
 
             ColumnLayout {

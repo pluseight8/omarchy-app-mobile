@@ -12,9 +12,18 @@ Item {
     property real preferredWidth: widgetRoot.scalar(nodeProps.width, 0)
     property real preferredHeight: widgetRoot.scalar(nodeProps.height, 0)
     property color nodeForeground: widgetRoot.colorValue(nodeProps.color, Theme.foreground)
+    property real spacerSize: widgetRoot.scalar(nodeProps.size, 0)
 
-    implicitWidth: preferredWidth > 0 ? preferredWidth : Math.max(48, contentLayout.implicitWidth)
-    implicitHeight: preferredHeight > 0 ? preferredHeight : Math.max(24, contentLayout.implicitHeight)
+    implicitWidth: preferredWidth > 0 ? preferredWidth
+                   : nodeType === "Spacer" ? spacerSize
+                   : nodeType === "Ring" ? 64
+                   : nodeType === "Sparkline" ? 96
+                   : nodeType === "Image" ? 48 : Math.max(48, contentLayout.implicitWidth)
+    implicitHeight: preferredHeight > 0 ? preferredHeight
+                    : nodeType === "Spacer" ? spacerSize
+                    : nodeType === "Ring" ? 64
+                    : nodeType === "Sparkline" ? 36
+                    : nodeType === "Image" ? 48 : Math.max(24, contentLayout.implicitHeight)
     height: implicitHeight
 
     ColumnLayout {
@@ -84,6 +93,52 @@ Item {
         }
     }
 
+    Flow {
+        id: flowContent
+        anchors.fill: parent
+        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        visible: node.nodeType === "Flow"
+        spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+
+        Repeater {
+            model: node.nodeType === "Flow" ? node.nodeChildren : []
+            delegate: OwlNodeLoader {
+                required property var modelData
+                width: implicitWidth
+                height: implicitHeight
+                nodeData: modelData
+                widgetRoot: node.widgetRoot
+            }
+        }
+    }
+
+    GridLayout {
+        id: gridContent
+        anchors.fill: parent
+        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        visible: node.nodeType === "Grid"
+        columns: Math.max(1, Math.min(8, Math.floor(widgetRoot.scalar(node.nodeProps.columns, 2))))
+        rowSpacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+        columnSpacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+
+        Repeater {
+            model: node.nodeType === "Grid" ? node.nodeChildren : []
+            delegate: OwlNodeLoader {
+                required property var modelData
+                nodeData: modelData
+                widgetRoot: node.widgetRoot
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    Item {
+        id: spacer
+        anchors.fill: parent
+        visible: node.nodeType === "Spacer"
+        Accessible.ignored: true
+    }
+
     Text {
         anchors.fill: parent
         visible: node.nodeType === "Text"
@@ -110,6 +165,17 @@ Item {
         maximumLineCount: Math.max(1, widgetRoot.scalar(node.nodeProps.maxLines, 4))
         wrapMode: Text.WordWrap
         elide: Text.ElideRight
+    }
+
+    Image {
+        anchors.fill: parent
+        visible: node.nodeType === "Image"
+        source: visible ? widgetRoot.imageSource(node.nodeProps.src) : ""
+        fillMode: node.nodeProps.fit === "cover" ? Image.PreserveAspectCrop
+                  : node.nodeProps.fit === "fill" ? Image.Stretch : Image.PreserveAspectFit
+        asynchronous: true
+        smooth: true
+        Accessible.name: String(node.nodeProps.label || "OWL image")
     }
 
     Button {
@@ -146,6 +212,116 @@ Item {
     }
 
     Canvas {
+        id: ring
+        anchors.fill: parent
+        visible: node.nodeType === "Ring"
+        antialiasing: true
+        onPaint: {
+            const context = getContext("2d")
+            context.reset()
+            context.clearRect(0, 0, width, height)
+
+            const maximum = Math.max(0.000001, widgetRoot.scalar(node.nodeProps.max, 1))
+            const value = Math.max(0, Math.min(maximum, widgetRoot.scalar(node.nodeProps.value, 0)))
+            const ratio = value / maximum
+            const thickness = Math.max(0.5, Math.min(
+                Math.min(width, height) / 2,
+                widgetRoot.scalar(node.nodeProps.thickness, 6)))
+            const radius = Math.max(0, Math.min(width, height) / 2 - thickness / 2)
+            const start = (-90 + widgetRoot.scalar(node.nodeProps.start, 0)) * Math.PI / 180
+            const sweep = widgetRoot.scalar(node.nodeProps.sweep, 360) * Math.PI / 180
+            const centerX = width / 2
+            const centerY = height / 2
+
+            context.lineWidth = thickness
+            context.lineCap = "round"
+            context.strokeStyle = widgetRoot.colorValue(node.nodeProps.track, Theme.surfaceRaised)
+            context.beginPath()
+            context.arc(centerX, centerY, radius, start, start + sweep, sweep < 0)
+            context.stroke()
+
+            if (ratio > 0) {
+                context.strokeStyle = widgetRoot.colorValue(node.nodeProps.color, Theme.accent)
+                context.beginPath()
+                context.arc(centerX, centerY, radius, start, start + sweep * ratio, sweep < 0)
+                context.stroke()
+            }
+        }
+    }
+
+    Canvas {
+        id: sparkline
+        anchors.fill: parent
+        visible: node.nodeType === "Sparkline"
+        antialiasing: true
+        onPaint: {
+            const context = getContext("2d")
+            context.reset()
+            context.clearRect(0, 0, width, height)
+            const values = node.nodeProps.values
+            if (!Array.isArray(values) || values.length === 0 || width <= 0 || height <= 0)
+                return
+
+            const samples = values.map(function(value) {
+                return value === null ? NaN : Number(value)
+            }).filter(function(value) { return Number.isFinite(value) })
+            if (samples.length === 0)
+                return
+
+            let minimum = widgetRoot.scalar(node.nodeProps.min,
+                samples.reduce(function(a, b) { return Math.min(a, b) }, samples[0]))
+            let maximum = widgetRoot.scalar(node.nodeProps.max,
+                samples.reduce(function(a, b) { return Math.max(a, b) }, samples[0]))
+            if (maximum <= minimum) {
+                maximum = minimum + 1
+            }
+
+            const inset = Math.max(1, widgetRoot.scalar(node.nodeProps.thickness, 2))
+            const point = function(index) {
+                const x = samples.length === 1 ? width / 2 : index * width / (samples.length - 1)
+                const fraction = Math.max(0, Math.min(1, (samples[index] - minimum) / (maximum - minimum)))
+                return Qt.point(x, height - inset - fraction * Math.max(0, height - 2 * inset))
+            }
+            const color = widgetRoot.colorValue(node.nodeProps.color, Theme.accent)
+            context.lineWidth = inset
+            context.lineCap = "round"
+            context.lineJoin = "round"
+            context.strokeStyle = color
+            context.beginPath()
+            for (let index = 0; index < samples.length; ++index) {
+                const p = point(index)
+                if (index === 0)
+                    context.moveTo(p.x, p.y)
+                else
+                    context.lineTo(p.x, p.y)
+            }
+            if (node.nodeProps.area === true
+                    || (node.nodeProps.area !== undefined && node.nodeProps.area !== false
+                        && node.nodeProps.area !== null)) {
+                const last = point(samples.length - 1)
+                const first = point(0)
+                context.lineTo(last.x, height)
+                context.lineTo(first.x, height)
+                context.closePath()
+                const areaColor = node.nodeProps.area === true
+                        ? Qt.rgba(color.r, color.g, color.b, 0.18)
+                        : widgetRoot.colorValue(node.nodeProps.area, Qt.rgba(color.r, color.g, color.b, 0.18))
+                context.fillStyle = areaColor
+                context.fill()
+                context.beginPath()
+                for (let index = 0; index < samples.length; ++index) {
+                    const p = point(index)
+                    if (index === 0)
+                        context.moveTo(p.x, p.y)
+                    else
+                        context.lineTo(p.x, p.y)
+                }
+            }
+            context.stroke()
+        }
+    }
+
+    Canvas {
         id: canvas
         anchors.fill: parent
         visible: node.nodeType === "Canvas"
@@ -156,6 +332,8 @@ Item {
             context.clearRect(0, 0, width, height)
             drawNodes(context, node.nodeChildren)
         }
+
+        onImageLoaded: requestPaint()
 
         function drawNodes(context, items) {
             for (const item of items) {
@@ -219,6 +397,16 @@ Item {
                     context.lineTo(Number(args[2]), Number(args[3]))
                     context.strokeStyle = stroke
                     context.stroke()
+                } else if (item.op === "image" && args.length >= 5) {
+                    const source = widgetRoot.imageSource(args[0])
+                    if (!canvas.isImageLoaded(source)
+                            && !canvas.isImageLoading(source)
+                            && !canvas.isImageError(source)) {
+                        canvas.loadImage(source)
+                    }
+                    if (canvas.isImageLoaded(source))
+                        context.drawImage(source, Number(args[1]), Number(args[2]),
+                                          Number(args[3]), Number(args[4]))
                 } else if (item.op === "text" && args.length >= 3) {
                     const weight = named.bold === true || Number(named.fontWeight) >= 600 ? "600 " : ""
                     context.font = weight + String(Theme.fontSize(widgetRoot.scalar(named.size, 14))) + "px monospace"
@@ -299,5 +487,12 @@ Item {
         }
     }
 
-    onNodeDataChanged: if (nodeType === "Canvas") canvas.requestPaint()
+    onNodeDataChanged: {
+        if (nodeType === "Canvas")
+            canvas.requestPaint()
+        else if (nodeType === "Ring")
+            ring.requestPaint()
+        else if (nodeType === "Sparkline")
+            sparkline.requestPaint()
+    }
 }

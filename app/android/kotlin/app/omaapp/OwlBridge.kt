@@ -37,13 +37,19 @@ object OwlBridge {
     private val supportedProperties = mapOf(
         "Column" to setOf("gap", "fill", "width", "height", "weight", "padding"),
         "Row" to setOf("gap", "fill", "width", "height", "weight", "padding"),
+        "Flow" to setOf("gap", "fill", "width", "height", "weight", "padding"),
+        "Grid" to setOf("columns", "gap", "fill", "width", "height", "weight", "padding"),
         "Box" to setOf("align", "width", "height", "fill", "weight", "padding"),
         "Text" to setOf("text", "color", "style", "font", "fontSize", "fontWeight", "bold", "italic", "letterSpacing", "align", "maxLines", "width", "height"),
         "Button" to setOf("text", "width", "height"),
         "Progress" to setOf("value", "max", "color", "track", "width", "height"),
+        "Ring" to setOf("value", "max", "color", "track", "thickness", "start", "sweep", "width", "height"),
+        "Sparkline" to setOf("values", "min", "max", "color", "area", "thickness", "width", "height"),
+        "Spacer" to setOf("width", "height", "weight", "size"),
+        "Image" to setOf("src", "fit", "label", "width", "height", "fill", "weight"),
         "Canvas" to setOf("width", "height"),
     )
-    private val supportedDrawOps = setOf("rect", "circle", "arc", "line", "text", "path", "sprite", "translate", "rotate", "scale", "clip", "layer")
+    private val supportedDrawOps = setOf("rect", "circle", "arc", "line", "text", "path", "image", "sprite", "translate", "rotate", "scale", "clip", "layer")
 
     private val startedAt = System.nanoTime()
 
@@ -68,8 +74,8 @@ object OwlBridge {
             require(program.globals.none { it is Global.State && it.secret }) {
                 "secret state is only available to a networked widget runtime"
             }
-            require(program.globals.none { it is Global.Asset || it is Global.Sampled }) {
-                "offline widgets cannot use OWL assets or sampled state yet"
+            require(program.globals.none { it is Global.Sampled }) {
+                "offline widget history needs a live data source"
             }
             require(program.root.size <= MAX_RENDERED_NODES) { "widget tree exceeds the offline rendering limit" }
 
@@ -124,6 +130,10 @@ object OwlBridge {
                     val props = JSONObject()
                     for ((name, expression) in item.props) {
                         val value = host.evaluate(expression, env)
+                        if (item.kind == "Image" && name == "src") {
+                            props.put(name, host.imageSource(value))
+                            continue
+                        }
                         require(value !is Gradient) {
                             "offline gradients are supported only on OWL canvas fill and stroke paints"
                         }
@@ -179,7 +189,21 @@ object OwlBridge {
 
     private fun drawJson(item: WNode.Draw, env: Env, host: OfflineHost, depth: Int): JSONObject {
         val args = JSONArray()
-        item.args.forEach { args.put(toJson(host.evaluate(it, env))) }
+        if (item.op == "image") {
+            require(item.args.size == 5) { "offline canvas image needs a source and four coordinates" }
+            args.put(host.imageSource(host.evaluate(item.args[0], env)))
+            val coordinates = item.args.drop(1).map { host.evaluate(it, env).num() }
+            require(coordinates.all { it != null && it.isFinite() && kotlin.math.abs(it) <= 16_384.0 }) {
+                "offline canvas image coordinates must be finite and within 16,384 dp"
+            }
+            require(coordinates[2]!! > 0.0 && coordinates[3]!! > 0.0
+                && coordinates[2]!! <= 4_096.0 && coordinates[3]!! <= 4_096.0) {
+                "offline canvas image size must be between 0 and 4,096 dp"
+            }
+            coordinates.forEach { args.put(it!!) }
+        } else {
+            item.args.forEach { args.put(toJson(host.evaluate(it, env))) }
+        }
         val named = JSONObject()
         for ((name, expression) in item.named) {
             val value = host.evaluate(expression, env)
@@ -229,8 +253,31 @@ object OwlBridge {
         override val budget = Budget(200_000)
         private val slots = MutableList<Value?>(program.globals.size) { null }
         private val initializing = HashSet<Int>()
+        private val embeddedAssets = program.globals.filterIsInstance<Global.Asset>().associate { asset ->
+            Base64.getEncoder().encodeToString(asset.bytes) to asset.bytes
+        }
         var renderedNodes = 0
             private set
+
+        fun imageSource(value: Value): String {
+            val encoded = (value as? Str)?.v
+                ?: throw WidgetError("offline images need a self-contained OWL asset")
+            val bytes = embeddedAssets[encoded]
+                ?: throw WidgetError("offline images need a self-contained OWL asset")
+            val mime = when {
+                bytes.size >= 8 && bytes.take(8).map { it.toInt() and 0xff } ==
+                    listOf(137, 80, 78, 71, 13, 10, 26, 10) -> "image/png"
+                bytes.size >= 3 && (bytes[0].toInt() and 0xff) == 0xff
+                    && (bytes[1].toInt() and 0xff) == 0xd8
+                    && (bytes[2].toInt() and 0xff) == 0xff -> "image/jpeg"
+                bytes.size >= 12 && String(bytes, 0, 4, Charsets.US_ASCII) == "RIFF"
+                    && String(bytes, 8, 4, Charsets.US_ASCII) == "WEBP" -> "image/webp"
+                bytes.size >= 6 && (String(bytes, 0, 6, Charsets.US_ASCII) == "GIF87a"
+                    || String(bytes, 0, 6, Charsets.US_ASCII) == "GIF89a") -> "image/gif"
+                else -> throw WidgetError("offline image assets must be PNG, JPEG, WebP, or GIF")
+            }
+            return "data:$mime;base64,$encoded"
+        }
 
         fun stepNode() {
             budget.tick()

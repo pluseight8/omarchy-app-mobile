@@ -1,14 +1,20 @@
 widget "Canvas sampler" {
   meta { owl: 1; description: "A live canvas with OWL expressions, shapes, and Omarchy colors." }
+  asset badge = base64"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg=="
   size: 2x1
   padding: 14
   background: surface
 
   Column {
     gap: 6
-    Text { text: "OWL canvas"; style: title; color: foreground }
+    Row {
+      fill: width
+      gap: 8
+      Text { text: "OWL canvas"; style: title; color: foreground }
+      Image { src: badge; width: 16; height: 16; fit: contain; label: "Embedded OWL badge" }
+    }
     Canvas {
-      width: 300
+      width: 128
       height: 64
       let phase = (time % 4) / 4
       let x = 8 + phase * (width - 16)
@@ -16,7 +22,14 @@ widget "Canvas sampler" {
       rect(8, height - 14, width - 16, 8, fill: alpha(accent, 0.18), radius: 4)
       rect(8, height - 14, max(0, x - 8), 8, fill: accent, radius: 4)
       circle(x, height / 2, 5, fill: foreground)
+      image(badge, width - 24, 4, 16, 16)
       text("OFFLINE", 14, 20, color: muted, size: 10)
+    }
+    Row {
+      fill: width
+      gap: 8
+      Ring { value: 3; max: 4; color: accent; track: muted; thickness: 3; width: 28; height: 28 }
+      Sparkline { values: [3, 4, 3, 6, 5, 8, 7]; min: 0; max: 10; color: accent; area: true; width: 96; height: 28 }
     }
   }
 }

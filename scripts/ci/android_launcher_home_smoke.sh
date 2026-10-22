@@ -193,3 +193,47 @@ if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
 fi
 adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
 sleep 8
+
+# Install the bundled offline OWL canvas widget from its on-device store and
+# check that QML draws both its native Image node and Canvas image(...) call.
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-home-before-owl-store.xml "$smoke_artifacts/window-home-before-owl-store.xml"
+select_home_when_needed "$smoke_artifacts/window-home-before-owl-store.xml" \
+  /sdcard/omaapp-home-before-owl-store.xml
+settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  "$smoke_artifacts/window-home-before-owl-store.xml" 'Settings')"
+read -r settings_x settings_y <<< "$settings_target"
+adb shell input tap "$settings_x" "$settings_y"
+sleep 1
+owl_add_target=""
+for attempt in {1..10}; do
+  python3 scripts/ci/android_accessibility_dump.py \
+    /sdcard/omaapp-owl-store.xml "$smoke_artifacts/window-owl-store.xml"
+  if owl_add_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+    "$smoke_artifacts/window-owl-store.xml" 'Add Canvas sampler to Home' 2>/dev/null)"; then
+    break
+  fi
+  adb shell input swipe 205 720 205 300 450
+  sleep 1
+done
+if [[ -z "$owl_add_target" ]]; then
+  printf 'Could not find the offline Canvas sampler in the OWL store.\n' >&2
+  exit 1
+fi
+read -r owl_add_x owl_add_y <<< "$owl_add_target"
+adb shell input tap "$owl_add_x" "$owl_add_y"
+sleep 1
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-settings-after-owl-add.xml "$smoke_artifacts/window-settings-after-owl-add.xml"
+select_home_when_needed "$smoke_artifacts/window-settings-after-owl-add.xml" \
+  /sdcard/omaapp-settings-after-owl-add.xml
+for attempt in {1..10}; do
+  adb exec-out screencap -p > "$smoke_artifacts/home-with-owl-canvas.png"
+  if python3 scripts/ci/check_owl_image_rendered.py \
+    "$smoke_artifacts/home-with-owl-canvas.png"; then
+    break
+  fi
+  adb shell input swipe 205 720 205 300 450
+  sleep 1
+done
+python3 scripts/ci/check_owl_image_rendered.py "$smoke_artifacts/home-with-owl-canvas.png"

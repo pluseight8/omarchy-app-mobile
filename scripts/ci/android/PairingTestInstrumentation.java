@@ -191,7 +191,79 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || !"bottomEnd".equals(boxNodes.optJSONObject(0).optJSONObject("props").optString("align"))) {
             throw new IllegalStateException("OWL Box alignment and overlay layout did not compile.");
         }
-        Log.i(TAG, "Embedded OWL compiler, offline clock, canvas, Box layout, and network rejection passed.");
+
+        String png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg==";
+        String assetWidget = "widget \"CI asset\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  asset badge = base64\"" + png + "\"\n"
+                + "  Row { Image { src: badge; width: 16; height: 16; fit: contain; label: \"badge\" } }\n"
+                + "  Canvas { width: 32; height: 32; image(badge, 2, 3, 16, 16) }\n"
+                + "}\n";
+        JSONObject assetRender = new JSONObject(OwlBridge.render(assetWidget, 320.0, 156.0,
+                theme.toString()));
+        JSONArray assetNodes = assetRender.optJSONArray("nodes");
+        if (assetRender.has("error") || assetNodes == null || assetNodes.length() != 2) {
+            throw new IllegalStateException("The offline OWL image and canvas nodes did not render: "
+                    + assetRender.optString("error"));
+        }
+        JSONObject imageNode = assetNodes.optJSONObject(0).optJSONArray("children").optJSONObject(0);
+        String expectedImage = "data:image/png;base64," + png;
+        if (!"Image".equals(imageNode.optString("type"))
+                || !expectedImage.equals(imageNode.optJSONObject("props").optString("src"))) {
+            throw new IllegalStateException("OWL Image did not receive its self-contained raster asset.");
+        }
+        JSONArray canvasCommands = assetNodes.optJSONObject(1).optJSONArray("children");
+        JSONObject imageCommand = canvasCommands == null ? null : canvasCommands.optJSONObject(0);
+        JSONArray imageArgs = imageCommand == null ? null : imageCommand.optJSONArray("args");
+        if (imageCommand == null || !"image".equals(imageCommand.optString("op"))
+                || imageArgs == null || imageArgs.length() != 5
+                || !expectedImage.equals(imageArgs.optString(0))
+                || imageArgs.optDouble(1, -1) != 2 || imageArgs.optDouble(2, -1) != 3
+                || imageArgs.optDouble(3, -1) != 16 || imageArgs.optDouble(4, -1) != 16) {
+            throw new IllegalStateException("OWL Canvas did not evaluate and bound its embedded image call.");
+        }
+        JSONObject remoteImage = new JSONObject(OwlBridge.render(
+                "widget \"remote image\" {\n"
+                        + "  meta { owl: 8 }\n"
+                        + "  Image { src: \"https://example.invalid/icon.png\" }\n"
+                        + "}\n",
+                320.0, 156.0, theme.toString()));
+        if (!remoteImage.has("error")) {
+            throw new IllegalStateException("The offline OWL image renderer accepted a remote URL.");
+        }
+        JSONObject largeImage = new JSONObject(OwlBridge.render(
+                assetWidget.replace("image(badge, 2, 3, 16, 16)", "image(badge, 2, 3, 5000, 16)"),
+                320.0, 156.0, theme.toString()));
+        if (!largeImage.has("error")) {
+            throw new IllegalStateException("The offline OWL canvas accepted an unbounded image size.");
+        }
+        JSONObject portableWidgets = new JSONObject(OwlBridge.render(
+                "widget \"CI visuals\" {\n"
+                        + "  Flow { Text { text: \"offline\" } }\n"
+                        + "  Grid { columns: 2; Text { text: \"a\" }; Text { text: \"b\" } }\n"
+                        + "  Ring { value: 3; max: 4; width: 32; height: 32 }\n"
+                        + "  Sparkline { values: [1, 3, 2]; area: true; width: 64; height: 24 }\n"
+                        + "  Spacer { width: 8; height: 12 }\n"
+                        + "}\n", 320.0, 156.0, theme.toString()));
+        JSONArray visualNodes = portableWidgets.optJSONArray("nodes");
+        String[] visualTypes = {"Flow", "Grid", "Ring", "Sparkline", "Spacer"};
+        if (portableWidgets.has("error") || visualNodes == null
+                || visualNodes.length() != visualTypes.length) {
+            throw new IllegalStateException("Portable OWL visual nodes did not render: "
+                    + portableWidgets.optString("error"));
+        }
+        for (int index = 0; index < visualTypes.length; ++index) {
+            if (!visualTypes[index].equals(visualNodes.optJSONObject(index).optString("type"))) {
+                throw new IllegalStateException("Offline OWL visual node order changed at " + index + ".");
+            }
+        }
+        JSONObject nonImageAsset = new JSONObject(OwlBridge.render(
+                "widget \"bad asset\" { asset text = base64\"SGVsbG8=\"; Image { src: text } }",
+                320.0, 156.0, theme.toString()));
+        if (!nonImageAsset.has("error")) {
+            throw new IllegalStateException("The offline OWL image renderer accepted a non-image asset.");
+        }
+        Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
     }
 
     private static void runEventRefreshQueueSmoke() {
