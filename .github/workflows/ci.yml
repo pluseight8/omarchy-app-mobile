@@ -1,11 +1,11 @@
-Warning: truncated output (original token count: 5372)
-Total output lines: 377
-
 name: CI
 
 on:
   push:
-    branches: [main]
+    # The Codex GitHub connection updates PR branches through the push API,
+    # which does not always emit pull_request/synchronize. Run the same checks
+    # on those branch pushes so the current PR head still gets full CI.
+    branches: [main, 'codex/**']
   pull_request:
     branches: [main]
 
