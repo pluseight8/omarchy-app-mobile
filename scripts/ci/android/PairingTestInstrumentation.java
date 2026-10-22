@@ -1,4 +1,4 @@
-Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊M6—:-jZ.∂õ≠ñ)ﬁ≥UöÆxßÇ⁄Óù∆≠y⁄.∂õ≠¢∏†äv•∂âù .û›xÎø¢÷•¢Îi∫ŸbùÎ5package app.omaapp;
+package app.omaapp;
 
 import android.app.Activity;
 import android.app.Instrumentation;
@@ -272,7 +272,255 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 "widget \"bad asset\" { asset text = base64\"SGVsbG8=\"; Image { src: text } }",
                 320.0, 156.0, theme.toString()));
         if (!nonImageAsset.has("error")) {
-            throw new IllegalStateException("The offline OWL image renm¥∂âûÀk∫wµÁ]ace(context, 2);
+            throw new IllegalStateException("The offline OWL image renderer accepted a non-image asset.");
+        }
+        Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
+    }
+
+    private static void runEventRefreshQueueSmoke() {
+        EventRefreshQueue queue = new EventRefreshQueue();
+        if (!queue.enqueue("features") || queue.takePending() != EventRefreshQueue.FEATURES) {
+            throw new IllegalStateException("The event queue did not start a feature refresh.");
+        }
+        if (queue.enqueue("theme")) {
+            throw new IllegalStateException("An active event worker was scheduled twice.");
+        }
+        if (queue.takePending() != EventRefreshQueue.THEME || queue.takePending() != 0) {
+            throw new IllegalStateException("The event queue dropped a theme update during a feature refresh.");
+        }
+        if (!queue.enqueue("theme") || queue.enqueue("features")
+                || queue.takePending() != (EventRefreshQueue.THEME | EventRefreshQueue.FEATURES)
+                || queue.takePending() != 0) {
+            throw new IllegalStateException("The event queue did not coalesce both pending refresh kinds.");
+        }
+        Log.i(TAG, "Event refresh queue retained overlapping theme and feature updates.");
+    }
+
+    private void runConnectivityHeartbeatSmoke(Context context) throws Exception {
+        android.content.SharedPreferences preferences = context.getSharedPreferences(
+                PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        preferences.edit().putString("phase", "connected")
+                .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
+        if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+            throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
+        }
+
+        preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
+        if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+            throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+        }
+
+        reportStage("connectivity_heartbeat_waiting");
+        long deadline = SystemClock.elapsedRealtime() + 15_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+            long lastContact = preferences.getLong(PairingBridge.LAST_CONTACT_KEY, 0L);
+            if ("connected".equals(state.optString("phase")) && lastContact >= now) {
+                Log.i(TAG, "A successful event response refreshed the connected state.");
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        throw new IllegalStateException("The plugin event heartbeat did not restore connected state.");
+    }
+
+    private JSONObject awaitTheme(Context context, String expectedTheme,
+                                  long timeoutMillis, boolean requestRefresh) throws Exception {
+        if (expectedTheme.isEmpty() || expectedTheme.length() > 80) {
+            throw new IllegalArgumentException("An expected theme name is required.");
+        }
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        long nextProgress = 0;
+        JSONObject lastState = new JSONObject();
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (requestRefresh) {
+                PairingBridge.refresh(context);
+            }
+            lastState = new JSONObject(PairingBridge.stateJson(context));
+            if ("error".equals(lastState.optString("phase"))) {
+                throw new IllegalStateException(lastState.optString("lastError", "pairing failed"));
+            }
+            JSONObject snapshot = lastState.optJSONObject("snapshot");
+            JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
+            if ("connected".equals(lastState.optString("phase")) && theme != null
+                    && expectedTheme.equals(theme.optString("name"))) {
+                validateSnapshot(lastState, snapshot, theme);
+                return lastState;
+            }
+            if (SystemClock.elapsedRealtime() >= nextProgress) {
+                reportProgress(context, "waiting_for_" + expectedTheme);
+                nextProgress = SystemClock.elapsedRealtime() + 5_000L;
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("Timed out waiting for theme " + expectedTheme
+                + "; last phase=" + lastState.optString("phase"));
+    }
+
+    private static void awaitPluginRestartReconnect(Context context, String expectedTheme)
+            throws Exception {
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(launch);
+
+        long deadline = SystemClock.elapsedRealtime() + 90_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+            JSONObject snapshot = state.optJSONObject("snapshot");
+            JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
+            if ("connected".equals(state.optString("phase"))
+                    && theme != null && expectedTheme.equals(theme.optString("name"))) {
+                if (!state.optBoolean("hasPairedDevice")) {
+                    throw new IllegalStateException("The plugin restart cleared the saved device token.");
+                }
+                Log.i(TAG, "The saved device reconnected after the Omarchy plugin restarted.");
+                return;
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("The saved device did not reconnect and receive the post-restart theme.");
+    }
+
+    private void reportProgress(Context context, String stage) throws Exception {
+        JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+        JSONObject snapshot = state.optJSONObject("snapshot");
+        JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
+        Bundle status = new Bundle();
+        status.putString("stage", stage);
+        status.putString("phase", state.optString("phase"));
+        status.putString("theme", theme == null ? "" : theme.optString("name"));
+        status.putString("hasPendingRequest", state.optString("hasPendingRequest"));
+        status.putString("hasPairedDevice", state.optString("hasPairedDevice"));
+        status.putString("lastError", state.optString("lastError"));
+        Log.i(TAG, stage + ": phase=" + state.optString("phase")
+                + ", theme=" + (theme == null ? "" : theme.optString("name"))
+                + ", pending=" + state.optString("hasPendingRequest")
+                + ", paired=" + state.optString("hasPairedDevice")
+                + ", error=" + state.optString("lastError"));
+        sendStatus(1, status);
+    }
+
+    private static void validateSnapshot(JSONObject state, JSONObject snapshot, JSONObject theme)
+            throws Exception {
+        JSONObject colors = theme.optJSONObject("colors");
+        JSONObject shell = theme.optJSONObject("shell");
+        JSONObject spacing = shell == null ? null : shell.optJSONObject("spacing");
+        JSONObject font = shell == null ? null : shell.optJSONObject("font");
+        JSONObject geometry = snapshot.optJSONObject("hyprland");
+        if (colors == null || !"#a7c080".equals(colors.optString("accent"))
+                || spacing == null || spacing.optInt("row-gap", -1) != 7
+                || font == null || font.optInt("base-size", -1) != 14
+                || font.optInt("body", -1) != 13 || font.optInt("caption", -1) != 11
+                || spacing.optInt("panel-gap", -1) != 17
+                || geometry == null || geometry.optInt("rounding", -1) != 13
+                || Math.abs(geometry.optDouble("roundingPower", -1) - 4.0) > 0.001
+                || geometry.optInt("borderWidth", -1) != 2
+                || geometry.optInt("gapsIn", -1) != 5 || geometry.optInt("gapsOut", -1) != 10
+                || !geometry.optString("activeBorder").contains("37deg")
+                || geometry.optString("activeBorder").split("rgba\\(").length != 4) {
+            throw new IllegalStateException("Theme colors, spacing, or Hyprland geometry did not sync.");
+        }
+        String wallpaperPath = state.optString("wallpaperPath", "");
+        File wallpaper = new File(wallpaperPath);
+        if (!wallpaper.isFile() || wallpaper.length() == 0) {
+            throw new IllegalStateException("The paired wallpaper was not cached on Android.");
+        }
+    }
+
+    private static void awaitRevocation(Context context) throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + REVOCATION_TIMEOUT_MILLIS;
+        long nextAttempt = 0;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            long now = SystemClock.elapsedRealtime();
+            if (now >= nextAttempt) {
+                PairingBridge.revoke(context);
+                nextAttempt = now + 1_000L;
+            }
+            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+            if ("unpaired".equals(state.optString("phase"))
+                    && !state.optBoolean("hasPairedDevice")
+                    && state.optString("wallpaperPath", "").isEmpty()) {
+                return;
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("Timed out waiting for pairing revocation.");
+    }
+
+    private void runFeatureSmoke(Context context) throws Exception {
+        JSONObject credentials = PairingStore.readCredential(context);
+        if (credentials == null || !credentials.has("token")) {
+            throw new IllegalStateException("Feature smoke requires a paired device token.");
+        }
+
+        reportStage("feature_permissions_waiting");
+        JSONObject enabled = awaitFeatures(context, credentials, null, true, 30_000L);
+        JSONObject permissions = enabled.getJSONObject("permissions");
+        String[] permissionNames = {
+            "clipboard", "files.send", "files.receive", "media.control", "system.read",
+            "workspace.control", "commands"
+        };
+        for (String permission : permissionNames) {
+            if (!permissions.optBoolean(permission)) {
+                throw new IllegalStateException("The host did not grant " + permission + ".");
+            }
+        }
+
+        reportStage("system_status_waiting");
+        JSONObject system = requireJson(credentials, "/v1/system", "GET", null, 200);
+        long memoryTotal = system.optLong("memoryTotalBytes", -1);
+        long memoryAvailable = system.optLong("memoryAvailableBytes", -1);
+        JSONArray loadAverage = system.optJSONArray("loadAverage");
+        if (system.optLong("capturedAt", 0) <= 0 || memoryTotal <= 0
+                || memoryAvailable < 0 || memoryAvailable > memoryTotal
+                || !system.has("battery") || loadAverage == null || loadAverage.length() != 3
+                || loadAverage.optDouble(0, -1) < 0) {
+            throw new IllegalStateException("The computer status response is incomplete.");
+        }
+        reportStage("workspace_status_waiting");
+        JSONObject workspaces = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
+        JSONArray workspaceList = workspaces.optJSONArray("workspaces");
+        if (workspaceList == null || workspaceList.length() < 2
+                || !hasFocusedWorkspace(workspaceList, 1)) {
+            throw new IllegalStateException("The Hyprland workspace response is invalid.");
+        }
+        reportStage("media_status_waiting");
+        JSONObject media = requireJson(credentials, "/v1/media", "GET", null, 200);
+        JSONArray players = media.optJSONArray("players");
+        JSONObject firstPlayer = players == null ? null : players.optJSONObject(0);
+        if (players == null || players.length() != 1 || firstPlayer == null
+                || !"mpv".equals(firstPlayer.optString("player"))
+                || !"Before next".equals(firstPlayer.optString("title"))) {
+            throw new IllegalStateException("The MPRIS response is invalid.");
+        }
+
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null) {
+            throw new IllegalStateException("Android clipboard service is unavailable.");
+        }
+        // The plugin exposes the actual desktop clipboard. Verify its initial value
+        // reaches Android before replacing that value with the phone clipboard.
+        setClipboardOnMainThread(clipboard, "");
+        PairingBridge.pullClipboard(context);
+        awaitClipboard(clipboard, "from computer", 15_000L);
+        PersistableBundle clipboardExtras = clipboard.getPrimaryClip().getDescription().getExtras();
+        if (clipboardExtras == null || !clipboardExtras.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE)) {
+            throw new IllegalStateException("Incoming clipboard text was not marked sensitive.");
+        }
+
+        setClipboardOnMainThread(clipboard, "OmaApp CI phone clipboard");
+        PairingBridge.pushClipboard(context);
+        awaitFeatureMessage(context, "Phone clipboard sent to the computer.", 15_000L);
+        JSONObject computerClipboard = requireJson(credentials, "/v1/clipboard", "GET", null, 200);
+        if (!"OmaApp CI phone clipboard".equals(computerClipboard.optString("text"))) {
+            throw new IllegalStateException("Phone clipboard text did not reach the computer.");
+        }
+
+        PairingBridge.activateWorkspace(context, 2);
         awaitAction(context);
         JSONObject switched = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
         if (!hasFocusedWorkspace(switched.optJSONArray("workspaces"), 2)) {
