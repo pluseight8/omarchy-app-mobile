@@ -800,6 +800,7 @@ ApplicationWindow {
             Layout.fillHeight: true
             clip: true
             interactive: launcher.gestures.sectionSwipe !== false
+            currentIndex: navigationTabs.currentIndex
 
             ListView {
                 id: homePageView
@@ -2844,9 +2845,13 @@ ApplicationWindow {
         }
         }
 
-        RowLayout {
+        TabBar {
+            id: navigationTabs
             Layout.fillWidth: true
+            Layout.preferredHeight: Theme.space(32)
+            currentIndex: pages.currentIndex
             spacing: Theme.space(8)
+            background: Item {}
 
             Repeater {
                 model: [
@@ -2857,14 +2862,10 @@ ApplicationWindow {
                     { label: qsTr("Settings"), page: 4 }
                 ]
 
-                delegate: Button {
+                delegate: TabButton {
                     required property var modelData
-                    Layout.fillWidth: true
                     text: modelData.label
-                    checkable: true
-                    checked: pages.currentIndex === modelData.page
                     Accessible.name: modelData.label
-                    onClicked: pages.setCurrentIndex(modelData.page)
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
