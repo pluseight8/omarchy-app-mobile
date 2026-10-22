@@ -243,9 +243,12 @@ jobs:
           fi
           python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
             --baselines "$baseline_dir" --verify-style-surface
-          settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/settings.xml" 'Apps')"
-          read -r settings_x settings_y <<< "$settings_target"
-          adb shell input tap "$settings_x" "$settings_y"
+          python3 scripts/ci/android_accessibility_dump.py \
+            /sdcard/omaapp-before-folder-navigation.xml \
+            "$smoke_artifacts/window-before-folder-navigation.xml"
+          apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-before-folder-navigation.xml" 'Apps')"
+          read -r apps_x apps_y <<< "$apps_target"
+          adb shell input tap "$apps_x" "$apps_y"
           sleep 1
           grep -F 'app.omaapp' role.txt
           grep -F 'app.omaapp' activities.txt
