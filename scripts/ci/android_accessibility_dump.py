@@ -74,6 +74,8 @@ def dump_accessibility_xml(
             root = ET.parse(output_path).getroot()
             if root.tag != "hierarchy":
                 raise RuntimeError(f"unexpected UI hierarchy root element: {root.tag}")
+            if len(root) == 0:
+                raise RuntimeError("uiautomator returned an empty hierarchy")
             return output_path
         except (OSError, ET.ParseError, subprocess.SubprocessError, RuntimeError) as error:
             errors.append(f"attempt {attempt}/{attempts}: {error}")

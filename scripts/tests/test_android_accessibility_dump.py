@@ -11,6 +11,29 @@ from android_accessibility_dump import dump_accessibility_xml  # noqa: E402
 
 
 class AndroidAccessibilityDumpTests(unittest.TestCase):
+    def test_retries_when_uiautomator_returns_an_empty_hierarchy(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "screen.xml"
+            pulls = 0
+
+            def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+                nonlocal pulls
+                if command[:2] == ["adb", "pull"]:
+                    pulls += 1
+                    content = "<hierarchy />" if pulls == 1 else "<hierarchy><node /></hierarchy>"
+                    Path(command[-1]).write_text(content, encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            sleeps: list[float] = []
+            result = dump_accessibility_xml(
+                "/sdcard/screen.xml", output, attempts=3, delay_seconds=0.2,
+                run=run, sleep=sleeps.append,
+            )
+
+        self.assertEqual(result, output)
+        self.assertEqual(pulls, 2)
+        self.assertEqual(sleeps, [0.2])
+
     def test_retries_when_uiautomator_reports_no_root(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "screen.xml"
@@ -24,7 +47,7 @@ class AndroidAccessibilityDumpTests(unittest.TestCase):
                     root_checks += 1
                     return subprocess.CompletedProcess(command, 1 if root_checks == 1 else 0, "", "")
                 if command[:3] == ["adb", "pull", "/sdcard/screen.xml"]:
-                    Path(command[-1]).write_text("<hierarchy />", encoding="utf-8")
+                    Path(command[-1]).write_text("<hierarchy><node /></hierarchy>", encoding="utf-8")
                 return subprocess.CompletedProcess(command, 0, "", "")
 
             sleeps: list[float] = []
