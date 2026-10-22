@@ -199,6 +199,12 @@ jobs:
           adb logcat -c
           adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
           sleep 8
+          # Capture the configured API before HOME role changes can restart the app process.
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          grep -F 'OmaApp configured Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
+          if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
+            exit 1
+          fi
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
@@ -208,13 +214,6 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          # Check the requested API here, then check Qt's initialized graphics
-          # API after the style page renders its superellipse surface below.
-          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/startup-logcat.txt"
-          grep -F 'OmaApp configured Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
-          if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
-            exit 1
-          fi
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
           adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
           test -s "$smoke_artifacts/launcher-before-pin.png"
