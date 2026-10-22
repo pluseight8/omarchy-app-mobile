@@ -387,6 +387,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
 
+        reportStage("system_status_waiting");
         JSONObject system = requireJson(credentials, "/v1/system", "GET", null, 200);
         long memoryTotal = system.optLong("memoryTotalBytes", -1);
         long memoryAvailable = system.optLong("memoryAvailableBytes", -1);
@@ -397,12 +398,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || loadAverage.optDouble(0, -1) < 0) {
             throw new IllegalStateException("The computer status response is incomplete.");
         }
+        reportStage("workspace_status_waiting");
         JSONObject workspaces = requireJson(credentials, "/v1/workspaces", "GET", null, 200);
         JSONArray workspaceList = workspaces.optJSONArray("workspaces");
         if (workspaceList == null || workspaceList.length() < 2
                 || !hasFocusedWorkspace(workspaceList, 1)) {
             throw new IllegalStateException("The Hyprland workspace response is invalid.");
         }
+        reportStage("media_status_waiting");
         JSONObject media = requireJson(credentials, "/v1/media", "GET", null, 200);
         JSONArray players = media.optJSONArray("players");
         JSONObject firstPlayer = players == null ? null : players.optJSONObject(0);

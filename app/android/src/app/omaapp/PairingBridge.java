@@ -52,6 +52,7 @@ public final class PairingBridge {
     private static final int MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
     private static final long PAIRING_TIMEOUT_MILLIS = 180_000L;
     private static final long CONNECTED_WINDOW_MILLIS = 45_000L;
+    private static final int DEFAULT_REQUEST_READ_TIMEOUT_MILLIS = 10_000;
     private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
     private static final ExecutorService EVENTS = Executors.newSingleThreadExecutor();
     private static final Object OPERATION_LOCK = new Object();
@@ -933,7 +934,8 @@ public final class PairingBridge {
 
     static HttpsURLConnection openConnection(JSONObject credentials, String path,
                                              String method, boolean authenticated) throws Exception {
-        return openConnection(credentials, path, method, authenticated, 5_000);
+        return openConnection(credentials, path, method, authenticated,
+                DEFAULT_REQUEST_READ_TIMEOUT_MILLIS);
     }
 
     static HttpsURLConnection openConnection(JSONObject credentials, String path,
