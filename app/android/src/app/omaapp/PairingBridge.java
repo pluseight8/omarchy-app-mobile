@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 12090)
+Total output lines: 1059
+
 package app.omaapp;
 
 import android.content.Context;
@@ -103,7 +106,7 @@ public final class PairingBridge {
             setFeatureMessage(context, "Could not read phone clipboard text.");
             return;
         }
-        runFeatureRequest(context, "/v1/clipboard", "POST", body, false);
+        runFeatureRequest(context, "/v1/clipboard", "POST", body, true);
     }
 
     public static void pullClipboard(Context context) {
@@ -550,11 +553,7 @@ public final class PairingBridge {
                     .getString(THEME_CACHE_KEY, "{}");
             state.put("snapshot", new JSONObject(theme));
             state.put("features", new JSONObject(appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                    .getString(FEATURES_CACHE_KEY, "{}")));
-            state.put("featureMessage", appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                    .getString(FEATURE_MESSAGE_KEY, ""));
-            state.put("wallpaperPath", appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                    .getString(WALLPAPER_PATH_KEY, ""));
+                    .g…90 tokens truncated…Y, ""));
             state.put("hasPairedDevice", credentials != null && credentials.has("token"));
             state.put("hasPendingRequest", credentials != null && credentials.has("requestId"));
         } catch (JSONException ignored) {
