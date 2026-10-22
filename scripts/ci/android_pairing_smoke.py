@@ -62,6 +62,7 @@ def main() -> int:
                 "shell": {
                     "spacing": {"scale": 1.0, "row-gap": 7, "panel-gap": 17},
                     "font": {"base-size": 14, "body": 13, "caption": 11},
+                    "popups": {"background": "#263238", "background-alpha": 0.85},
                 },
             },
             "hyprland": {
