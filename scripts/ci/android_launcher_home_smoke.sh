@@ -23,7 +23,11 @@ python3 scripts/ci/android_accessibility_dump.py \
 folder_name_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-new-folder-name.xml" 'New folder name')"
 read -r folder_name_x folder_name_y <<< "$folder_name_target"
 adb shell input tap "$folder_name_x" "$folder_name_y"
-adb shell input text "$folder_name"
+sleep 1
+for ((index = 0; index < ${#folder_name}; index++)); do
+  adb shell input text "${folder_name:index:1}"
+  sleep 0.15
+done
 sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-create-folder-confirm.xml "$smoke_artifacts/window-create-folder-confirm.xml"
