@@ -62,6 +62,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
+            runEventRefreshQueueSmoke();
             runOwlRuntimeSmoke();
             if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
                 runLauncherShortcutSmoke(context);
@@ -98,6 +99,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
             String expectedTheme = testArguments.getString("expectedTheme", "");
             JSONObject connected = awaitTheme(context, expectedTheme, PAIRING_TIMEOUT_MILLIS, false);
+            runConnectivityHeartbeatSmoke(context);
             report("paired", connected);
 
             String updatedTheme = testArguments.getString("updatedTheme", "");
@@ -190,6 +192,54 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("OWL Box alignment and overlay layout did not compile.");
         }
         Log.i(TAG, "Embedded OWL compiler, offline clock, canvas, Box layout, and network rejection passed.");
+    }
+
+    private static void runEventRefreshQueueSmoke() {
+        EventRefreshQueue queue = new EventRefreshQueue();
+        if (!queue.enqueue("features") || queue.takePending() != EventRefreshQueue.FEATURES) {
+            throw new IllegalStateException("The event queue did not start a feature refresh.");
+        }
+        if (queue.enqueue("theme")) {
+            throw new IllegalStateException("An active event worker was scheduled twice.");
+        }
+        if (queue.takePending() != EventRefreshQueue.THEME || queue.takePending() != 0) {
+            throw new IllegalStateException("The event queue dropped a theme update during a feature refresh.");
+        }
+        if (!queue.enqueue("theme") || queue.enqueue("features")
+                || queue.takePending() != (EventRefreshQueue.THEME | EventRefreshQueue.FEATURES)
+                || queue.takePending() != 0) {
+            throw new IllegalStateException("The event queue did not coalesce both pending refresh kinds.");
+        }
+        Log.i(TAG, "Event refresh queue retained overlapping theme and feature updates.");
+    }
+
+    private void runConnectivityHeartbeatSmoke(Context context) throws Exception {
+        android.content.SharedPreferences preferences = context.getSharedPreferences(
+                PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        preferences.edit().putString("phase", "connected")
+                .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
+        if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+            throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
+        }
+
+        preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
+        if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+            throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+        }
+
+        reportStage("connectivity_heartbeat_waiting");
+        long deadline = SystemClock.elapsedRealtime() + 15_000L;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
+            long lastContact = preferences.getLong(PairingBridge.LAST_CONTACT_KEY, 0L);
+            if ("connected".equals(state.optString("phase")) && lastContact >= now) {
+                Log.i(TAG, "A successful event response refreshed the connected state.");
+                return;
+            }
+            SystemClock.sleep(100L);
+        }
+        throw new IllegalStateException("The plugin event heartbeat did not restore connected state.");
     }
 
     private JSONObject awaitTheme(Context context, String expectedTheme,

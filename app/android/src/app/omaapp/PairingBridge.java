@@ -43,6 +43,7 @@ public final class PairingBridge {
     private static final String LAST_ERROR_KEY = "last_error";
     private static final String THEME_CACHE_KEY = "theme_cache";
     private static final String UPDATED_AT_KEY = "updated_at";
+    static final String LAST_CONTACT_KEY = "last_contact";
     private static final String WALLPAPER_PATH_KEY = "wallpaper_path";
     private static final String WALLPAPER_ID_KEY = "wallpaper_id";
     private static final String FEATURES_CACHE_KEY = "features_cache";
@@ -50,13 +51,13 @@ public final class PairingBridge {
     private static final int MAX_JSON_BYTES = 128 * 1024;
     private static final int MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
     private static final long PAIRING_TIMEOUT_MILLIS = 180_000L;
-    private static final long CONNECTED_WINDOW_MILLIS = 15_000L;
+    private static final long CONNECTED_WINDOW_MILLIS = 45_000L;
     private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
     private static final ExecutorService EVENTS = Executors.newSingleThreadExecutor();
     private static final Object OPERATION_LOCK = new Object();
     private static final AtomicBoolean REALTIME_SYNC_ENABLED = new AtomicBoolean(false);
     private static final AtomicBoolean EVENT_LOOP_RUNNING = new AtomicBoolean(false);
-    private static final AtomicBoolean EVENT_REFRESH_QUEUED = new AtomicBoolean(false);
+    private static final EventRefreshQueue EVENT_REFRESH_QUEUE = new EventRefreshQueue();
     private static boolean operationRunning;
     private static volatile boolean cancelRequested;
     private static long lastRefreshRequested;
@@ -397,6 +398,7 @@ public final class PairingBridge {
                         sleepQuietly(2_000L);
                         continue;
                     }
+                    markConnectionAlive(context);
                     byte[] bytes = readBounded(connection.getInputStream(), 16 * 1024);
                     JSONObject event = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
                     long nextRevision = event.optLong("revision", revision);
@@ -430,20 +432,21 @@ public final class PairingBridge {
     }
 
     private static void queueEventRefresh(Context context, JSONObject credentials, String kind) {
-        if (!EVENT_REFRESH_QUEUED.compareAndSet(false, true)) {
+        if (!EVENT_REFRESH_QUEUE.enqueue(kind)) {
             return;
         }
         NETWORK.execute(() -> {
-            try {
-                if ("theme".equals(kind)) {
-                    fetchStatus(context, credentials);
-                } else {
-                    fetchFeatures(context, credentials);
+            int pending;
+            while ((pending = EVENT_REFRESH_QUEUE.takePending()) != 0) {
+                try {
+                    if ((pending & EventRefreshQueue.THEME) != 0) {
+                        fetchStatus(context, credentials);
+                    } else if ((pending & EventRefreshQueue.FEATURES) != 0) {
+                        fetchFeatures(context, credentials);
+                    }
+                } catch (Exception error) {
+                    setFeatureMessage(context, safeMessage(error));
                 }
-            } catch (Exception error) {
-                setFeatureMessage(context, safeMessage(error));
-            } finally {
-                EVENT_REFRESH_QUEUED.set(false);
             }
         });
     }
@@ -534,8 +537,10 @@ public final class PairingBridge {
                 .getString(PHASE_KEY, "unpaired");
         long updatedAt = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                 .getLong(UPDATED_AT_KEY, 0);
+        long lastContact = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .getLong(LAST_CONTACT_KEY, updatedAt);
         if (credentials != null && credentials.has("token")
-                && System.currentTimeMillis() - updatedAt > CONNECTED_WINDOW_MILLIS) {
+                && System.currentTimeMillis() - lastContact > CONNECTED_WINDOW_MILLIS) {
             phase = "offline";
         }
         try {
@@ -746,6 +751,7 @@ public final class PairingBridge {
             setFeatureMessage(context, safeMessage(error));
         }
         setUiState(context, "connected", snapshot.optString("hostName"), "");
+        markConnectionAlive(context);
     }
 
     private static void fetchFeatures(Context context, JSONObject credentials) throws Exception {
@@ -758,6 +764,7 @@ public final class PairingBridge {
                 .putString(FEATURES_CACHE_KEY, features.body.toString())
                 .putLong("event_revision", eventRevision)
                 .apply();
+        markConnectionAlive(context);
     }
 
     private static void runFeatureRequest(Context context, String path, String method,
@@ -1033,6 +1040,18 @@ public final class PairingBridge {
                 .apply();
     }
 
+    private static void markConnectionAlive(Context context) {
+        if (context == null) {
+            return;
+        }
+        context.getApplicationContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(LAST_CONTACT_KEY, System.currentTimeMillis())
+                .putString(PHASE_KEY, "connected")
+                .putString(LAST_ERROR_KEY, "")
+                .apply();
+    }
+
     private static void clearThemeCache(Context context) {
         String wallpaperPath = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                 .getString(WALLPAPER_PATH_KEY, "");
@@ -1041,6 +1060,7 @@ public final class PairingBridge {
         }
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
                 .remove(THEME_CACHE_KEY).remove(UPDATED_AT_KEY)
+                .remove(LAST_CONTACT_KEY)
                 .remove(WALLPAPER_PATH_KEY).remove(WALLPAPER_ID_KEY)
                 .remove(FEATURES_CACHE_KEY).remove(FEATURE_MESSAGE_KEY)
                 .remove("event_revision")

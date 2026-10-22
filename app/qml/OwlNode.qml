@@ -43,7 +43,7 @@ Item {
         visible: node.nodeType === "Box"
 
         Repeater {
-            model: node.nodeChildren
+            model: node.nodeType === "Box" ? node.nodeChildren : []
             delegate: Item {
                 id: alignedChild
                 required property var modelData

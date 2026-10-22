@@ -992,7 +992,7 @@ ApplicationWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     visible: (pairing.features.players || []).length === 0
-                                    text: window.featureEnabled("media")
+                                    text: window.featureEnabled("media.control")
                                           ? qsTr("No active media player on the computer.")
                                           : qsTr("Enable media permission in the Omarchy plugin to use these controls.")
                                     color: Theme.muted
@@ -1027,14 +1027,14 @@ ApplicationWindow {
                                                 Accessible.name: modelData.status === "Playing"
                                                                  ? qsTr("Pause %1").arg(modelData.player)
                                                                  : qsTr("Play %1").arg(modelData.player)
-                                                enabled: pairing.connected && window.featureEnabled("media")
+                                                enabled: pairing.connected && window.featureEnabled("media.control")
                                                 onClicked: pairing.mediaAction(modelData.player,
                                                                                modelData.status === "Playing" ? "pause" : "play")
                                             }
                                             ToolButton {
                                                 text: "›"
                                                 Accessible.name: qsTr("Next track on %1").arg(modelData.player)
-                                                enabled: pairing.connected && window.featureEnabled("media")
+                                                enabled: pairing.connected && window.featureEnabled("media.control")
                                                 onClicked: pairing.mediaAction(modelData.player, "next")
                                             }
                                         }

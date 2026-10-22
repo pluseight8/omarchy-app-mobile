@@ -155,6 +155,8 @@ def main() -> int:
                     with theme_lock:
                         theme["name"] = updated_theme
                     updated = True
+                if "INSTRUMENTATION_STATUS: stage=connectivity_heartbeat_waiting" in line:
+                    state.event_hub.publish("features")
                 if (feature_smoke and not granted_features
                         and "INSTRUMENTATION_STATUS: stage=feature_permissions_waiting" in line):
                     if len(state.devices) != 1:
