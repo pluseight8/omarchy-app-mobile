@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 34650)
-Total output lines: 2894
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -993,7 +990,1114 @@ ApplicationWindow {
                                     Item { Layout.fillWidth: true }
                                 }
                                 Text {
-                      …14650 tokens truncated…                        visible: pairing.features.players !== undefined
+                                    Layout.fillWidth: true
+                                    visible: (pairing.features.players || []).length === 0
+                                    text: window.featureEnabled("media")
+                                          ? qsTr("No active media player on the computer.")
+                                          : qsTr("Enable media permission in the Omarchy plugin to use these controls.")
+                                    color: Theme.muted
+                                    font.pixelSize: Theme.fontSize(11)
+                                    wrapMode: Text.WordWrap
+                                }
+                                Repeater {
+                                    model: pairing.features.players || []
+                                    delegate: HyprlandSurface {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 72
+                                        fillColor: Theme.surface
+                                        borderStart: Theme.outline
+                                        borderEnd: Theme.outline
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: [modelData.title, modelData.artist].filter(Boolean).join(" · ")
+                                                      || modelData.player
+                                                color: Theme.foreground
+                                                font.pixelSize: Theme.fontSize(12)
+                                                elide: Text.ElideRight
+                                            }
+                                            Button {
+                                                text: modelData.status === "Playing" ? qsTr("Pause") : qsTr("Play")
+                                                Accessible.name: modelData.status === "Playing"
+                                                                 ? qsTr("Pause %1").arg(modelData.player)
+                                                                 : qsTr("Play %1").arg(modelData.player)
+                                                enabled: pairing.connected && window.featureEnabled("media")
+                                                onClicked: pairing.mediaAction(modelData.player,
+                                                                               modelData.status === "Playing" ? "pause" : "play")
+                                            }
+                                            ToolButton {
+                                                text: "›"
+                                                Accessible.name: qsTr("Next track on %1").arg(modelData.player)
+                                                enabled: pairing.connected && window.featureEnabled("media")
+                                                onClicked: pairing.mediaAction(modelData.player, "next")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: owl.installedWidgets.length > 0
+                                Text {
+                                    text: qsTr("OWL widgets")
+                                    color: Theme.foreground
+                                    font.pixelSize: Theme.fontSize(19)
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Button {
+                                    text: qsTr("Manage")
+                                    Accessible.name: qsTr("Manage OWL widgets")
+                                    onClicked: window.selectedPage = 4
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: owl.installedWidgets.length > 1
+                                text: qsTr("Hold and drag a widget to change its order.")
+                                color: Theme.muted
+                                font.pixelSize: Theme.fontSize(11)
+                            }
+
+                            Repeater {
+                                model: owl.installedWidgets
+                                delegate: OwlWidgetView {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    owlModel: owl
+                                    widgetId: modelData.id
+                                    itemIndex: index
+                                    themeJson: window.owlThemeJson()
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: qsTr("Pinned apps")
+                                    color: Theme.foreground
+                                    font.pixelSize: Theme.fontSize(19)
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Button {
+                                    Layout.preferredWidth: 104
+                                    text: qsTr("All apps")
+                                    Accessible.name: qsTr("Open all installed apps")
+                                    onClicked: window.selectedPage = 1
+                                }
+                            }
+
+                            GridView {
+                                id: homeAppsGrid
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: Math.max(cellHeight,
+                                    Math.ceil(count / launcher.gridColumns) * cellHeight)
+                                cellWidth: Math.floor(width / launcher.gridColumns)
+                                cellHeight: 96
+                                interactive: false
+                                clip: false
+                                model: launcher.homePageApps(index)
+
+                                delegate: Button {
+                                    required property var modelData
+                                    width: homeAppsGrid.cellWidth - 8
+                                    height: homeAppsGrid.cellHeight - 8
+                                    Accessible.name: qsTr("Launch %1").arg(modelData.name)
+                                    onClicked: launcher.launchActivity(modelData.packageName,
+                                                                       modelData.activityName)
+                                    onPressAndHold: {
+                                        if (launcher.gestures.longPressEdit) {
+                                            window.editingHomeApp = modelData
+                                            homeAppDialog.open()
+                                        }
+                                    }
+
+                                    Drag.active: homeAppDragHandler.active
+                                    Drag.dragType: Drag.Automatic
+                                    Drag.supportedActions: Qt.MoveAction
+                                    Drag.mimeData: ({
+                                        "application/x-omaapp-activity": JSON.stringify({
+                                            "packageName": modelData.packageName,
+                                            "activityName": modelData.activityName
+                                        })
+                                    })
+
+                                    DragHandler {
+                                        id: homeAppDragHandler
+                                        target: null
+                                        acceptedButtons: Qt.LeftButton
+                                    }
+
+                                    contentItem: Column {
+                                        spacing: Theme.space(6)
+                                        Image {
+                                            width: 42
+                                            height: 42
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            source: modelData.iconUrl
+                                            fillMode: Image.PreserveAspectFit
+                                            asynchronous: true
+                                        }
+                                        Text {
+                                            width: homeAppsGrid.cellWidth - 16
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: modelData.name
+                                            color: Theme.foreground
+                                            font.pixelSize: Theme.fontSize(11)
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                        }
+                                    }
+                                    background: HyprlandSurface {
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
+                                        borderStart: parent.activeFocus ? Theme.accent : "transparent"
+                                        borderEnd: parent.activeFocus ? Theme.accent : "transparent"
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: parent.activeFocus ? 1 : 0
+                                    }
+                                }
+
+                                DropArea {
+                                    id: homePageDropArea
+                                    anchors.fill: parent
+                                    z: 10
+                                    keys: ["application/x-omaapp-activity"]
+
+                                    onDropped: function(drop) {
+                                        try {
+                                            const payload = JSON.parse(drop.getDataAsString(
+                                                "application/x-omaapp-activity"))
+                                            const row = Math.floor(drop.y / homeAppsGrid.cellHeight)
+                                            const column = Math.floor(drop.x / homeAppsGrid.cellWidth)
+                                            const targetIndex = row * launcher.gridColumns + column
+                                            if (launcher.placeFavorite(payload.packageName,
+                                                                       payload.activityName,
+                                                                       index, targetIndex)) {
+                                                drop.acceptProposedAction()
+                                            }
+                                        } catch (error) {
+                                            console.warn("OmaApp: ignored an invalid launcher drag payload")
+                                        }
+                                    }
+
+                                    HyprlandSurface {
+                                        anchors.fill: parent
+                                        visible: homePageDropArea.containsDrag
+                                        fillColor: "transparent"
+                                        borderStart: Theme.accent
+                                        borderEnd: Theme.accent
+                                        borderWidth: 2
+                                        radius: Theme.defaultCornerRadius
+                                    }
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: Theme.space(8)
+
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Text {
+                                        text: qsTr("Dock")
+                                        color: Theme.foreground
+                                        font.pixelSize: Theme.fontSize(16)
+                                        font.weight: Font.DemiBold
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text {
+                                        Layout.preferredWidth: 190
+                                        Layout.maximumWidth: window.width * 0.6
+                                        text: launcher.favorites.length > 0
+                                              ? qsTr("%1 shortcuts").arg(launcher.favorites.length)
+                                              : qsTr("Hold an app in All apps to add it")
+                                        color: Theme.muted
+                                        font.pixelSize: Theme.fontSize(11)
+                                        horizontalAlignment: Text.AlignRight
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                Flickable {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 84
+                                    contentWidth: homeDockRow.implicitWidth
+                                    contentHeight: height
+                                    clip: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    flickableDirection: Flickable.HorizontalFlick
+
+                                    Row {
+                                        id: homeDockRow
+                                        spacing: Theme.space(8)
+
+                                        Repeater {
+                                            model: launcher.favorites
+                                            delegate: Button {
+                                                required property var modelData
+                                                width: 72
+                                                height: 78
+                                                Accessible.name: qsTr("Dock shortcut: launch %1")
+                                                                   .arg(modelData.name)
+                                                onClicked: launcher.launchActivity(modelData.packageName,
+                                                                                   modelData.activityName)
+                                                onPressAndHold: {
+                                                    if (launcher.gestures.longPressEdit) {
+                                                        window.editingHomeApp = modelData
+                                                        homeAppDialog.open()
+                                                    }
+                                                }
+                                                contentItem: Column {
+                                                    spacing: Theme.space(5)
+                                                    Image {
+                                                        width: 38
+                                                        height: 38
+                                                        anchors.horizontalCenter: parent.horizontalCenter
+                                                        source: modelData.iconUrl
+                                                        fillMode: Image.PreserveAspectFit
+                                                        asynchronous: true
+                                                    }
+                                                    Text {
+                                                        width: 64
+                                                        anchors.horizontalCenter: parent.horizontalCenter
+                                                        text: modelData.name
+                                                        color: Theme.foreground
+                                                        font.pixelSize: Theme.fontSize(10)
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        elide: Text.ElideRight
+                                                        maximumLineCount: 1
+                                                    }
+                                                }
+                                                background: HyprlandSurface {
+                                                    fillColor: parent.down ? Theme.surfaceRaised
+                                                                          : Theme.controlSurface
+                                                    borderStart: parent.activeFocus ? Theme.accent : "transparent"
+                                                    borderEnd: parent.activeFocus ? Theme.accent : "transparent"
+                                                    radius: Theme.defaultCornerRadius
+                                                    borderWidth: parent.activeFocus ? 1 : 0
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                visible: launcher.homePageApps(index).length === 0
+                                text: qsTr("No apps on this page yet. Long-press an app in All apps to pin it here.")
+                                color: Theme.muted
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.alignment: Qt.AlignHCenter
+                                Repeater {
+                                    model: launcher.homePageCount
+                                    delegate: ToolButton {
+                                        required property int index
+                                        text: homePageView.currentIndex === index ? "●" : "○"
+                                        Accessible.name: qsTr("Go to home page %1").arg(index + 1)
+                                        onClicked: homePageView.currentIndex = index
+                                    }
+                                }
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                visible: launcher.folders.length > 0
+                                spacing: Theme.spacingSmall
+                                Repeater {
+                                    model: launcher.folders
+                                    delegate: Button {
+                                        required property var modelData
+                                        width: 96
+                                        height: 58
+                                        Accessible.name: qsTr("Open %1 folder, %2 apps")
+                                                           .arg(modelData.name).arg(modelData.appCount)
+                                        onClicked: window.openFolder(modelData.id, modelData.name)
+                                        contentItem: Column {
+                                            spacing: Theme.space(2)
+                                            Text {
+                                                text: "▦"
+                                                color: Theme.accent
+                                                font.pixelSize: Theme.fontSize(18)
+                                                horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            Text {
+                                                width: 88
+                                                text: modelData.name
+                                                color: Theme.foreground
+                                                font.pixelSize: Theme.fontSize(10)
+                                                horizontalAlignment: Text.AlignHCenter
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                        background: HyprlandSurface {
+                                            fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
+                                            borderStart: Theme.outline
+                                            borderEnd: Theme.outline
+                                            radius: Theme.defaultCornerRadius
+                                            borderWidth: 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Connections {
+                        target: launcher
+                        function onHomePagesChanged() {
+                            homeAppsGrid.model = launcher.homePageApps(index)
+                        }
+                    }
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Math.min(Theme.spacingSection, 16)
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space(8)
+
+                    Text {
+                        text: qsTr("One shell.")
+                        color: Theme.foreground
+                        font.pixelSize: Theme.fontSize(34)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        text: qsTr("Every device.")
+                        color: Theme.accent
+                        font.pixelSize: Theme.fontSize(34)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Your Android apps, with Omarchy’s visual language.")
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSize(15)
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("Dock")
+                        color: Theme.foreground
+                        font.pixelSize: Theme.fontSize(15)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        text: launcher.favorites.length > 0
+                              ? qsTr("Hold to unpin")
+                              : qsTr("Hold an app below to pin it")
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSize(11)
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    ToolButton {
+                        text: "↻"
+                        Accessible.name: qsTr("Refresh installed apps")
+                        onClicked: launcher.refresh()
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: launcher.favorites.length > 0 ? 86 : 0
+                    visible: launcher.favorites.length > 0
+
+                    HyprlandSurface {
+                        anchors.fill: parent
+                        z: -1
+                        fillColor: Theme.surface
+                        borderStart: Theme.outline
+                        borderEnd: Theme.outline
+                        radius: Theme.defaultCornerRadius
+                        borderWidth: 1
+                    }
+
+                    Flickable {
+                        anchors.fill: parent
+                        contentWidth: pinnedRow.implicitWidth
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        Row {
+                            id: pinnedRow
+                            spacing: Theme.space(8)
+
+                            Repeater {
+                                model: launcher.favorites
+
+                                delegate: Button {
+                                    required property var modelData
+                                    width: 72
+                                    height: 82
+                                    Accessible.name: qsTr("Launch %1").arg(modelData.name)
+                                    onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                                    onPressAndHold: {
+                                        if (launcher.gestures.longPressEdit)
+                                            launcher.removeFavorite(modelData.packageName,
+                                                                    modelData.activityName)
+                                    }
+
+                                    contentItem: Column {
+                                        spacing: Theme.space(5)
+                                        Image {
+                                            width: 42
+                                            height: 42
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            source: modelData.iconUrl
+                                            fillMode: Image.PreserveAspectFit
+                                            asynchronous: true
+                                        }
+                                        Text {
+                                            width: 68
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            text: modelData.name
+                                            color: Theme.foreground
+                                            font.pixelSize: Theme.fontSize(10)
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                        }
+                                    }
+
+                                    background: HyprlandSurface {
+                                            fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
+                                        borderStart: parent.activeFocus ? Theme.accent : "transparent"
+                                        borderEnd: parent.activeFocus ? Theme.accent : "transparent"
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: parent.activeFocus ? 1 : 0
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    DropArea {
+                        id: dockDropArea
+                        anchors.fill: parent
+                        z: 10
+                        keys: ["application/x-omaapp-activity"]
+
+                        onDropped: function(drop) {
+                            try {
+                                const payload = JSON.parse(drop.getDataAsString(
+                                    "application/x-omaapp-activity"))
+                                const targetIndex = Math.floor(drop.x / 80)
+                                if (launcher.placeFavorite(payload.packageName,
+                                                           payload.activityName,
+                                                           window.selectedHomePage,
+                                                           targetIndex)) {
+                                    drop.acceptProposedAction()
+                                }
+                            } catch (error) {
+                                console.warn("OmaApp: ignored an invalid dock drag payload")
+                            }
+                        }
+
+                        HyprlandSurface {
+                            anchors.fill: parent
+                            visible: dockDropArea.containsDrag
+                            fillColor: "transparent"
+                            borderStart: Theme.accent
+                            borderEnd: Theme.accent
+                            borderWidth: 2
+                            radius: Theme.defaultCornerRadius
+                        }
+                    }
+
+
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: qsTr("Folders")
+                        color: Theme.foreground
+                        font.pixelSize: Theme.fontSize(15)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    Button {
+                        text: qsTr("New")
+                        Accessible.name: qsTr("Create folder")
+                        onClicked: createFolderDialog.open()
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: launcher.folders.length > 0 ? 72 : 0
+                    visible: launcher.folders.length > 0
+
+                    Flickable {
+                        anchors.fill: parent
+                        contentWidth: folderRow.implicitWidth
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.HorizontalFlick
+
+                        Row {
+                            id: folderRow
+                            spacing: Theme.spacingSmall
+
+                            Repeater {
+                                model: launcher.folders
+
+                                delegate: Button {
+                                    required property var modelData
+                                    width: 84
+                                    height: 68
+                                    Accessible.name: qsTr("Open %1 folder, %2 apps")
+                                                       .arg(modelData.name)
+                                                       .arg(modelData.appCount)
+                                    onClicked: window.openFolder(modelData.id, modelData.name)
+
+                                    contentItem: Column {
+                                        spacing: Theme.space(2)
+                                        Text {
+                                            width: parent.width
+                                            text: "▦"
+                                            color: Theme.accent
+                                            font.pixelSize: Theme.fontSize(20)
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: modelData.name
+                                            color: Theme.foreground
+                                            font.pixelSize: Theme.fontSize(10)
+                                            horizontalAlignment: Text.AlignHCenter
+                                            elide: Text.ElideRight
+                                            maximumLineCount: 1
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: qsTr("%1 apps").arg(modelData.appCount)
+                                            color: Theme.muted
+                                            font.pixelSize: Theme.fontSize(9)
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                    }
+
+                                    background: HyprlandSurface {
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
+                                        borderStart: parent.activeFocus ? Theme.accent : Theme.outline
+                                        borderEnd: parent.activeFocus ? Theme.accent : Theme.outline
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                }
+
+                TextField {
+                    id: appSearch
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Search apps")
+                    Accessible.name: qsTr("Search installed apps")
+                    color: Theme.foreground
+                    placeholderTextColor: Theme.muted
+                    leftPadding: 16
+                    rightPadding: 16
+                    topPadding: 14
+                    bottomPadding: 14
+                    background: HyprlandSurface {
+                        fillColor: Theme.surface
+                        borderStart: Theme.outline
+                        borderEnd: Theme.outline
+                        radius: Theme.defaultCornerRadius
+                        roundingPower: Theme.defaultRoundingPower
+                        borderWidth: 1
+                    }
+                    onTextChanged: launcher.filter = text
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    GridView {
+                        id: appGrid
+                        anchors.fill: parent
+                        clip: true
+                        cellWidth: Math.floor(width / launcher.gridColumns)
+                        cellHeight: 104
+                        model: launcher
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        delegate: Button {
+                            required property int index
+                            required property string name
+                            required property string packageName
+                            required property string activityName
+                            required property string iconUrl
+                            required property bool favorite
+
+                            width: appGrid.cellWidth - 8
+                            height: appGrid.cellHeight - 8
+                            text: name
+                            Accessible.name: qsTr("Launch %1").arg(name)
+                            display: AbstractButton.TextUnderIcon
+                            spacing: Theme.space(7)
+                            onClicked: launcher.launch(index)
+                            onPressAndHold: {
+                                if (launcher.gestures.longPressPin)
+                                    launcher.toggleFavorite(index, window.selectedHomePage)
+                            }
+
+                            Drag.active: appDragHandler.active
+                            Drag.dragType: Drag.Automatic
+                            Drag.supportedActions: Qt.MoveAction
+                            Drag.mimeData: ({
+                                "application/x-omaapp-activity": JSON.stringify({
+                                    "packageName": packageName,
+                                    "activityName": activityName
+                                })
+                            })
+
+                            DragHandler {
+                                id: appDragHandler
+                                target: null
+                                acceptedButtons: Qt.LeftButton
+                            }
+
+                            contentItem: Column {
+                                spacing: Theme.space(7)
+                                anchors.centerIn: parent
+
+                                Item {
+                                    width: 42
+                                    height: 42
+                                    anchors.horizontalCenter: parent.horizontalCenter
+
+                                    Image {
+                                        id: appIcon
+                                        anchors.fill: parent
+                                        source: iconUrl
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                    }
+
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        visible: appIcon.status !== Image.Ready
+                                        color: Theme.surfaceRaised
+                                        border.color: Theme.outline
+                                        border.width: 1
+                                        radius: Theme.defaultCornerRadius
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: name.length > 0 ? name.substring(0, 1).toUpperCase() : "•"
+                                            color: Theme.accent
+                                            font.pixelSize: Theme.fontSize(21)
+                                            font.weight: Font.Medium
+                                        }
+                                    }
+
+                                    Text {
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        text: favorite ? "★" : ""
+                                        color: Theme.accent
+                                        font.pixelSize: Theme.fontSize(13)
+                                    }
+                                }
+
+                                Text {
+                                    width: appGrid.cellWidth - 16
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: name
+                                    color: Theme.foreground
+                                    font.pixelSize: Theme.fontSize(12)
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 1
+                                }
+                            }
+
+                            background: HyprlandSurface {
+                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
+                                borderStart: parent.activeFocus ? Theme.accent : "transparent"
+                                borderEnd: parent.activeFocus ? Theme.accent : "transparent"
+                                radius: Theme.defaultCornerRadius
+                                borderWidth: parent.activeFocus ? 1 : 0
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.82
+                        spacing: Theme.space(10)
+                        visible: launcher.count === 0
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: launcher.platformSupported
+                                  ? qsTr("No apps match this search.")
+                                  : qsTr("Installed Android apps appear here when OmaApp runs on Android.")
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(15)
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: !launcher.platformSupported
+                            text: qsTr("This desktop window is a Qt Quick preview. It does not invent a sample app list.")
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
+            Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: deviceColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                ColumnLayout {
+                    id: deviceColumn
+                    width: parent.width
+                    spacing: Theme.spacingSection
+
+                ColumnLayout {
+                    spacing: Theme.space(8)
+                    Text {
+                        text: qsTr("Devices")
+                        color: Theme.foreground
+                        font.pixelSize: Theme.fontSize(32)
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Pair with your Omarchy computer to sync its live theme and wallpaper.")
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSize(15)
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: pairing.hasCandidate ? 260
+                                             : pairing.hasPairedDevice ? 280 : 224
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: Theme.space(10)
+
+                        Text {
+                            text: pairing.connected ? qsTr("CONNECTED")
+                                  : pairing.hasPendingRequest ? qsTr("AWAITING APPROVAL")
+                                  : pairing.phase === "requesting" || pairing.phase === "connecting" ? qsTr("CONNECTING")
+                                  : pairing.phase === "revoking" ? qsTr("REVOKING ACCESS")
+                                  : pairing.hasPairedDevice ? qsTr("OFFLINE · CACHED THEME")
+                                  : qsTr("NOT PAIRED")
+                            color: pairing.connected ? Theme.accent : Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 1.3
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: pairing.hasCandidate
+                                  ? qsTr("%1 %2. Verify the computer certificate fingerprint: %3")
+                                        .arg(pairing.hasPairedDevice ? qsTr("Reconnect to") : qsTr("Pair with"))
+                                        .arg(pairing.candidateHostName)
+                                        .arg(pairing.candidateFingerprint)
+                                  : pairing.connected
+                                    ? qsTr("Securely connected to %1. Its current Omarchy theme is %2.")
+                                          .arg(pairing.hostName)
+                                          .arg((pairing.snapshot.theme || {}).name || qsTr("unknown"))
+                                    : pairing.hasPendingRequest
+                                      ? qsTr("The request was sent. Approve this phone in the OmaApp widget on the computer.")
+                                      : pairing.phase === "requesting" || pairing.phase === "connecting"
+                                        ? qsTr("Checking the scanned code and reconnecting to the saved computer.")
+                                      : pairing.hasPairedDevice
+                                        ? qsTr("%1 is unreachable. OmaApp is keeping the last synchronized theme and wallpaper on this phone.")
+                                              .arg(pairing.hostName)
+                                        : pairing.platformSupported
+                                          ? qsTr("Scan the QR code shown by the OmaApp widget on your computer. The connection verifies a pinned certificate and requires approval on both devices.")
+                                          : qsTr("Run this screen in OmaApp on Android to pair with an Omarchy computer.")
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(13)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: pairing.error.length > 0
+                            text: pairing.error
+                            color: Theme.urgent
+                            font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: pairing.hasCandidate
+                            Button {
+                                Layout.fillWidth: true
+                                text: qsTr("Cancel")
+                                onClicked: pairing.discardCandidate()
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: pairing.hasPairedDevice ? qsTr("Reconnect") : qsTr("Trust computer")
+                                highlighted: true
+                                onClicked: pairing.approveCandidate()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: !pairing.hasCandidate && !pairing.hasPendingRequest
+                                     && !pairing.hasPairedDevice
+                            Button {
+                                Layout.fillWidth: true
+                                text: pairing.hasPairedDevice ? qsTr("Scan to reconnect") : qsTr("Scan pairing QR")
+                                enabled: pairing.platformSupported
+                                onClicked: pairing.startScan()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: !pairing.hasCandidate && pairing.hasPendingRequest
+                            Button {
+                                Layout.fillWidth: true
+                                text: qsTr("Cancel")
+                                onClicked: pairing.cancelPairing()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: pairing.hasPairedDevice && !pairing.hasPendingRequest
+                            Text {
+                                Layout.fillWidth: true
+                                text: pairing.connected
+                                      ? qsTr("Theme updates automatically while connected.")
+                                      : qsTr("The cached theme stays available offline.")
+                                color: Theme.muted
+                                font.pixelSize: Theme.fontSize(12)
+                                wrapMode: Text.WordWrap
+                            }
+                            Button {
+                                text: qsTr("Scan")
+                                enabled: pairing.platformSupported
+                                onClicked: pairing.startScan()
+                            }
+                            Button {
+                                text: qsTr("Forget")
+                                onClicked: forgetDialog.open()
+                            }
+                            Button {
+                                text: qsTr("Revoke")
+                                enabled: pairing.connected
+                                onClicked: pairing.revoke()
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: pairing.snapshot.theme !== undefined
+                    text: qsTr("Synced geometry: radius %1 · power %2 · border %3 px")
+                          .arg((pairing.snapshot.hyprland || {}).rounding || 0)
+                          .arg((pairing.snapshot.hyprland || {}).roundingPower || 2)
+                          .arg((pairing.snapshot.hyprland || {}).borderWidth || 0)
+                    color: Theme.muted
+                    font.pixelSize: Theme.fontSize(12)
+                    wrapMode: Text.WordWrap
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: pairing.hasPairedDevice
+                    spacing: Theme.space(10)
+
+                    Text {
+                        text: qsTr("Quick actions")
+                        color: Theme.foreground
+                        font.pixelSize: Theme.fontSize(20)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Each action requires its own approval in the Omarchy plugin. Clipboard access runs only when you tap a button while OmaApp is open.")
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSize(12)
+                        wrapMode: Text.WordWrap
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: window.width >= 560 ? 2 : 1
+                        rowSpacing: 8
+                        columnSpacing: 8
+
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Send phone clipboard")
+                            enabled: pairing.connected && window.featureEnabled("clipboard")
+                            Accessible.name: qsTr("Send phone clipboard to the computer")
+                            onClicked: pairing.pushClipboard()
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Read computer clipboard")
+                            enabled: pairing.connected && window.featureEnabled("clipboard")
+                            Accessible.name: qsTr("Copy computer clipboard to the phone")
+                            onClicked: pairing.pullClipboard()
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            Layout.minimumHeight: 48
+                            text: qsTr("Transfer files")
+                            enabled: pairing.connected && (window.featureEnabled("files.send")
+                                                             || window.featureEnabled("files.receive"))
+                            onClicked: pairing.startFileTransfer()
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: pairing.featureMessage.length > 0
+                        text: pairing.featureMessage
+                        color: Theme.muted
+                        font.pixelSize: Theme.fontSize(12)
+                        wrapMode: Text.WordWrap
+                    }
+
+                    HyprlandSurface {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 94
+                        visible: pairing.features.system !== undefined
+                        fillColor: Theme.surface
+                        borderStart: Theme.outline
+                        borderEnd: Theme.outline
+                        radius: Theme.defaultCornerRadius
+                        borderWidth: 1
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            spacing: Theme.space(4)
+                            Text {
+                                text: qsTr("COMPUTER STATUS")
+                                color: Theme.accent
+                                font.pixelSize: Theme.fontSize(11)
+                                font.weight: Font.DemiBold
+                                font.letterSpacing: 1
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                property var systemState: pairing.features.system || ({})
+                                property var batteryState: systemState.battery || ({})
+                                property var loadState: systemState.loadAverage || []
+                                text: qsTr("Load %1 · Memory %2 / %3 GiB · Battery %4")
+                                      .arg(loadState.length > 0 ? loadState[0] : "—")
+                                      .arg(systemState.memoryTotalBytes > 0
+                                           ? ((systemState.memoryTotalBytes - systemState.memoryAvailableBytes) / 1073741824).toFixed(1)
+                                           : "—")
+                                      .arg(systemState.memoryTotalBytes > 0
+                                           ? (systemState.memoryTotalBytes / 1073741824).toFixed(1)
+                                           : "—")
+                                      .arg(batteryState.percent !== undefined
+                                           ? batteryState.percent + "% · " + (batteryState.status || "")
+                                           : qsTr("AC power / unavailable"))
+                                color: Theme.foreground
+                                font.pixelSize: Theme.fontSize(13)
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: pairing.features.workspaces !== undefined
+                        spacing: Theme.space(6)
+                        Text {
+                            text: qsTr("Hyprland workspaces")
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(16)
+                            font.weight: Font.DemiBold
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Theme.space(8)
+                            Repeater {
+                                model: pairing.features.workspaces || []
+                                delegate: Button {
+                                    required property var modelData
+                                    text: (modelData.name || qsTr("Workspace %1").arg(modelData.id))
+                                          + (modelData.focused ? "  ·  " + qsTr("Active") : "")
+                                    Accessible.name: qsTr("Switch to workspace %1").arg(modelData.name || modelData.id)
+                                    onClicked: pairing.activateWorkspace(modelData.id)
+                                }
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: pairing.features.players !== undefined
                         spacing: Theme.space(6)
                         Text {
                             text: qsTr("Media")
