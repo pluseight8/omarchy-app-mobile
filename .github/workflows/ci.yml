@@ -210,7 +210,7 @@ jobs:
           printf '%s\n' "$app_pid" > app-pid.txt
           # Check the requested API here, then check Qt's initialized graphics
           # API after the style page renders its superellipse surface below.
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/startup-logcat.txt"
           grep -F 'OmaApp configured Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/startup-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
             exit 1
@@ -233,7 +233,7 @@ jobs:
             adb exec-out screencap -p > "$visual_artifacts/$screen.png"
           done
           # Retain logs from after the style screen has exercised the surface shader.
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
+          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
           grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
