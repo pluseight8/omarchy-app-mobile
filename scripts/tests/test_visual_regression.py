@@ -41,7 +41,7 @@ def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = N
     background = (16, 19, 21, 255)
     fill = (12, 14, 16, 255)
     rows = [[background] * width for _ in range(height)]
-    left, top, card_width, card_height, radius = 22.0, 199.0, 368.0, 156.0, 24.0
+    left, top, card_width, card_height, radius = 26.0, 232.0, 360.0, 156.0, 13.0
     right, bottom = left + card_width, top + card_height
     sine = math.sin(math.radians(angle or 45.0))
 
