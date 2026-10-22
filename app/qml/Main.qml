@@ -812,7 +812,7 @@ ApplicationWindow {
                 target: window
                 function onSelectedPageChanged() {
                     if (pages.currentIndex !== window.selectedPage)
-                        pages.currentIndex = window.selectedPage
+                        pages.setCurrentIndex(window.selectedPage)
                 }
             }
 
@@ -979,7 +979,7 @@ ApplicationWindow {
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
                                         onClicked: {
                                             window.selectedPage = 2
-                                            pages.currentIndex = 2
+                                            pages.setCurrentIndex(2)
                                         }
                                     }
                                 }
@@ -1067,7 +1067,7 @@ ApplicationWindow {
                                     Accessible.name: qsTr("Manage OWL widgets")
                                     onClicked: {
                                         window.selectedPage = 4
-                                        pages.currentIndex = 4
+                                        pages.setCurrentIndex(4)
                                     }
                                 }
                             }
@@ -1108,7 +1108,7 @@ ApplicationWindow {
                                     Accessible.name: qsTr("Open all installed apps")
                                     onClicked: {
                                         window.selectedPage = 1
-                                        pages.currentIndex = 1
+                                        pages.setCurrentIndex(1)
                                     }
                                 }
                             }
@@ -2889,8 +2889,7 @@ ApplicationWindow {
                     checked: pages.currentIndex === modelData.page
                     Accessible.name: modelData.label
                     onClicked: {
-                        window.selectedPage = modelData.page
-                        pages.currentIndex = modelData.page
+                        pages.setCurrentIndex(modelData.page)
                     }
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
