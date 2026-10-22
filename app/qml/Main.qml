@@ -24,7 +24,6 @@ ApplicationWindow {
     palette.highlightedText: Theme.background
     palette.placeholderText: Theme.muted
 
-    property int selectedPage: 0
     property int selectedHomePage: 0
     property string selectedFolderId: ""
     property string selectedFolderName: ""
@@ -801,12 +800,6 @@ ApplicationWindow {
             Layout.fillHeight: true
             clip: true
             interactive: launcher.gestures.sectionSwipe !== false
-            currentIndex: window.selectedPage
-
-            onCurrentIndexChanged: {
-                if (window.selectedPage !== currentIndex)
-                    window.selectedPage = currentIndex
-            }
 
             ListView {
                 id: homePageView
@@ -969,7 +962,7 @@ ApplicationWindow {
                                         text: pairing.hasPairedDevice ? qsTr("Open devices") : qsTr("Pair computer")
                                         Accessible.name: pairing.hasPairedDevice
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
-                                        onClicked: window.selectedPage = 2
+                                        onClicked: pages.currentIndex = 2
                                     }
                                 }
                             }
@@ -1054,7 +1047,7 @@ ApplicationWindow {
                                 Button {
                                     text: qsTr("Manage")
                                     Accessible.name: qsTr("Manage OWL widgets")
-                                    onClicked: window.selectedPage = 4
+                                    onClicked: pages.currentIndex = 4
                                 }
                             }
 
@@ -1092,7 +1085,7 @@ ApplicationWindow {
                                     Layout.preferredWidth: 104
                                     text: qsTr("All apps")
                                     Accessible.name: qsTr("Open all installed apps")
-                                    onClicked: window.selectedPage = 1
+                                    onClicked: pages.currentIndex = 1
                                 }
                             }
 
@@ -2869,9 +2862,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: modelData.label
                     checkable: true
-                    checked: window.selectedPage === modelData.page
+                    checked: pages.currentIndex === modelData.page
                     Accessible.name: modelData.label
-                    onClicked: window.selectedPage = modelData.page
+                    onClicked: pages.currentIndex = modelData.page
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"

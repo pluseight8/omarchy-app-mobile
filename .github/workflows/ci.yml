@@ -255,8 +255,11 @@ jobs:
           python3 scripts/ci/android_accessibility_dump.py \
             /sdcard/omaapp-returned-to-apps.xml \
             "$smoke_artifacts/window-returned-to-apps.xml"
+          python3 scripts/ci/android_accessibility_assert_checked.py \
+            "$smoke_artifacts/window-returned-to-apps.xml" 'Apps'
           python3 scripts/ci/android_accessibility_tap_target.py \
             "$smoke_artifacts/window-returned-to-apps.xml" 'Create folder' >/dev/null
+          adb exec-out screencap -p > "$smoke_artifacts/returned-to-apps.png"
           # Retain logs from after the style screen has exercised the surface shader.
           adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
           grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
