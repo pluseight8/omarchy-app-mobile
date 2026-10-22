@@ -416,7 +416,7 @@ if sys.argv[1:] == ["-l"]:
     print("mpv")
 elif len(sys.argv) == 6 and sys.argv[1:3] == ["-p", "mpv"] and sys.argv[3:5] == ["metadata", "--format"]:
     template = sys.argv[5]
-    if template != "{{status}}\\n{{artist}}\\n{{title}}\\n{{album}}":
+    if template != "{{{{status}}}}\\n{{{{artist}}}}\\n{{{{title}}}}\\n{{{{album}}}}":
         raise SystemExit(2)
     print("\\n".join(media[key] for key in ("status", "artist", "title", "album")))
 elif len(sys.argv) == 4 and sys.argv[1:3] == ["-p", "mpv"]:

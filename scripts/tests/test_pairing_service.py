@@ -376,6 +376,33 @@ class PairingServiceTests(unittest.TestCase):
         self.assertEqual(self.post("/v1/workspaces/activate", {"workspaceId": True}, auth)[0], 400)
         self.assertEqual(self.post("/v1/media", {"player": "mpv;id", "action": "next"}, auth)[0], 400)
 
+    def test_mpris_playerctl_metadata_template_and_response(self):
+        fixture_bin = Path(self.temp_dir.name) / "bin"
+        fixture_bin.mkdir()
+        playerctl = fixture_bin / "playerctl"
+        playerctl.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "if sys.argv[1:] == ['-l']:\n"
+            "    print('mpv')\n"
+            "elif len(sys.argv) == 6 and sys.argv[1:3] == ['-p', 'mpv'] and sys.argv[3:5] == ['metadata', '--format']:\n"
+            "    if sys.argv[5] != '{{status}}\\n{{artist}}\\n{{title}}\\n{{album}}':\n"
+            "        raise SystemExit(2)\n"
+            "    print('Playing\\nCI Artist\\nBefore next\\nOmaApp')\n"
+            "else:\n"
+            "    raise SystemExit(2)\n",
+            encoding="utf-8",
+        )
+        playerctl.chmod(0o755)
+
+        with patch.dict(os.environ, {
+                "PATH": str(fixture_bin) + os.pathsep + os.environ.get("PATH", "")
+        }):
+            self.assertEqual(service._mpris_players(), [{
+                "player": "mpv", "status": "Playing", "artist": "CI Artist",
+                "title": "Before next", "album": "OmaApp",
+            }])
+
     def test_clipboard_is_text_only_bounded_and_scoped(self):
         auth = self.enable_device({"clipboard": True})
         observed = []
