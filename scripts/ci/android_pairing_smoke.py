@@ -311,7 +311,10 @@ def main() -> int:
 
             style_ui = dump_ui(f"{label}-style", output_dir)
             style_text = style_ui.read_text(encoding="utf-8")
-            shape_samples = all(f"p={power}" in style_text for power in ("1.0", "2.0", "4.0"))
+            shape_samples = all(
+                f'content-desc="Rounding power {power}"' in style_text
+                for power in ("1.0", "2.0", "4.0")
+            )
             if ("Power 4.0" not in style_text or "37°" not in style_text
                     or "3 stops" not in style_text or "14 px base font" not in style_text
                     or not shape_samples):

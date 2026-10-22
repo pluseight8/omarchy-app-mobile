@@ -2234,6 +2234,7 @@ ApplicationWindow {
                             }
                             Text {
                                 text: qsTr("Power %1  •  Radius %2 px").arg(Theme.previewPower.toFixed(1)).arg(Math.round(Theme.previewRadius))
+                                Accessible.name: text
                                 color: Theme.muted
                                 font.pixelSize: Theme.fontSize(13)
                             }
@@ -2258,11 +2259,13 @@ ApplicationWindow {
                                 }
                                 Text {
                                     text: qsTr("%1 stops").arg(Theme.activeBorderStops.length)
+                                    Accessible.name: text
                                     color: Theme.muted
                                     font.pixelSize: Theme.fontSize(11)
                                 }
                                 Text {
                                     text: qsTr("%1°").arg(Math.round(Theme.borderGradientAngle))
+                                    Accessible.name: text
                                     color: Theme.muted
                                     font.pixelSize: Theme.fontSize(12)
                                 }
@@ -2399,6 +2402,7 @@ ApplicationWindow {
                                   .arg(Theme.fontBaseSize.toFixed(0))
                                   .arg(Math.round(Theme.controlFillAlpha * 100))
                                   .arg(Math.round(Theme.launcherBackgroundAlpha * 100))
+                        Accessible.name: text
                         color: Theme.muted
                         font.pixelSize: Theme.fontSize(12)
                         wrapMode: Text.WordWrap
