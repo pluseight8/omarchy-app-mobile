@@ -6,6 +6,42 @@ app_pid="${2:?usage: android_launcher_home_smoke.sh ARTIFACT_DIR APP_PID}"
 mkdir -p "$smoke_artifacts"
 folder_name="newfolder"
 
+select_home_when_needed() {
+  local accessibility_xml="$1"
+  local device_xml="$2"
+  for attempt in 1 2 3 4 5; do
+    if python3 scripts/ci/android_accessibility_assert_checked.py \
+      "$accessibility_xml" 'Home' >/dev/null 2>&1; then
+      return 0
+    fi
+    local target
+    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" 'Home')"
+    local x y
+    read -r x y <<< "$target"
+    adb shell input tap "$x" "$y"
+    sleep 1
+    python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
+  done
+  python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Home'
+}
+
+scroll_to_home_folder() {
+  local accessibility_xml="$1"
+  local device_xml="$2"
+  local folder_label="Open $folder_name folder, 1 apps"
+  for attempt in 1 2 3 4 5 6 7 8; do
+    if python3 scripts/ci/android_accessibility_tap_target.py \
+      --home-folder "$accessibility_xml" "$folder_label" >/dev/null 2>&1; then
+      return 0
+    fi
+    adb shell input swipe 205 720 205 280 500
+    sleep 1
+    python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
+  done
+  python3 scripts/ci/android_accessibility_tap_target.py \
+    --home-folder "$accessibility_xml" "$folder_label" >/dev/null
+}
+
 grep -F 'app.omaapp' role.txt
 grep -F 'app.omaapp' activities.txt
 grep -F 'app.omaapp' resolved-home.txt
@@ -70,18 +106,13 @@ sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-home-before-restart-navigation.xml \
   "$smoke_artifacts/window-home-before-restart-navigation.xml"
-home_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-home-before-restart-navigation.xml" 'Home')"
-read -r home_x home_y <<< "$home_target"
-adb shell input tap "$home_x" "$home_y"
-sleep 1
-python3 scripts/ci/android_accessibility_dump.py \
-  /sdcard/omaapp-folder-on-home.xml "$smoke_artifacts/window-folder-on-home.xml"
-python3 scripts/ci/android_accessibility_assert_checked.py \
-  "$smoke_artifacts/window-folder-on-home.xml" 'Home'
+select_home_when_needed "$smoke_artifacts/window-home-before-restart-navigation.xml" \
+  /sdcard/omaapp-home-before-restart-navigation.xml
+scroll_to_home_folder "$smoke_artifacts/window-home-before-restart-navigation.xml" \
+  /sdcard/omaapp-home-before-restart-navigation.xml
+cp "$smoke_artifacts/window-home-before-restart-navigation.xml" \
+  "$smoke_artifacts/window-folder-on-home.xml"
 grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-folder-on-home.xml"
-python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-folder-on-home.xml" "Open $folder_name folder, 1 apps" >/dev/null
 apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
   "$smoke_artifacts/window-folder-on-home.xml" 'Apps')"
 read -r apps_x apps_y <<< "$apps_target"
@@ -116,17 +147,20 @@ test -s "$smoke_artifacts/launcher-before-tap.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart-navigation.xml \
   "$smoke_artifacts/window-after-restart-navigation.xml"
-home_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-after-restart-navigation.xml" 'Home')"
-read -r home_x home_y <<< "$home_target"
-adb shell input tap "$home_x" "$home_y"
-sleep 1
+select_home_when_needed "$smoke_artifacts/window-after-restart-navigation.xml" \
+  /sdcard/omaapp-after-restart-navigation.xml
+scroll_to_home_folder "$smoke_artifacts/window-after-restart-navigation.xml" \
+  /sdcard/omaapp-after-restart-navigation.xml
+cp "$smoke_artifacts/window-after-restart-navigation.xml" \
+  "$smoke_artifacts/window-after-restart-folder.xml"
 python3 scripts/ci/android_accessibility_dump.py \
-  /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml"
+  /sdcard/omaapp-after-restart-folder.xml "$smoke_artifacts/window-after-restart-folder.xml"
 python3 scripts/ci/android_accessibility_assert_checked.py \
-  "$smoke_artifacts/window-after-restart.xml" 'Home'
-grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-after-restart.xml"
-persisted_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-after-restart.xml" "Open $folder_name folder, 1 apps")"
+  "$smoke_artifacts/window-after-restart-folder.xml" 'Home'
+grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-after-restart-folder.xml"
+persisted_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  --home-folder "$smoke_artifacts/window-after-restart-folder.xml" \
+  "Open $folder_name folder, 1 apps")"
 read -r persisted_folder_x persisted_folder_y <<< "$persisted_folder_target"
 adb shell input tap "$persisted_folder_x" "$persisted_folder_y"
 sleep 1
@@ -135,6 +169,10 @@ python3 scripts/ci/android_accessibility_dump.py \
 grep -F 'Launch Drive' "$smoke_artifacts/window-persisted-folder.xml"
 adb shell input keyevent 4
 sleep 1
+adb shell input swipe 205 280 205 720 500
+sleep 1
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml"
 tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
 printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
 read -r tap_x tap_y <<< "$tap_target"
