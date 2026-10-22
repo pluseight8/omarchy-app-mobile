@@ -14,31 +14,39 @@ BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 def find_target(xml_path: Path, target: str) -> tuple[int, int]:
     root = ET.parse(xml_path).getroot()
-    for node in root.iter("node"):
-        actionable = (node.attrib.get("clickable") == "true"
-                      or node.attrib.get("focusable") == "true")
-        labels = set()
-        for attribute in ("content-desc", "text"):
-            value = node.attrib.get(attribute, "").strip()
-            if value:
-                # Keep the full accessible name intact: commas can be part of
-                # a label, as in "Open <folder>, 1 apps". Qt may also combine
-                # multiple accessibility names into one comma-separated value.
-                labels.add(value)
-                labels.update(label.strip() for label in value.split(","))
-        if (node.attrib.get("package") != "app.omaapp"
-                or not actionable
-                or node.attrib.get("enabled") == "false"
-                or target not in labels):
-            continue
+    nodes = list(root.iter("node"))
+    # An exact control name must win over a word that happens to appear in a
+    # longer accessible name, such as the Apps tab vs. the Settings gesture
+    # option "Swipe between Home, Apps, Devices, Style, and Settings".
+    for allow_components in (False, True):
+        for node in nodes:
+            actionable = (node.attrib.get("clickable") == "true"
+                          or node.attrib.get("focusable") == "true")
+            if (node.attrib.get("package") != "app.omaapp"
+                    or not actionable
+                    or node.attrib.get("enabled") == "false"):
+                continue
 
-        match = BOUNDS.fullmatch(node.attrib.get("bounds", ""))
-        if match is None:
-            continue
-        left, top, right, bottom = (int(value) for value in match.groups())
-        if right <= left or bottom <= top:
-            continue
-        return (left + right) // 2, (top + bottom) // 2
+            labels = set()
+            for attribute in ("content-desc", "text"):
+                value = node.attrib.get(attribute, "").strip()
+                if value:
+                    # Commas can be part of a complete name, as in
+                    # "Open <folder>, 1 apps". Component matching is a
+                    # fallback for combined names emitted by Qt accessibility.
+                    labels.add(value)
+                    if allow_components:
+                        labels.update(label.strip() for label in value.split(","))
+            if target not in labels:
+                continue
+
+            match = BOUNDS.fullmatch(node.attrib.get("bounds", ""))
+            if match is None:
+                continue
+            left, top, right, bottom = (int(value) for value in match.groups())
+            if right <= left or bottom <= top:
+                continue
+            return (left + right) // 2, (top + bottom) // 2
 
     raise ValueError(f"no clickable OmaApp control matches {target!r}")
 

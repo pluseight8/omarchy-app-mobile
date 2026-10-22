@@ -36,6 +36,16 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             enabled="true" text="OK" bounds="[0,0][64,48]" /></hierarchy>"""
         self.assertEqual(self.find(xml, "OK"), (32, 24))
 
+    def test_prefers_exact_control_name_over_matching_part_of_long_name(self):
+        xml = """<hierarchy>
+            <node package="app.omaapp" clickable="true" enabled="true"
+                content-desc="Swipe between Home, Apps, Devices, Style, and Settings"
+                bounds="[40,733][371,772]" />
+            <node package="app.omaapp" clickable="true" enabled="true"
+                content-desc="Apps" bounds="[94,822][151,851]" />
+        </hierarchy>"""
+        self.assertEqual(self.find(xml, "Apps"), (122, 836))
+
     def test_finds_focusable_field_with_composed_accessible_name(self):
         xml = """<hierarchy><node package="app.omaapp" clickable="false" focusable="true"
             enabled="true" content-desc="New folder name, Folder name"
