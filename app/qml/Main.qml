@@ -808,14 +808,6 @@ ApplicationWindow {
                     window.selectedPage = currentIndex
             }
 
-            Connections {
-                target: window
-                function onSelectedPageChanged() {
-                    if (pages.currentIndex !== window.selectedPage)
-                        pages.setCurrentIndex(window.selectedPage)
-                }
-            }
-
             ListView {
                 id: homePageView
                 Layout.fillWidth: true
@@ -977,10 +969,7 @@ ApplicationWindow {
                                         text: pairing.hasPairedDevice ? qsTr("Open devices") : qsTr("Pair computer")
                                         Accessible.name: pairing.hasPairedDevice
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
-                                        onClicked: {
-                                            window.selectedPage = 2
-                                            pages.setCurrentIndex(2)
-                                        }
+                                        onClicked: window.selectedPage = 2
                                     }
                                 }
                             }
@@ -1065,10 +1054,7 @@ ApplicationWindow {
                                 Button {
                                     text: qsTr("Manage")
                                     Accessible.name: qsTr("Manage OWL widgets")
-                                    onClicked: {
-                                        window.selectedPage = 4
-                                        pages.setCurrentIndex(4)
-                                    }
+                                    onClicked: window.selectedPage = 4
                                 }
                             }
 
@@ -1106,10 +1092,7 @@ ApplicationWindow {
                                     Layout.preferredWidth: 104
                                     text: qsTr("All apps")
                                     Accessible.name: qsTr("Open all installed apps")
-                                    onClicked: {
-                                        window.selectedPage = 1
-                                        pages.setCurrentIndex(1)
-                                    }
+                                    onClicked: window.selectedPage = 1
                                 }
                             }
 
@@ -2886,11 +2869,9 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     text: modelData.label
                     checkable: true
-                    checked: pages.currentIndex === modelData.page
+                    checked: window.selectedPage === modelData.page
                     Accessible.name: modelData.label
-                    onClicked: {
-                        pages.setCurrentIndex(modelData.page)
-                    }
+                    onClicked: window.selectedPage = modelData.page
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
