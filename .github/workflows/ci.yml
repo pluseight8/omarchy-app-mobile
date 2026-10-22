@@ -252,6 +252,23 @@ jobs:
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
+              # The selected tab can appear in accessibility before the
+              # Home Flickable has finished laying out its empty-page content.
+              for attempt in {1..10}; do
+                if python3 scripts/ci/android_accessibility_assert_visible.py \
+                  "$visual_artifacts/$screen.xml" \
+                  'No apps on this page yet. Long-press an app in All apps to pin it here.' \
+                  >/dev/null 2>&1; then
+                  printf 'Android Home layout ready (attempt %s)\n' "$attempt"
+                  break
+                fi
+                sleep 1
+                python3 scripts/ci/android_accessibility_dump.py \
+                  "/sdcard/omaapp-visual-$screen-layout.xml" "$visual_artifacts/$screen.xml"
+              done
+              python3 scripts/ci/android_accessibility_assert_visible.py \
+                "$visual_artifacts/$screen.xml" \
+                'No apps on this page yet. Long-press an app in All apps to pin it here.'
               adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
               test -s "$smoke_artifacts/launcher-before-pin.png"
             fi
