@@ -634,15 +634,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static void awaitFeatureMessage(Context context, String expected, long timeoutMillis)
             throws Exception {
         long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        String lastMessage = "";
         while (SystemClock.elapsedRealtime() < deadline) {
             String message = context.getSharedPreferences(PairingBridge.PREFERENCES, Context.MODE_PRIVATE)
                     .getString("feature_message", "");
+            lastMessage = message;
             if (expected.equals(message)) {
                 return;
             }
             SystemClock.sleep(100L);
         }
-        throw new IllegalStateException("Timed out waiting for Android feature result: " + expected);
+        throw new IllegalStateException("Timed out waiting for Android feature result: " + expected
+                + "; last message: " + lastMessage);
     }
 
     private static void awaitAction(Context context) throws Exception {
