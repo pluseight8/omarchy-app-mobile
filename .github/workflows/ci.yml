@@ -2,10 +2,7 @@ name: CI
 
 on:
   push:
-    # The Codex GitHub connection updates PR branches through the push API,
-    # which does not always emit pull_request/synchronize. Run the same checks
-    # on those branch pushes so the current PR head still gets full CI.
-    branches: [main, 'codex/**']
+    branches: [main]
   pull_request:
     branches: [main]
 
