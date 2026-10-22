@@ -3,6 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import OmaApp.Native 1.0
 
+pragma ComponentBehavior: Bound
+
 ApplicationWindow {
     id: window
 
