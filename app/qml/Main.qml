@@ -962,7 +962,7 @@ ApplicationWindow {
                                         text: pairing.hasPairedDevice ? qsTr("Open devices") : qsTr("Pair computer")
                                         Accessible.name: pairing.hasPairedDevice
                                                          ? qsTr("Open connected devices") : qsTr("Pair an Omarchy computer")
-                                        onClicked: pages.currentIndex = 2
+                                        onClicked: pages.setCurrentIndex(2)
                                     }
                                 }
                             }
@@ -1047,7 +1047,7 @@ ApplicationWindow {
                                 Button {
                                     text: qsTr("Manage")
                                     Accessible.name: qsTr("Manage OWL widgets")
-                                    onClicked: pages.currentIndex = 4
+                                    onClicked: pages.setCurrentIndex(4)
                                 }
                             }
 
@@ -1085,7 +1085,7 @@ ApplicationWindow {
                                     Layout.preferredWidth: 104
                                     text: qsTr("All apps")
                                     Accessible.name: qsTr("Open all installed apps")
-                                    onClicked: pages.currentIndex = 1
+                                    onClicked: pages.setCurrentIndex(1)
                                 }
                             }
 
@@ -2864,7 +2864,7 @@ ApplicationWindow {
                     checkable: true
                     checked: pages.currentIndex === modelData.page
                     Accessible.name: modelData.label
-                    onClicked: pages.currentIndex = modelData.page
+                    onClicked: pages.setCurrentIndex(modelData.page)
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                         borderStart: parent.checked ? Theme.accent : "transparent"
