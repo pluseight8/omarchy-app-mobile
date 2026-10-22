@@ -130,14 +130,7 @@ object OwlBridge {
                         props.put(name, toJson(value))
                     }
                     val children = JSONArray()
-                    val childEnv = if (item.kind == "Canvas") {
-                        fun dimension(name: String, fallback: Double): Double =
-                            (props.opt(name) as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
-                                ?: fallback
-                        env.child(Num(dimension("width", width)), Num(dimension("height", height)))
-                    } else {
-                        env
-                    }
+                    val childEnv = if (item.kind == "Canvas") host.canvasScope(env, props) else env
                     appendNodes(item.children, childEnv, host, children, depth + 1)
                     target.put(
                         JSONObject()
@@ -244,6 +237,13 @@ object OwlBridge {
             if (++renderedNodes > MAX_RENDERED_NODES) {
                 throw WidgetError("widget expands to more than $MAX_RENDERED_NODES nodes")
             }
+        }
+
+        fun canvasScope(env: Env, properties: JSONObject): Env {
+            fun dimension(name: String, fallback: Double): Double =
+                (properties.opt(name) as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0.0 }
+                    ?: fallback
+            return env.child(Num(dimension("width", width)), Num(dimension("height", height)))
         }
 
         fun evaluate(expression: Ev, env: Env) = budget.eval(expression, env)
