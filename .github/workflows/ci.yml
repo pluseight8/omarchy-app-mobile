@@ -231,10 +231,16 @@ jobs:
             screen_label="${screen^}"
             python3 scripts/ci/android_accessibility_dump.py \
               "/sdcard/omaapp-visual-$screen.xml" "$visual_artifacts/$screen.xml"
-            screen_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/$screen.xml" "$screen_label")"
-            read -r screen_x screen_y <<< "$screen_target"
-            adb shell input tap "$screen_x" "$screen_y"
-            sleep 1
+            # Android has already launched OmaApp as the selected HOME app,
+            # so the Home screen is the current screen. Some Qt Android
+            # accessibility bridges omit the selected tab from uiautomator's
+            # clickable tree; capture it in place and tap the other tabs.
+            if [[ "$screen" != "home" ]]; then
+              screen_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/$screen.xml" "$screen_label")"
+              read -r screen_x screen_y <<< "$screen_target"
+              adb shell input tap "$screen_x" "$screen_y"
+              sleep 1
+            fi
             adb exec-out screencap -p > "$visual_artifacts/$screen.png"
             if [[ "$screen" == "apps" ]]; then
               bash scripts/ci/android_launcher_home_smoke.sh "$smoke_artifacts" "$app_pid"
