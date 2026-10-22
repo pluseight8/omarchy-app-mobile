@@ -237,3 +237,67 @@ for attempt in {1..10}; do
   sleep 1
 done
 python3 scripts/ci/check_owl_image_rendered.py "$smoke_artifacts/home-with-owl-canvas.png"
+
+# Exercise the offline widget editor as a real launcher user: create a local
+# widget, save its source, then remove it from the store.
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-home-before-widget-editor.xml "$smoke_artifacts/window-home-before-widget-editor.xml"
+select_home_when_needed "$smoke_artifacts/window-home-before-widget-editor.xml" \
+  /sdcard/omaapp-home-before-widget-editor.xml
+settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  "$smoke_artifacts/window-home-before-widget-editor.xml" 'Settings')"
+read -r settings_x settings_y <<< "$settings_target"
+adb shell input tap "$settings_x" "$settings_y"
+sleep 1
+new_widget_target=""
+for attempt in {1..10}; do
+  python3 scripts/ci/android_accessibility_dump.py \
+    /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
+  if new_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+    "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
+    break
+  fi
+  adb shell input swipe 205 720 205 300 450
+  sleep 1
+done
+if [[ -z "$new_widget_target" ]]; then
+  printf 'Could not find the local OWL widget editor action.\n' >&2
+  exit 1
+fi
+read -r new_widget_x new_widget_y <<< "$new_widget_target"
+adb shell input tap "$new_widget_x" "$new_widget_y"
+sleep 1
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-widget-editor.xml "$smoke_artifacts/window-widget-editor.xml"
+grep -F 'OWL widget source editor' "$smoke_artifacts/window-widget-editor.xml"
+adb shell input keyevent 4
+sleep 1
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-widget-editor-ready.xml "$smoke_artifacts/window-widget-editor-ready.xml"
+grep -F 'OWL widget source editor' "$smoke_artifacts/window-widget-editor-ready.xml"
+save_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  "$smoke_artifacts/window-widget-editor-ready.xml" 'Save widget')"
+read -r save_widget_x save_widget_y <<< "$save_widget_target"
+adb shell input tap "$save_widget_x" "$save_widget_y"
+sleep 1
+delete_widget_target=""
+for attempt in {1..10}; do
+  python3 scripts/ci/android_accessibility_dump.py \
+    /sdcard/omaapp-widget-editor-saved.xml "$smoke_artifacts/window-widget-editor-saved.xml"
+  if delete_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+    "$smoke_artifacts/window-widget-editor-saved.xml" 'Delete My widget' 2>/dev/null)"; then
+    break
+  fi
+  adb shell input swipe 205 720 205 300 450
+  sleep 1
+done
+if [[ -z "$delete_widget_target" ]]; then
+  printf 'The saved local OWL widget did not appear in the store.\n' >&2
+  exit 1
+fi
+read -r delete_widget_x delete_widget_y <<< "$delete_widget_target"
+adb shell input tap "$delete_widget_x" "$delete_widget_y"
+sleep 1
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-widget-editor-deleted.xml "$smoke_artifacts/window-widget-editor-deleted.xml"
+grep -F 'Custom widget deleted.' "$smoke_artifacts/window-widget-editor-deleted.xml"
