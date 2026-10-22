@@ -224,12 +224,23 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         JSONObject remoteImage = new JSONObject(OwlBridge.render(
                 "widget \"remote image\" {\n"
-                        + "  meta { owl: 8 }\n"
-                        + "  Image { src: \"https://example.invalid/icon.png\" }\n"
+                        + "  state source = \"https://example.invalid/icon.png\"\n"
+                        + "  Image { src: source }\n"
                         + "}\n",
                 320.0, 156.0, theme.toString()));
-        if (!remoteImage.has("error")) {
-            throw new IllegalStateException("The offline OWL image renderer accepted a remote URL.");
+        if (!remoteImage.optString("error").contains("self-contained OWL asset")) {
+            throw new IllegalStateException("The offline OWL Image path accepted a remote URL: "
+                    + remoteImage.optString("error"));
+        }
+        JSONObject remoteCanvasImage = new JSONObject(OwlBridge.render(
+                "widget \"remote canvas image\" {\n"
+                        + "  state source = \"https://example.invalid/icon.png\"\n"
+                        + "  Canvas { width: 32; height: 32; image(source, 2, 3, 16, 16) }\n"
+                        + "}\n",
+                320.0, 156.0, theme.toString()));
+        if (!remoteCanvasImage.optString("error").contains("self-contained OWL asset")) {
+            throw new IllegalStateException("The offline OWL Canvas path accepted a remote URL: "
+                    + remoteCanvasImage.optString("error"));
         }
         JSONObject largeImage = new JSONObject(OwlBridge.render(
                 assetWidget.replace("image(badge, 2, 3, 16, 16)", "image(badge, 2, 3, 5000, 16)"),

@@ -20,6 +20,7 @@ import dev.omalauncher.widgets.lang.Str
 import dev.omalauncher.widgets.lang.Value
 import dev.omalauncher.widgets.lang.WidgetError
 import dev.omalauncher.widgets.lang.WNode
+import dev.omalauncher.widgets.lang.num
 import dev.omalauncher.widgets.lang.parseHex
 import org.json.JSONArray
 import org.json.JSONObject
