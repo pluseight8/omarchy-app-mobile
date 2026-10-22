@@ -183,6 +183,13 @@ jobs:
           fi
           "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" > "$smoke_artifacts/emulator.log" 2>&1 &
           emulator_pid=$!
+          cleanup_emulator() {
+            if [[ -n "${emulator_pid:-}" ]]; then
+              kill "$emulator_pid" 2>/dev/null || true
+              wait "$emulator_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_emulator EXIT
           timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
             if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
