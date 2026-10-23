@@ -63,16 +63,17 @@ def find_home_folder_target(xml_path: Path, target: str) -> tuple[int, int]:
     if not home_selected:
         raise ValueError("Home is not the selected launcher page")
 
-    # Both the Home page and Apps drawer expose the folder label. Select the
-    # Home copy by its QML page container instead of accepting an offscreen
-    # or partially visible Apps drawer node during a swipe transition.
+    # Both the Home page and Apps drawer expose the folder label. The Android
+    # accessibility bridge does not always include the Home ListView in a
+    # generated control's resource ID, so use the checked Home tab and visible
+    # bounds instead. Exclude the Apps drawer's QQuickColumnLayout copy and
+    # zero-sized duplicate nodes that can remain during a swipe transition.
     for node in nodes:
         resource_id = node.attrib.get("resource-id", "")
         if (node.attrib.get("package") != "app.omaapp"
                 or node.attrib.get("content-desc", "").strip() != target
                 or node.attrib.get("clickable") != "true"
                 or node.attrib.get("enabled") == "false"
-                or "QQuickListView" not in resource_id
                 or "QQuickColumnLayout" in resource_id):
             continue
         match = BOUNDS.fullmatch(node.attrib.get("bounds", ""))

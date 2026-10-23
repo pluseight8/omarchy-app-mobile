@@ -56,6 +56,30 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
                 (63, 634),
             )
 
+    def test_finds_home_folder_when_qt_omits_list_view_from_resource_id(self):
+        xml = """<hierarchy>
+            <node package="app.omaapp" checked="true" content-desc="Home" />
+            <node package="app.omaapp" content-desc="Open newfolder folder, 1 apps"
+                clickable="true" enabled="true"
+                resource-id="QGuiApplication.Main.SwipeView.Button_QMLTYPE_7_QML_39"
+                bounds="[22,748][117,805]" />
+            <node package="app.omaapp" content-desc="Open newfolder folder, 1 apps"
+                clickable="true" enabled="true"
+                resource-id="QGuiApplication.Main.SwipeView.Button_QMLTYPE_7_QML_43"
+                bounds="[0,0][0,0]" />
+            <node package="app.omaapp" content-desc="Open newfolder folder, 1 apps"
+                clickable="true" enabled="true"
+                resource-id="QQuickColumnLayout.Button_QMLTYPE_7"
+                bounds="[390,338][412,405]" />
+        </hierarchy>"""
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "window.xml"
+            path.write_text(xml, encoding="utf-8")
+            self.assertEqual(
+                find_home_folder_target(path, "Open newfolder folder, 1 apps"),
+                (69, 776),
+            )
+
     def test_rejects_apps_drawer_folder_while_home_is_selected(self):
         xml = """<hierarchy>
             <node package="app.omaapp" checked="true" content-desc="Home" />
