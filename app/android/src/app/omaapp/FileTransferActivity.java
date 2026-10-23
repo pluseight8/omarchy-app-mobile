@@ -32,6 +32,7 @@ public final class FileTransferActivity extends Activity {
     private static final int PICK_UPLOAD = 6101;
     private static final int PICK_DOWNLOAD = 6102;
     private static final long MAX_TRANSFER_BYTES = 100L * 1024L * 1024L;
+    private static final String STATE_DOWNLOAD_NAME = "pending_download_name";
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable featureMessageRefresh = new Runnable() {
@@ -55,6 +56,7 @@ public final class FileTransferActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        downloadName = restorePendingDownloadName(state);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         int margin = (int) (20 * getResources().getDisplayMetrics().density);
@@ -184,15 +186,40 @@ public final class FileTransferActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == PICK_DOWNLOAD) {
+            String selectedName = downloadName;
+            downloadName = null;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null
+                    && selectedName != null) {
+                receiveFile(data.getData(), selectedName);
+            }
+            return;
+        }
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
             return;
         }
         Uri uri = data.getData();
         if (requestCode == PICK_UPLOAD) {
             sendFile(uri);
-        } else if (requestCode == PICK_DOWNLOAD && downloadName != null) {
-            receiveFile(uri, downloadName);
         }
+    }
+
+    static String restorePendingDownloadName(Bundle state) {
+        return state == null ? null : state.getString(STATE_DOWNLOAD_NAME);
+    }
+
+    static void savePendingDownloadName(Bundle state, String name) {
+        if (name == null) {
+            state.remove(STATE_DOWNLOAD_NAME);
+        } else {
+            state.putString(STATE_DOWNLOAD_NAME, name);
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        savePendingDownloadName(outState, downloadName);
+        super.onSaveInstanceState(outState);
     }
 
     private void sendFile(Uri uri) {

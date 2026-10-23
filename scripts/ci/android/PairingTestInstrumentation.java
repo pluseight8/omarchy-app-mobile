@@ -63,6 +63,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
             runEventRefreshQueueSmoke(context);
+            runFileTransferStateSmoke();
             runOwlRuntimeSmoke();
             if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
                 runLauncherShortcutSmoke(context);
@@ -284,6 +285,21 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The offline OWL image renderer accepted a non-image asset.");
         }
         Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
+    }
+
+    private static void runFileTransferStateSmoke() {
+        Bundle savedState = new Bundle();
+        FileTransferActivity.savePendingDownloadName(savedState, "fixture-report.txt");
+        String restoredName = FileTransferActivity.restorePendingDownloadName(savedState);
+        if (!"fixture-report.txt".equals(restoredName)) {
+            throw new IllegalStateException(
+                    "A pending download name did not survive Android Activity state restoration.");
+        }
+        FileTransferActivity.savePendingDownloadName(savedState, null);
+        if (FileTransferActivity.restorePendingDownloadName(savedState) != null) {
+            throw new IllegalStateException("A cleared pending download name remained in saved state.");
+        }
+        Log.i(TAG, "File picker lifecycle state passed.");
     }
 
     private static void runEventRefreshQueueSmoke(Context context) throws Exception {
