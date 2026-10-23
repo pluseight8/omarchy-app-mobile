@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 35300)
+Total output lines: 2958
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -35,6 +38,7 @@ ApplicationWindow {
     property string layoutMessage: ""
     property string editingWidgetId: ""
     property string widgetMessage: ""
+    property string openSourceNoticesText: ""
 
     function widgetThemeColor(value) {
         const color = Qt.color(value)
@@ -738,6 +742,54 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: openSourceNoticesDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 28, 720)
+        height: Math.min(window.height - 44, 760)
+        title: qsTr("Open-source notices and licenses")
+        standardButtons: Dialog.Close
+        readonly property bool licenseTextsAvailable:
+            window.openSourceNoticesText.includes("GNU LESSER GENERAL PUBLIC LICENSE")
+            && window.openSourceNoticesText.includes("Apache License")
+            && window.openSourceNoticesText.includes("Simon Schubert")
+            && window.openSourceNoticesText.includes("vaxerski")
+
+        contentItem: ColumnLayout {
+            spacing: Theme.space(8)
+
+            Label {
+                Layout.fillWidth: true
+                text: openSourceNoticesDialog.licenseTextsAvailable
+                      ? qsTr("License texts are available offline.")
+                      : qsTr("License texts could not be loaded.")
+                color: openSourceNoticesDialog.licenseTextsAvailable ? Theme.accent : Theme.urgent
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                TextArea {
+                    width: parent.width
+                    text: window.openSourceNoticesText
+                    readOnly: true
+                    selectByMouse: true
+                    wrapMode: TextEdit.Wrap
+                    textFormat: TextEdit.PlainText
+                    color: Theme.foreground
+                    font.family: "monospace"
+                    font.pixelSize: Theme.fontSize(10)
+                    background: null
+                    Accessible.name: qsTr("Open-source license texts")
+                }
+            }
+        }
+    }
+
     Component.onCompleted: {
         launcher.refresh()
         applySyncedTheme()
@@ -1283,448 +1335,7 @@ ApplicationWindow {
                                                 }
                                                 background: HyprlandSurface {
                                                     fillColor: parent.down ? Theme.surfaceRaised
-                                                                          : Theme.controlSurface
-                                                    borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                                    borderEnd: parent.activeFocus ? Theme.accent : "transparent"
-                                                    radius: Theme.defaultCornerRadius
-                                                    borderWidth: parent.activeFocus ? 1 : 0
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                visible: launcher.homePageApps(index).length === 0
-                                text: qsTr("No apps on this page yet. Long-press an app in All apps to pin it here.")
-                                color: Theme.muted
-                                horizontalAlignment: Text.AlignHCenter
-                                wrapMode: Text.WordWrap
-                            }
-
-                            RowLayout {
-                                Layout.alignment: Qt.AlignHCenter
-                                Repeater {
-                                    model: launcher.homePageCount
-                                    delegate: ToolButton {
-                                        required property int index
-                                        text: homePageView.currentIndex === index ? "●" : "○"
-                                        Accessible.name: qsTr("Go to home page %1").arg(index + 1)
-                                        onClicked: homePageView.currentIndex = index
-                                    }
-                                }
-                            }
-
-                            Flow {
-                                Layout.fillWidth: true
-                                visible: launcher.folders.length > 0
-                                spacing: Theme.spacingSmall
-                                Repeater {
-                                    model: launcher.folders
-                                    delegate: Button {
-                                        required property var modelData
-                                        width: 96
-                                        height: 58
-                                        Accessible.name: qsTr("Open %1 folder, %2 apps")
-                                                           .arg(modelData.name).arg(modelData.appCount)
-                                        onClicked: window.openFolder(modelData.id, modelData.name)
-                                        contentItem: Column {
-                                            spacing: Theme.space(2)
-                                            Text {
-                                                text: "▦"
-                                                color: Theme.accent
-                                                font.pixelSize: Theme.fontSize(18)
-                                                horizontalAlignment: Text.AlignHCenter
-                                            }
-                                            Text {
-                                                width: 88
-                                                text: modelData.name
-                                                color: Theme.foreground
-                                                font.pixelSize: Theme.fontSize(10)
-                                                horizontalAlignment: Text.AlignHCenter
-                                                elide: Text.ElideRight
-                                            }
-                                        }
-                                        background: HyprlandSurface {
-                                            fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
-                                            borderStart: Theme.outline
-                                            borderEnd: Theme.outline
-                                            radius: Theme.defaultCornerRadius
-                                            borderWidth: 1
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Connections {
-                        target: launcher
-                        function onHomePagesChanged() {
-                            homeAppsGrid.model = launcher.homePageApps(index)
-                        }
-                    }
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                spacing: Math.min(Theme.spacingSection, 16)
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: Theme.space(8)
-
-                    Text {
-                        text: qsTr("One shell.")
-                        color: Theme.foreground
-                        font.pixelSize: Theme.fontSize(34)
-                        font.weight: Font.DemiBold
-                    }
-
-                    Text {
-                        text: qsTr("Every device.")
-                        color: Theme.accent
-                        font.pixelSize: Theme.fontSize(34)
-                        font.weight: Font.DemiBold
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("Your Android apps, with Omarchy’s visual language.")
-                        color: Theme.muted
-                        font.pixelSize: Theme.fontSize(15)
-                        wrapMode: Text.WordWrap
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    Text {
-                        text: qsTr("Dock")
-                        color: Theme.foreground
-                        font.pixelSize: Theme.fontSize(15)
-                        font.weight: Font.DemiBold
-                    }
-
-                    Text {
-                        text: launcher.favorites.length > 0
-                              ? qsTr("Hold to unpin")
-                              : qsTr("Hold an app below to pin it")
-                        color: Theme.muted
-                        font.pixelSize: Theme.fontSize(11)
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    ToolButton {
-                        text: "↻"
-                        Accessible.name: qsTr("Refresh installed apps")
-                        onClicked: launcher.refresh()
-                    }
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: launcher.favorites.length > 0 ? 86 : 0
-                    visible: launcher.favorites.length > 0
-
-                    HyprlandSurface {
-                        anchors.fill: parent
-                        z: -1
-                        fillColor: Theme.surface
-                        borderStart: Theme.outline
-                        borderEnd: Theme.outline
-                        radius: Theme.defaultCornerRadius
-                        borderWidth: 1
-                    }
-
-                    Flickable {
-                        anchors.fill: parent
-                        contentWidth: pinnedRow.implicitWidth
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        flickableDirection: Flickable.HorizontalFlick
-
-                        Row {
-                            id: pinnedRow
-                            spacing: Theme.space(8)
-
-                            Repeater {
-                                model: launcher.favorites
-
-                                delegate: Button {
-                                    required property var modelData
-                                    width: 72
-                                    height: 82
-                                    Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                                    onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
-                                    onPressAndHold: {
-                                        if (launcher.gestures.longPressEdit)
-                                            launcher.removeFavorite(modelData.packageName,
-                                                                    modelData.activityName)
-                                    }
-
-                                    contentItem: Column {
-                                        spacing: Theme.space(5)
-                                        Image {
-                                            width: 42
-                                            height: 42
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            source: modelData.iconUrl
-                                            fillMode: Image.PreserveAspectFit
-                                            asynchronous: true
-                                        }
-                                        Text {
-                                            width: 68
-                                            anchors.horizontalCenter: parent.horizontalCenter
-                                            text: modelData.name
-                                            color: Theme.foreground
-                                            font.pixelSize: Theme.fontSize(10)
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
-                                            maximumLineCount: 1
-                                        }
-                                    }
-
-                                    background: HyprlandSurface {
-                                            fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
-                                        borderStart: parent.activeFocus ? Theme.accent : "transparent"
-                                        borderEnd: parent.activeFocus ? Theme.accent : "transparent"
-                                        radius: Theme.defaultCornerRadius
-                                        borderWidth: parent.activeFocus ? 1 : 0
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    DropArea {
-                        id: dockDropArea
-                        anchors.fill: parent
-                        z: 10
-                        keys: ["application/x-omaapp-activity"]
-
-                        onDropped: function(drop) {
-                            try {
-                                const payload = JSON.parse(drop.getDataAsString(
-                                    "application/x-omaapp-activity"))
-                                const targetIndex = Math.floor(drop.x / 80)
-                                if (launcher.placeFavorite(payload.packageName,
-                                                           payload.activityName,
-                                                           window.selectedHomePage,
-                                                           targetIndex)) {
-                                    drop.acceptProposedAction()
-                                }
-                            } catch (error) {
-                                console.warn("OmaApp: ignored an invalid dock drag payload")
-                            }
-                        }
-
-                        HyprlandSurface {
-                            anchors.fill: parent
-                            visible: dockDropArea.containsDrag
-                            fillColor: "transparent"
-                            borderStart: Theme.accent
-                            borderEnd: Theme.accent
-                            borderWidth: 2
-                            radius: Theme.defaultCornerRadius
-                        }
-                    }
-
-
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-
-                    Text {
-                        text: qsTr("Folders")
-                        color: Theme.foreground
-                        font.pixelSize: Theme.fontSize(15)
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    Button {
-                        text: qsTr("New")
-                        Accessible.name: qsTr("Create folder")
-                        onClicked: createFolderDialog.open()
-                    }
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: launcher.folders.length > 0 ? 72 : 0
-                    visible: launcher.folders.length > 0
-
-                    Flickable {
-                        anchors.fill: parent
-                        contentWidth: folderRow.implicitWidth
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        flickableDirection: Flickable.HorizontalFlick
-
-                        Row {
-                            id: folderRow
-                            spacing: Theme.spacingSmall
-
-                            Repeater {
-                                model: launcher.folders
-
-                                delegate: Button {
-                                    required property var modelData
-                                    width: 84
-                                    height: 68
-                                    Accessible.name: qsTr("Open %1 folder, %2 apps")
-                                                       .arg(modelData.name)
-                                                       .arg(modelData.appCount)
-                                    onClicked: window.openFolder(modelData.id, modelData.name)
-
-                                    contentItem: Column {
-                                        spacing: Theme.space(2)
-                                        Text {
-                                            width: parent.width
-                                            text: "▦"
-                                            color: Theme.accent
-                                            font.pixelSize: Theme.fontSize(20)
-                                            horizontalAlignment: Text.AlignHCenter
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.name
-                                            color: Theme.foreground
-                                            font.pixelSize: Theme.fontSize(10)
-                                            horizontalAlignment: Text.AlignHCenter
-                                            elide: Text.ElideRight
-                                            maximumLineCount: 1
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: qsTr("%1 apps").arg(modelData.appCount)
-                                            color: Theme.muted
-                                            font.pixelSize: Theme.fontSize(9)
-                                            horizontalAlignment: Text.AlignHCenter
-                                        }
-                                    }
-
-                                    background: HyprlandSurface {
-                                        fillColor: parent.down ? Theme.surfaceRaised : Theme.controlSurface
-                                        borderStart: parent.activeFocus ? Theme.accent : Theme.outline
-                                        borderEnd: parent.activeFocus ? Theme.accent : Theme.outline
-                                        radius: Theme.defaultCornerRadius
-                                        borderWidth: 1
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                }
-
-                TextField {
-                    id: appSearch
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("Search apps")
-                    Accessible.name: qsTr("Search installed apps")
-                    color: Theme.foreground
-                    placeholderTextColor: Theme.muted
-                    leftPadding: 16
-                    rightPadding: 16
-                    topPadding: 14
-                    bottomPadding: 14
-                    background: HyprlandSurface {
-                        fillColor: Theme.surface
-                        borderStart: Theme.outline
-                        borderEnd: Theme.outline
-                        radius: Theme.defaultCornerRadius
-                        roundingPower: Theme.defaultRoundingPower
-                        borderWidth: 1
-                    }
-                    onTextChanged: launcher.filter = text
-                }
-
-                Item {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-
-                    GridView {
-                        id: appGrid
-                        anchors.fill: parent
-                        clip: true
-                        cellWidth: Math.floor(width / launcher.gridColumns)
-                        cellHeight: 104
-                        model: launcher
-                        boundsBehavior: Flickable.StopAtBounds
-
-                        delegate: Button {
-                            required property int index
-                            required property string name
-                            required property string packageName
-                            required property string activityName
-                            required property string iconUrl
-                            required property bool favorite
-
-                            width: appGrid.cellWidth - 8
-                            height: appGrid.cellHeight - 8
-                            text: name
-                            Accessible.name: qsTr("Launch %1").arg(name)
-                            display: AbstractButton.TextUnderIcon
-                            spacing: Theme.space(7)
-                            onClicked: launcher.launch(index)
-                            onPressAndHold: {
-                                if (launcher.gestures.longPressPin)
-                                    launcher.toggleFavorite(index, window.selectedHomePage)
-                            }
-
-                            Drag.active: appDragHandler.active
-                            Drag.dragType: Drag.Automatic
-                            Drag.supportedActions: Qt.MoveAction
-                            Drag.mimeData: ({
-                                "application/x-omaapp-activity": JSON.stringify({
-                                    "packageName": packageName,
-                                    "activityName": activityName
-                                })
-                            })
-
-                            DragHandler {
-                                id: appDragHandler
-                                target: null
-                                acceptedButtons: Qt.LeftButton
-                            }
-
-                            contentItem: Column {
-                                spacing: Theme.space(7)
-                                anchors.centerIn: parent
-
-                                Item {
-                                    width: 42
-                                    height: 42
-                                    anchors.horizontalCenter: parent.horizontalCenter
-
-                                    Image {
-                                        id: appIcon
-                                        anchors.fill: parent
-                                        source: iconUrl
-                                        fillMode: Image.PreserveAspectFit
-                                        asynchronous: true
-                                    }
-
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        visible: appIcon.status !== Image.Ready
-                                        color: Theme.surfaceRaised
-                                        border.color: Theme.outline
-                                        border.width: 1
-                                        radius: Theme.defaultCornerRadius
-
-                                        Text {
-                                            anchors.centerIn: parent
+                             …5300 tokens truncated…               anchors.centerIn: parent
                                             text: name.length > 0 ? name.substring(0, 1).toUpperCase() : "•"
                                             color: Theme.accent
                                             font.pixelSize: Theme.fontSize(21)
@@ -2855,6 +2466,13 @@ ApplicationWindow {
                     color: Theme.muted
                     font.pixelSize: Theme.fontSize(12)
                     wrapMode: Text.WordWrap
+                }
+
+                Button {
+                    Layout.fillWidth: true
+                    text: qsTr("Open-source notices and licenses")
+                    Accessible.name: text
+                    onClicked: openSourceNoticesDialog.open()
                 }
             }
         }

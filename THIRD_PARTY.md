@@ -50,9 +50,16 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 
 ## Qt
 
-The build uses Qt 6.11 and packages Qt for Android libraries into the APK. Qt is available under LGPL-3.0-only, GPL licenses, or commercial terms depending on the module and distribution. The final release must ship the applicable notices and license texts, preserve a user-replaceable/relinkable Qt runtime where required, and include installation information required by the selected license terms.
+The build uses Qt 6.10.3 and packages the Qt for Android runtime libraries selected by Qt's Android deployment scanner. The CMake targets link Qt Core, Gui, Qml, Quick and Quick Controls 2. The build also requires Qt ShaderTools to compile the checked-in GLSL sources into QSB resources; the `qsb` tool and ShaderTools runtime library are not linked into or packaged with the APK. The QSB resource is consumed through Qt Gui/Qt Quick.
 
-The Android manifest follows Qt's Android package template conventions. Qt source: https://github.com/qt/qtbase/blob/v6.11.2/src/android/templates/AndroidManifest.xml
+Qt modules and third-party components carry their own terms. The LGPL-3.0 text is included in the APK's **Settings → Open-source notices and licenses** screen and in the release notice bundle. The release workflow also publishes the Qt 6.10.3 Android arm64 SBOM, a native-library inventory extracted from the APK, and the corresponding official Qt 6.10.3 source archive after verifying its published SHA-256. The `LICENSE` and release notes explain how to obtain the app source and the build inputs used for a relinked build. This project does not claim that the SBOM alone replaces each applicable license notice.
+
+Qt source release: https://download.qt.io/official_releases/qt/6.10/6.10.3/single/qt-everywhere-src-6.10.3.tar.xz
+Qt source SHA-256: `cbc81e726b0ff3c0cdb0219bf74545e91cec013c4a8503c20f93f83d73dff5d2`
+
+The Android manifest follows Qt's Android package template conventions. Qt source template: https://github.com/qt/qtbase/blob/v6.10.3/src/android/templates/AndroidManifest.xml
+
+The Qt Online Installer places SPDX SBOM files under the installed target's `sbom/` directory. The release packaging step requires that directory from the `android_arm64_v8a` Qt 6.10.3 installation and publishes it alongside the APK. The included Apache-2.0 text applies to the AndroidX/CameraX/ML Kit/Kotlin components used by the Gradle Android source set; consult their resolved dependency metadata for exact transitive versions.
 
 ## Quickshell
 

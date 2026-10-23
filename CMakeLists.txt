@@ -61,6 +61,19 @@ qt_add_resources(omaapp omaapp_widget_store
         app/widgets/canvas.owl
 )
 
+# Keep end-user notices accessible in Settings as well as in the source tree.
+qt_add_resources(omaapp omaapp_open_source_notices
+    PREFIX "/licenses"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}"
+    FILES
+        LICENSE
+        THIRD_PARTY.md
+        app/licenses/NOTICE.md
+        app/licenses/LGPL-3.0.txt
+        app/licenses/Apache-2.0.txt
+        app/android/kotlin/dev/omalauncher/widgets/lang/LICENSE-MIT
+)
+
 # QSGMaterialShader loads these precompiled variants at runtime. The same QSB
 # sources are translated by Qt for OpenGL, Vulkan, Metal, and Direct3D.
 qt_add_shaders(omaapp omaapp_surface_shaders
@@ -87,12 +100,9 @@ target_link_libraries(omaapp PRIVATE
 )
 
 if(ANDROID)
-    string(REPLACE "." ";" OMAAPP_VERSION_PARTS "${PROJECT_VERSION}")
-    list(GET OMAAPP_VERSION_PARTS 0 OMAAPP_VERSION_MAJOR)
-    list(GET OMAAPP_VERSION_PARTS 1 OMAAPP_VERSION_MINOR)
-    list(GET OMAAPP_VERSION_PARTS 2 OMAAPP_VERSION_PATCH)
-    math(EXPR OMAAPP_ANDROID_VERSION_CODE
-        "${OMAAPP_VERSION_MAJOR} * 1000000 + ${OMAAPP_VERSION_MINOR} * 1000 + ${OMAAPP_VERSION_PATCH}")
+    include(cmake/AndroidVersionCode.cmake)
+    omaapp_compute_android_version_code(
+        "${OMAAPP_VERSION_NAME}" "${PROJECT_VERSION}" OMAAPP_ANDROID_VERSION_CODE)
 
     set_target_properties(omaapp PROPERTIES
         QT_ANDROID_PACKAGE_NAME "app.omaapp"
@@ -107,6 +117,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING AND NOT ANDROID)
+    add_test(
+        NAME android_version_code_tests
+        COMMAND "${CMAKE_COMMAND}"
+            "-DREPO_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+            -P "${CMAKE_SOURCE_DIR}/cmake/tests/AndroidVersionCodeTest.cmake")
+
     find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
     qt_add_executable(geometry_tests
         shared/geometry/tests/tst_geometry.cpp

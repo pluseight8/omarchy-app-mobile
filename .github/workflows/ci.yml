@@ -97,6 +97,23 @@ jobs:
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android -GNinja -DCMAKE_BUILD_TYPE=Debug -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android --target apk --parallel 2
 
+      - name: Build and inspect the Alpha release configuration
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-release -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION=0.1.0 -DOMAAPP_VERSION_NAME=0.1.0-alpha.1 -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          cmake --build build/android-release --target apk --parallel 2
+          release_apk="$(find build/android-release -type f -name '*.apk' -print -quit)"
+          test -n "$release_apk"
+          version_code="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$release_apk" \
+            | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n 1)"
+          version_name="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$release_apk" \
+            | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          test "$version_code" = 1000001
+          test "$version_name" = 0.1.0-alpha.1
+          if [[ ! -d "$QT_ROOT_DIR/sbom" ]] || ! find "$QT_ROOT_DIR/sbom" -type f -print -quit | grep -q .; then
+            printf 'Qt 6.10.3 Android arm64 SBOM is missing from the installed Qt target.\n' >&2
+            exit 1
+          fi
+
       - name: Upload CI APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -302,6 +319,34 @@ jobs:
           done
           # Verify the live tab control can leave Settings; its earlier XML
           # snapshot is not valid once the taller Settings page is displayed.
+          license_target=""
+          for attempt in {1..10}; do
+            python3 scripts/ci/android_accessibility_dump.py \
+              /sdcard/omaapp-settings-licenses.xml \
+              "$smoke_artifacts/window-settings-licenses.xml"
+            if license_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+              "$smoke_artifacts/window-settings-licenses.xml" \
+              'Open-source notices and licenses' 2>/dev/null)"; then
+              break
+            fi
+            adb shell input swipe 205 760 205 250 450
+            sleep 0.3
+          done
+          test -n "$license_target"
+          read -r license_x license_y <<< "$license_target"
+          adb shell input tap "$license_x" "$license_y"
+          sleep 1
+          python3 scripts/ci/android_accessibility_dump.py \
+            /sdcard/omaapp-open-source-notices.xml \
+            "$smoke_artifacts/window-open-source-notices.xml"
+          python3 scripts/ci/android_accessibility_assert_visible.py \
+            "$smoke_artifacts/window-open-source-notices.xml" \
+            'License texts are available offline.'
+          close_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+            "$smoke_artifacts/window-open-source-notices.xml" 'Close')"
+          read -r close_x close_y <<< "$close_target"
+          adb shell input tap "$close_x" "$close_y"
+          sleep 0.5
           python3 scripts/ci/android_accessibility_dump.py \
             /sdcard/omaapp-settings-navigation.xml \
             "$smoke_artifacts/window-settings-navigation.xml"
