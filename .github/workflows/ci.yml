@@ -221,13 +221,6 @@ jobs:
           test -n "$apk"
           adb install "$apk"
           adb logcat -c
-          adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-          sleep 8
-          # Keep startup diagnostics; the scenegraph assertion below verifies the actual RHI.
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
-          if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
-            exit 1
-          fi
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
@@ -241,7 +234,10 @@ jobs:
             local label="$1"
             local device_xml="$2"
             local output_xml="$3"
-            for attempt in {1..6}; do
+            # A cold Qt Android launch can resume its Activity before the QML
+            # accessibility tree is published. Keep the readiness wait
+            # bounded while allowing that first HOME frame to finish loading.
+            for attempt in {1..10}; do
               python3 scripts/ci/android_accessibility_dump.py \
                 --attempts 1 --delay-seconds 0 --command-timeout-seconds 8 \
                 "$device_xml" "$output_xml" \
@@ -264,11 +260,15 @@ jobs:
           mkdir -p "$visual_artifacts"
           for screen in home apps devices style settings; do
             screen_label="${screen^}"
-            python3 scripts/ci/android_accessibility_dump.py \
-              "/sdcard/omaapp-visual-$screen.xml" "$visual_artifacts/$screen.xml"
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
+              # Keep startup diagnostics after QML is ready; the scenegraph
+              # assertion below verifies the renderer selected for this run.
+              adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+              if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
+                exit 1
+              fi
               # The empty-state label follows the launcher cards and may be
               # below the fold. Scroll it into view before asserting it, then
               # restore the Home baseline to the initial top position.
@@ -296,6 +296,9 @@ jobs:
                 "/sdcard/omaapp-visual-$screen-top.xml" "$visual_artifacts/$screen.xml"
               adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
               test -s "$smoke_artifacts/launcher-before-pin.png"
+            else
+              python3 scripts/ci/android_accessibility_dump.py \
+                "/sdcard/omaapp-visual-$screen.xml" "$visual_artifacts/$screen.xml"
             fi
             # Android has already launched OmaApp as the selected HOME app,
             # so the Home screen is the current screen. Some Qt Android
