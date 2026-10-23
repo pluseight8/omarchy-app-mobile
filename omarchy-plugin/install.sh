@@ -12,7 +12,7 @@ if ! command -v omarchy >/dev/null 2>&1; then
     exit 1
 fi
 
-for dependency in python3 openssl; do
+for dependency in python3 openssl omarchy-shell jq; do
     if ! command -v "$dependency" >/dev/null 2>&1; then
         printf 'Required OmaApp plugin dependency was not found on PATH: %s\n' "$dependency" >&2
         exit 1
@@ -43,6 +43,23 @@ cp -a "$source_dir/." "$stage_dir/"
 omarchy plugin validate "$stage_dir"
 mv -- "$stage_dir" "$target_dir"
 stage_dir=''
+
+# The live Quickshell registry reads plugin manifests in a separate scan. Wait
+# for that scan to finish before asking it to enable this new bar widget.
+omarchy-shell shell rescanPlugins >/dev/null
+discovered=0
+for attempt in {1..40}; do
+    if omarchy plugin list --json | jq -e --arg id "$plugin_id" 'any(.[]; .id == $id)' >/dev/null; then
+        discovered=1
+        break
+    fi
+    sleep 0.05
+done
+if (( discovered == 0 )); then
+    printf 'Quickshell did not discover %s after a plugin rescan. The files remain installed at %s.\n' \
+        "$plugin_id" "$target_dir" >&2
+    exit 1
+fi
 omarchy plugin enable "$plugin_id"
 
 printf 'Installed and enabled %s at %s\n' "$plugin_id" "$target_dir"

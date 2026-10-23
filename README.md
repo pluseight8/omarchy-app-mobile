@@ -4,20 +4,23 @@
 
 ![OmaApp project banner](assets/hero.svg)
 
-OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick. The launcher and secure theme-pairing flow now pass GitHub Actions builds and an Android x86_64 emulator smoke test; physical-device verification remains.
+OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick. It pairs directly with one Omarchy plugin and keeps launcher data and cached appearance available offline. Physical Pixel/GrapheneOS verification remains.
 
 ## Current state
 
-- The Android app uses Qt 6.10+ / C++ / QML and includes Android launcher enumeration, app launch, cached system icons, persistent pinned activities and app folders, an optional HOME activity, and an on-demand QR scanner.
+- The Android app uses Qt 6.10+ / C++ / QML and includes a local Home screen with up to five swipeable pages, a pinned-app dock, full Android launcher icons, app search, folders, adjustable 3–5 column grid, and settings for the live clock/computer/media cards. Pinned apps can be moved between pages or removed with a long press. Android launcher data stays local, and the optional HOME activity works without an Omarchy computer.
 - Pairing is a direct HTTPS connection to the one Omarchy plugin. The first pairing requires approval in OmaApp and in the plugin; the client pins the QR's computer certificate and keeps its bearer token encrypted with Android Keystore.
-- The plugin reads current Omarchy theme and supported Hyprland geometry, including colors, active-border gradient, wallpaper, border width, rounding, rounding power, and spacing. OmaApp refreshes the snapshot every four seconds and keeps the last successful theme while offline.
+- The plugin reads active Omarchy colors, `shell.toml`, wallpaper, Hyprland border gradients, rounding, rounding power, gaps, animations, and Bezier curves. Theme/configuration and workspace events are event-driven; a slower 30-second foreground refresh covers metrics and missed events. OmaApp keeps the last successful theme while offline.
+- Clipboard, file transfer, MPRIS, system metrics, Hyprland workspace switching, and configured user commands are available behind independent per-device permissions. Clipboard is tapped and foreground-only; files use Android's system picker and a 100 MiB limit; arbitrary shell commands are never accepted.
+- Home supports drag and drop between pages and the dock, dynamic Android app shortcuts, configurable gestures, and local backup/restore. It includes an offline OWL widget store/editor, an embedded copy of the original OWL compiler/runtime, and an OWL Canvas renderer for bounded local widgets. Android apps, widget sources and layout backups stay usable without the computer.
+- OWL currently runs an offline subset: layout/text/basic controls plus Canvas shapes, paths, transforms, clipping and gradients. Widgets requiring shell commands, network, assets, background triggers, interactive handlers, secrets or sampled state are rejected with an editor error instead of being run.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
-- Remote commands, clipboard, file sharing, media, notifications, workspace control, terminal, and desktop streaming are not implemented.
-- CI builds an arm64 debug APK and exercises install, HOME selection, app enumeration and launch, pin and folder persistence, TLS pairing, theme and wallpaper sync, reconnect, and revocation on an x86_64 emulator ([run 44 passed](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557)). The debug artifact is separate from a signed release; no signed release has been published.
+- OmaApp does not install Arch Linux ARM or PRoot. It does not bundle the Quickshell executable or Linux/Wayland modules into the APK.
+- Pull request [#14](https://github.com/pluseight8/omarchy-app-mobile/pull/14) is the active release gate. Its current-head checks build desktop and arm64 APKs, then exercise launcher, pairing, theme sync, Hyprland rendering, and the paired-PC features in Android x86_64 emulators using OpenGL and Vulkan. Older run numbers refer to superseded commits; use the PR checks for the current result. A signed release has not yet been published.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-This workspace has Qt 6.11.2 desktop tools, `qmllint`, and `adb`, but no CMake, JDK, Android SDK, emulator, or attached Android device. GitHub Actions builds the arm64 debug APK and runs the installation/runtime smoke test.
+The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. The local Python suite has 64 passing tests; the Android version-code CMake regression test passes. This workspace lacks Qt ShaderTools (`qsb`) and the Android build SDK, so the full desktop/Android build is delegated to GitHub Actions. No Pixel device is attached; Pixel 10 / GrapheneOS behavior remains unverified.
 
 ## Build the desktop preview
 
@@ -38,7 +41,7 @@ For a local build, configure CMake with the Qt Android arm64 kit and the Android
     qt-cmake -S . -B build/android -GNinja -DANDROID_SDK_ROOT=/path/to/Android/Sdk -DANDROID_NDK_ROOT=/path/to/Android/Sdk/ndk/27.2.12479018
     cmake --build build/android --target apk
 
-This prototype has not been installed on GrapheneOS or a Pixel device. The first Android APK is not yet available from Releases.
+See the [Pixel 10 + GrapheneOS installation and test guide](docs/GRAPHENEOS.md). The current commit has not yet been installed on a physical phone.
 
 ## Install the Omarchy plugin
 

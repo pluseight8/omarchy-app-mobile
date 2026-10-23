@@ -2,8 +2,14 @@ package app.omaapp;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipDescription;
+import android.content.ClipboardManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.PersistableBundle;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -20,6 +26,7 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -36,17 +43,28 @@ public final class PairingBridge {
     private static final String LAST_ERROR_KEY = "last_error";
     private static final String THEME_CACHE_KEY = "theme_cache";
     private static final String UPDATED_AT_KEY = "updated_at";
+    static final String LAST_CONTACT_KEY = "last_contact";
     private static final String WALLPAPER_PATH_KEY = "wallpaper_path";
     private static final String WALLPAPER_ID_KEY = "wallpaper_id";
-    private static final int MAX_JSON_BYTES = 64 * 1024;
+    private static final String FEATURES_CACHE_KEY = "features_cache";
+    private static final String FEATURE_MESSAGE_KEY = "feature_message";
+    private static final int MAX_JSON_BYTES = 128 * 1024;
+    private static final int MAX_CLIPBOARD_BYTES = 64 * 1024;
+    private static final int MAX_CLIPBOARD_JSON_BYTES = MAX_CLIPBOARD_BYTES * 6 + 1024;
     private static final int MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
     private static final long PAIRING_TIMEOUT_MILLIS = 180_000L;
-    private static final long CONNECTED_WINDOW_MILLIS = 15_000L;
+    private static final long CONNECTED_WINDOW_MILLIS = 45_000L;
+    private static final int DEFAULT_REQUEST_READ_TIMEOUT_MILLIS = 10_000;
     private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
+    private static final ExecutorService EVENTS = Executors.newSingleThreadExecutor();
     private static final Object OPERATION_LOCK = new Object();
+    private static final AtomicBoolean REALTIME_SYNC_ENABLED = new AtomicBoolean(false);
+    private static final AtomicBoolean EVENT_LOOP_RUNNING = new AtomicBoolean(false);
+    private static final EventRefreshQueue EVENT_REFRESH_QUEUE = new EventRefreshQueue();
     private static boolean operationRunning;
     private static volatile boolean cancelRequested;
     private static long lastRefreshRequested;
+    private static volatile HttpsURLConnection eventConnection;
 
     private PairingBridge() {}
 
@@ -57,6 +75,182 @@ public final class PairingBridge {
         Intent intent = new Intent(context, QrScannerActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(intent);
+    }
+
+    public static void startFileTransfer(Context context) {
+        if (context == null) {
+            return;
+        }
+        Intent intent = new Intent(context, FileTransferActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+    }
+
+    public static void pushClipboard(Context context) {
+        if (context == null) {
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard == null || !clipboard.hasPrimaryClip()) {
+            setFeatureMessage(context, "There is no text in the phone clipboard.");
+            return;
+        }
+        CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(context);
+        if (value == null || value.toString().getBytes(StandardCharsets.UTF_8).length > MAX_CLIPBOARD_BYTES) {
+            setFeatureMessage(context, "Clipboard text is empty or exceeds 64 KiB.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("text", value.toString());
+        } catch (JSONException error) {
+            setFeatureMessage(context, "Could not read phone clipboard text.");
+            return;
+        }
+        runFeatureRequest(context, "/v1/clipboard", "POST", body, true);
+    }
+
+    public static void pullClipboard(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context appContext = context.getApplicationContext();
+        JSONObject credentials = PairingStore.readCredential(appContext);
+        if (credentials == null || !credentials.has("token")) {
+            setFeatureMessage(appContext, "Pair OmaApp with a computer first.");
+            return;
+        }
+        setFeatureMessage(appContext, "Reading computer clipboard…");
+        NETWORK.execute(() -> {
+            try {
+                HttpResult response = executeJson(credentials, "/v1/clipboard", "GET", null, true);
+                if (response.status != 200) {
+                    throw new IllegalStateException(featureError(response));
+                }
+                String text = response.body.getString("text");
+                if (text.getBytes(StandardCharsets.UTF_8).length > MAX_CLIPBOARD_BYTES) {
+                    throw new IllegalStateException("The computer clipboard exceeds 64 KiB.");
+                }
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    ClipboardManager clipboard = (ClipboardManager) appContext
+                            .getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard == null) {
+                        setFeatureMessage(appContext, "Android clipboard is unavailable.");
+                    } else {
+                        ClipData clip = ClipData.newPlainText("Omarchy computer", text);
+                        PersistableBundle extras = new PersistableBundle();
+                        extras.putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true);
+                        clip.getDescription().setExtras(extras);
+                        clipboard.setPrimaryClip(clip);
+                        setFeatureMessage(appContext, "Computer text copied to the phone clipboard.");
+                    }
+                });
+            } catch (Exception error) {
+                setFeatureMessage(appContext, safeMessage(error));
+            }
+        });
+    }
+
+    public static void activateWorkspace(Context context, int workspaceId) {
+        if (context == null || workspaceId < 0 || workspaceId > 1000) {
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("workspaceId", workspaceId);
+        } catch (JSONException error) {
+            return;
+        }
+        runFeatureRequest(context, "/v1/workspaces/activate", "POST", body, false);
+    }
+
+    public static void mediaAction(Context context, String player, String action) {
+        if (context == null || player == null || action == null
+                || !player.matches("[A-Za-z0-9_.-]{1,128}")
+                || !action.matches("play-pause|play|pause|next|previous|stop")) {
+            setFeatureMessage(context, "This media action is not allowed.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("player", player);
+            body.put("action", action);
+        } catch (JSONException error) {
+            return;
+        }
+        runFeatureRequest(context, "/v1/media", "POST", body, false);
+    }
+
+    public static void executeCommand(Context context, String commandId) {
+        if (context == null || commandId == null
+                || !commandId.matches("[a-z][a-z0-9-]{0,47}")) {
+            setFeatureMessage(context, "This computer command is not configured.");
+            return;
+        }
+        JSONObject body = new JSONObject();
+        try {
+            body.put("commandId", commandId);
+        } catch (JSONException error) {
+            return;
+        }
+        runFeatureRequest(context, "/v1/commands/execute", "POST", body, false);
+    }
+
+    static void uploadFile(Context context, Uri uri, String displayName, long size) {
+        if (context == null || uri == null || displayName == null || size < 1
+                || size > 100L * 1024L * 1024L
+                || !displayName.matches("[A-Za-z0-9][A-Za-z0-9 ._()@+-]{0,159}")) {
+            setFeatureMessage(context, "The selected file name or size is not supported.");
+            return;
+        }
+        Context appContext = context.getApplicationContext();
+        JSONObject credentials = PairingStore.readCredential(appContext);
+        if (credentials == null || !credentials.has("token")) {
+            setFeatureMessage(appContext, "Pair OmaApp with a computer first.");
+            return;
+        }
+        setFeatureMessage(appContext, "Sending " + displayName + " to the computer…");
+        NETWORK.execute(() -> {
+            HttpsURLConnection connection = null;
+            try {
+                String encodedName = java.net.URLEncoder.encode(displayName, "UTF-8").replace("+", "%20");
+                connection = openConnection(credentials, "/v1/files", "POST", true);
+                connection.setDoOutput(true);
+                connection.setFixedLengthStreamingMode(size);
+                connection.setRequestProperty("Content-Type", "application/octet-stream");
+                connection.setRequestProperty("X-OmaApp-File-Name", encodedName);
+                try (InputStream input = appContext.getContentResolver().openInputStream(uri);
+                     java.io.OutputStream output = connection.getOutputStream()) {
+                    if (input == null) {
+                        throw new IllegalStateException("Android could not open this file.");
+                    }
+                    byte[] buffer = new byte[16 * 1024];
+                    long copied = 0;
+                    int count;
+                    while ((count = input.read(buffer)) != -1) {
+                        copied += count;
+                        if (copied > size || copied > 100L * 1024L * 1024L) {
+                            throw new IllegalArgumentException("The selected file changed while sending.");
+                        }
+                        output.write(buffer, 0, count);
+                    }
+                    if (copied != size) {
+                        throw new IllegalArgumentException("The selected file changed while sending.");
+                    }
+                }
+                int code = connection.getResponseCode();
+                if (code != 201) {
+                    throw new IllegalStateException("Computer rejected the file (HTTP " + code + ").");
+                }
+                setFeatureMessage(appContext, "Sent " + displayName + " to Downloads/OmaApp.");
+            } catch (Exception error) {
+                setFeatureMessage(appContext, safeMessage(error));
+            } finally {
+                if (connection != null) {
+                    connection.disconnect();
+                }
+            }
+        });
     }
 
     public static String consumeScannedQr(Context context) {
@@ -135,7 +329,7 @@ public final class PairingBridge {
     }
 
     public static void refresh(Context context) {
-        if (context == null || System.currentTimeMillis() - lastRefreshRequested < 4_000L) {
+        if (context == null || System.currentTimeMillis() - lastRefreshRequested < 30_000L) {
             return;
         }
         final Context appContext = context.getApplicationContext();
@@ -167,6 +361,105 @@ public final class PairingBridge {
                 }
             }
         });
+    }
+
+    public static void setRealtimeSync(Context context, boolean enabled) {
+        if (enabled) {
+            REALTIME_SYNC_ENABLED.set(true);
+            Context appContext = context == null ? null : context.getApplicationContext();
+            if (appContext != null && EVENT_LOOP_RUNNING.compareAndSet(false, true)) {
+                EVENTS.execute(() -> watchEvents(appContext));
+            }
+            return;
+        }
+        REALTIME_SYNC_ENABLED.set(false);
+        HttpsURLConnection connection = eventConnection;
+        if (connection != null) {
+            connection.disconnect();
+        }
+    }
+
+    private static void watchEvents(Context context) {
+        try {
+            while (REALTIME_SYNC_ENABLED.get()) {
+                JSONObject credentials = PairingStore.readCredential(context);
+                if (credentials == null || !credentials.has("token")) {
+                    sleepQuietly(1_000L);
+                    continue;
+                }
+                android.content.SharedPreferences preferences =
+                        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+                long revision = EventRevisionCursor.current(preferences);
+                HttpsURLConnection connection = null;
+                try {
+                    connection = openConnection(credentials,
+                            "/v1/events?since=" + Math.max(0L, revision), "GET", true, 35_000);
+                    eventConnection = connection;
+                    int status = connection.getResponseCode();
+                    if (status == 400) {
+                        EventRevisionCursor.reset(preferences);
+                        continue;
+                    }
+                    if (status != 200) {
+                        sleepQuietly(2_000L);
+                        continue;
+                    }
+                    markConnectionAlive(context);
+                    byte[] bytes = readBounded(connection.getInputStream(), 16 * 1024);
+                    JSONObject event = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+                    String kind = event.optString("kind", "");
+                    if (EventRevisionCursor.acceptEvent(preferences, event)) {
+                        if ("theme".equals(kind) || "features".equals(kind)) {
+                            queueEventRefresh(context, credentials, kind);
+                        }
+                    }
+                } catch (Exception error) {
+                    if (REALTIME_SYNC_ENABLED.get()) {
+                        sleepQuietly(2_000L);
+                    }
+                } finally {
+                    if (connection != null) {
+                        connection.disconnect();
+                    }
+                    if (eventConnection == connection) {
+                        eventConnection = null;
+                    }
+                }
+            }
+        } finally {
+            EVENT_LOOP_RUNNING.set(false);
+            if (REALTIME_SYNC_ENABLED.get() && EVENT_LOOP_RUNNING.compareAndSet(false, true)) {
+                EVENTS.execute(() -> watchEvents(context));
+            }
+        }
+    }
+
+    private static void queueEventRefresh(Context context, JSONObject credentials, String kind) {
+        if (!EVENT_REFRESH_QUEUE.enqueue(kind)) {
+            return;
+        }
+        NETWORK.execute(() -> {
+            int pending;
+            while ((pending = EVENT_REFRESH_QUEUE.takePending()) != 0) {
+                try {
+                    if ((pending & EventRefreshQueue.THEME) != 0) {
+                        fetchStatus(context, credentials);
+                    } else if ((pending & EventRefreshQueue.FEATURES) != 0) {
+                        fetchFeatures(context, credentials);
+                    }
+                } catch (Exception error) {
+                    setFeatureMessage(context, safeMessage(error));
+                }
+            }
+        });
+    }
+
+    private static void sleepQuietly(long duration) {
+        try {
+            Thread.sleep(duration);
+        } catch (InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     public static void revoke(Context context) {
@@ -247,8 +540,10 @@ public final class PairingBridge {
                 .getString(PHASE_KEY, "unpaired");
         long updatedAt = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                 .getLong(UPDATED_AT_KEY, 0);
+        long lastContact = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .getLong(LAST_CONTACT_KEY, updatedAt);
         if (credentials != null && credentials.has("token")
-                && System.currentTimeMillis() - updatedAt > CONNECTED_WINDOW_MILLIS) {
+                && System.currentTimeMillis() - lastContact > CONNECTED_WINDOW_MILLIS) {
             phase = "offline";
         }
         try {
@@ -262,6 +557,10 @@ public final class PairingBridge {
             String theme = appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                     .getString(THEME_CACHE_KEY, "{}");
             state.put("snapshot", new JSONObject(theme));
+            state.put("features", new JSONObject(appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                    .getString(FEATURES_CACHE_KEY, "{}")));
+            state.put("featureMessage", appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                    .getString(FEATURE_MESSAGE_KEY, ""));
             state.put("wallpaperPath", appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                     .getString(WALLPAPER_PATH_KEY, ""));
             state.put("hasPairedDevice", credentials != null && credentials.has("token"));
@@ -449,7 +748,75 @@ public final class PairingBridge {
                 .putString(THEME_CACHE_KEY, snapshot.toString())
                 .putLong(UPDATED_AT_KEY, System.currentTimeMillis())
                 .apply();
+        try {
+            fetchFeatures(context, credentials);
+        } catch (Exception error) {
+            setFeatureMessage(context, safeMessage(error));
+        }
         setUiState(context, "connected", snapshot.optString("hostName"), "");
+        markConnectionAlive(context);
+    }
+
+    private static void fetchFeatures(Context context, JSONObject credentials) throws Exception {
+        HttpResult features = executeJson(credentials, "/v1/features", "GET", null, true);
+        if (features.status != 200) {
+            throw new IllegalStateException(featureError(features));
+        }
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+                .putString(FEATURES_CACHE_KEY, features.body.toString())
+                .apply();
+        markConnectionAlive(context);
+    }
+
+    private static void runFeatureRequest(Context context, String path, String method,
+                                          JSONObject body, boolean clipboard) {
+        Context appContext = context.getApplicationContext();
+        JSONObject credentials = PairingStore.readCredential(appContext);
+        if (credentials == null || !credentials.has("token")) {
+            setFeatureMessage(appContext, "Pair OmaApp with a computer first.");
+            return;
+        }
+        setFeatureMessage(appContext, "Sending command to the computer…");
+        NETWORK.execute(() -> {
+            try {
+                HttpResult response = executeJson(credentials, path, method, body, true);
+                if (response.status < 200 || response.status >= 300) {
+                    throw new IllegalStateException(featureError(response));
+                }
+                setFeatureMessage(appContext, clipboard
+                        ? "Phone clipboard sent to the computer."
+                        : "Computer action completed.");
+            } catch (Exception error) {
+                setFeatureMessage(appContext, safeMessage(error));
+            }
+        });
+    }
+
+    static String featureError(HttpResult result) {
+        String error = result.body.optString("error", "request_failed");
+        if ("permission_required".equals(error)) {
+            return "Enable this feature for this phone in the Omarchy plugin permissions.";
+        }
+        if ("clipboard_unavailable".equals(error)) {
+            return "The computer clipboard is unavailable in this session.";
+        }
+        return "Computer feature request failed (HTTP " + result.status + ").";
+    }
+
+    private static String safeMessage(Exception error) {
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            return "Computer feature request failed. Check the local network and plugin permissions.";
+        }
+        return message.length() > 180 ? message.substring(0, 180) : message;
+    }
+
+    static void setFeatureMessage(Context context, String message) {
+        if (context == null) {
+            return;
+        }
+        context.getApplicationContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .edit().putString(FEATURE_MESSAGE_KEY, message == null ? "" : message).apply();
     }
 
     private static void downloadWallpaperIfNeeded(Context context, JSONObject credentials,
@@ -541,8 +908,8 @@ public final class PairingBridge {
         }
     }
 
-    private static HttpResult executeJson(JSONObject credentials, String path, String method,
-                                          JSONObject body, boolean authenticated) throws Exception {
+    static HttpResult executeJson(JSONObject credentials, String path, String method,
+                                  JSONObject body, boolean authenticated) throws Exception {
         HttpsURLConnection connection = openConnection(credentials, path, method, authenticated);
         try {
             if (body != null) {
@@ -556,7 +923,9 @@ public final class PairingBridge {
             }
             int code = connection.getResponseCode();
             InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            byte[] bytes = readBounded(stream, MAX_JSON_BYTES);
+            int responseLimit = "/v1/clipboard".equals(path)
+                    ? MAX_CLIPBOARD_JSON_BYTES : MAX_JSON_BYTES;
+            byte[] bytes = readBounded(stream, responseLimit);
             JSONObject response = bytes.length == 0 ? new JSONObject()
                     : new JSONObject(new String(bytes, StandardCharsets.UTF_8));
             return new HttpResult(code, response);
@@ -565,8 +934,15 @@ public final class PairingBridge {
         }
     }
 
-    private static HttpsURLConnection openConnection(JSONObject credentials, String path,
-                                                     String method, boolean authenticated) throws Exception {
+    static HttpsURLConnection openConnection(JSONObject credentials, String path,
+                                             String method, boolean authenticated) throws Exception {
+        return openConnection(credentials, path, method, authenticated,
+                DEFAULT_REQUEST_READ_TIMEOUT_MILLIS);
+    }
+
+    static HttpsURLConnection openConnection(JSONObject credentials, String path,
+                                             String method, boolean authenticated,
+                                             int readTimeout) throws Exception {
         String serverUrl = credentials.getString("serverUrl");
         URL url = new URL(serverUrl + path);
         HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
@@ -575,7 +951,7 @@ public final class PairingBridge {
         // computer to be reached after its router assigns it a new private IPv4 address.
         connection.setHostnameVerifier((hostname, session) -> true);
         connection.setConnectTimeout(5_000);
-        connection.setReadTimeout(5_000);
+        connection.setReadTimeout(Math.max(1_000, Math.min(readTimeout, 60_000)));
         connection.setInstanceFollowRedirects(false);
         connection.setUseCaches(false);
         connection.setRequestMethod(method);
@@ -668,6 +1044,18 @@ public final class PairingBridge {
                 .apply();
     }
 
+    private static void markConnectionAlive(Context context) {
+        if (context == null) {
+            return;
+        }
+        context.getApplicationContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(LAST_CONTACT_KEY, System.currentTimeMillis())
+                .putString(PHASE_KEY, "connected")
+                .putString(LAST_ERROR_KEY, "")
+                .apply();
+    }
+
     private static void clearThemeCache(Context context) {
         String wallpaperPath = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
                 .getString(WALLPAPER_PATH_KEY, "");
@@ -676,11 +1064,14 @@ public final class PairingBridge {
         }
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
                 .remove(THEME_CACHE_KEY).remove(UPDATED_AT_KEY)
+                .remove(LAST_CONTACT_KEY)
                 .remove(WALLPAPER_PATH_KEY).remove(WALLPAPER_ID_KEY)
+                .remove(FEATURES_CACHE_KEY).remove(FEATURE_MESSAGE_KEY)
+                .remove(EventRevisionCursor.KEY)
                 .apply();
     }
 
-    private static final class HttpResult {
+    static final class HttpResult {
         final int status;
         final JSONObject body;
 

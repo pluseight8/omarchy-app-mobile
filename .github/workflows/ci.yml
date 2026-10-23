@@ -30,7 +30,6 @@ jobs:
           host: linux
           target: desktop
           arch: linux_gcc_64
-          modules: qtshadertools
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
@@ -42,7 +41,7 @@ jobs:
 
       - name: Lint QML
         run: |
-          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml
+          "$QT_ROOT_DIR/bin/qmllint" -I "$QT_ROOT_DIR/qml" -I build/desktop app/qml/Main.qml app/qml/Theme.qml app/qml/HyprlandSurface.qml app/qml/OwlWidgetView.qml app/qml/OwlNodeLoader.qml app/qml/OwlNode.qml
 
       - name: Validate Omarchy plugin manifest
         run: python3 scripts/validate_plugin_manifest.py omarchy-plugin
@@ -90,7 +89,6 @@ jobs:
           host: all_os
           target: android
           arch: android_arm64_v8a
-          modules: qtshadertools
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
@@ -98,6 +96,23 @@ jobs:
         run: |
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android -GNinja -DCMAKE_BUILD_TYPE=Debug -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android --target apk --parallel 2
+
+      - name: Build and inspect the Alpha release configuration
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-release -GNinja -DCMAKE_BUILD_TYPE=Release -DOMAAPP_VERSION=0.1.0 -DOMAAPP_VERSION_NAME=0.1.0-alpha.1 -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          cmake --build build/android-release --target apk --parallel 2
+          release_apk="$(find build/android-release -type f -name '*.apk' -print -quit)"
+          test -n "$release_apk"
+          version_code="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$release_apk" \
+            | sed -n "s/^package:.*versionCode='\([0-9][0-9]*\)'.*/\1/p" | head -n 1)"
+          version_name="$("$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$release_apk" \
+            | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" | head -n 1)"
+          test "$version_code" = 1000001
+          test "$version_name" = 0.1.0-alpha.1
+          if [[ ! -d "$QT_ROOT_DIR/sbom" ]] || ! find "$QT_ROOT_DIR/sbom" -type f -print -quit | grep -q .; then
+            printf 'Qt 6.10.3 Android arm64 SBOM is missing from the installed Qt target.\n' >&2
+            exit 1
+          fi
 
       - name: Upload CI APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -108,8 +123,16 @@ jobs:
           retention-days: 7
 
   android-emulator-smoke:
-    name: Android x86_64 emulator smoke test
+    name: Android x86_64 emulator smoke (${{ matrix.rhi_backend }})
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rhi_backend: OpenGL
+            gpu_mode: swangle
+          - rhi_backend: Vulkan
+            gpu_mode: swiftshader
     permissions:
       contents: read
     steps:
@@ -143,14 +166,13 @@ jobs:
           host: all_os
           target: android
           arch: android_x86_64
-          modules: qtshadertools
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e
           cache: true
 
       - name: Build emulator APK
         run: |
           python3 scripts/ci/prepare_android_pairing_smoke.py
-          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
 
       - name: Boot emulator, install OmaApp, and select it as HOME
@@ -159,7 +181,9 @@ jobs:
           export ANDROID_USER_HOME="$RUNNER_TEMP/omaapp-user"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
-          mkdir -p "$ANDROID_AVD_HOME"
+          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
+          mkdir -p "$ANDROID_AVD_HOME" "$smoke_artifacts"
+          trap 'status=$?; failed_command="$BASH_COMMAND"; trap - ERR; { printf "Android smoke failed at: %s (exit %s)\n" "$failed_command" "$status"; printf "ADB devices:\n"; adb devices -l; if [[ -n "${emulator_pid:-}" ]]; then printf "Emulator process:\n"; ps -p "$emulator_pid" -o pid=,stat=,args=; fi; printf "Emulator log tail:\n"; tail -n 80 "$smoke_artifacts/emulator.log"; } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true; timeout 10s adb logcat -d -v threadtime -t 1000 > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true; if [[ -n "${app_pid:-}" ]]; then timeout 10s adb logcat -d -v threadtime --pid="$app_pid" > "$smoke_artifacts/app-failure-logcat.txt" 2>&1 || true; fi; cat "$smoke_artifacts/failure-diagnostics.txt" >&2; cat "$smoke_artifacts/failure-logcat.txt" >&2 2>/dev/null || true; if [[ -f "$smoke_artifacts/app-failure-logcat.txt" ]]; then cat "$smoke_artifacts/app-failure-logcat.txt" >&2; fi; exit "$status"' ERR
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | tee avds.txt
@@ -167,12 +191,22 @@ jobs:
           if [[ -e /dev/kvm ]]; then
             sudo chmod a+rw /dev/kvm
           fi
-          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -wipe-data)
+          # Use ANGLE for the OpenGL RHI smoke and SwiftShader's Vulkan driver
+          # for the Vulkan RHI smoke. Both modes are software-rendered.
+          emulator_args=(-avd omaapp-smoke -no-window -no-audio -no-boot-anim -gpu "${{ matrix.gpu_mode }}" -wipe-data)
           if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
             echo 'KVM is unavailable; using software CPU emulation.'
             emulator_args+=(-accel off)
           fi
-          "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" &
+          "$ANDROID_SDK_ROOT/emulator/emulator" "${emulator_args[@]}" > "$smoke_artifacts/emulator.log" 2>&1 &
+          emulator_pid=$!
+          cleanup_emulator() {
+            if [[ -n "${emulator_pid:-}" ]]; then
+              kill "$emulator_pid" 2>/dev/null || true
+              wait "$emulator_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_emulator EXIT
           timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
             if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
@@ -183,14 +217,17 @@ jobs:
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1"
           adb shell wm size 412x892
           adb shell wm density 160
-          smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
-          mkdir -p "$smoke_artifacts"
           apk="$(find build/android-emulator -type f -name '*.apk' -print -quit)"
           test -n "$apk"
           adb install "$apk"
           adb logcat -c
-          adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
+          adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
           sleep 8
+          # Keep startup diagnostics; the scenegraph assertion below verifies the actual RHI.
+          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
+            exit 1
+          fi
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
@@ -200,125 +237,176 @@ jobs:
           app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           test -n "$app_pid"
           printf '%s\n' "$app_pid" > app-pid.txt
-          adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+          wait_for_checked_tab() {
+            local label="$1"
+            local device_xml="$2"
+            local output_xml="$3"
+            for attempt in {1..6}; do
+              python3 scripts/ci/android_accessibility_dump.py \
+                --attempts 1 --delay-seconds 0 --command-timeout-seconds 8 \
+                "$device_xml" "$output_xml" \
+                >/dev/null 2>&1 || true
+              if python3 scripts/ci/android_accessibility_assert_checked.py \
+                "$output_xml" "$label" >/dev/null 2>&1; then
+                printf 'Android accessibility tab ready: %s (attempt %s)\n' "$label" "$attempt"
+                return 0
+              fi
+              sleep 1
+            done
+            printf 'Timed out waiting for Android UI tab %s; latest hierarchy is %s\n' \
+              "$label" "$output_xml" >&2
+            python3 scripts/ci/android_accessibility_assert_checked.py "$output_xml" "$label"
+          }
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
-          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
-          test -s "$smoke_artifacts/launcher-before-pin.png"
           adb shell uiautomator dump --compressed /sdcard/omaapp-before-pin.xml || true
           adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
-          grep -F 'app.omaapp' role.txt
-          grep -F 'app.omaapp' activities.txt
-          grep -F 'app.omaapp' resolved-home.txt
-          adb shell uiautomator dump --compressed /sdcard/omaapp-create-folder.xml || true
-          adb pull /sdcard/omaapp-create-folder.xml "$smoke_artifacts/window-create-folder.xml" || true
-          create_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-create-folder.xml" 'Create folder')"
-          read -r create_folder_x create_folder_y <<< "$create_folder_target"
-          adb shell input tap "$create_folder_x" "$create_folder_y"
+          visual_artifacts="$smoke_artifacts/visual"
+          mkdir -p "$visual_artifacts"
+          for screen in home apps devices style settings; do
+            screen_label="${screen^}"
+            python3 scripts/ci/android_accessibility_dump.py \
+              "/sdcard/omaapp-visual-$screen.xml" "$visual_artifacts/$screen.xml"
+            if [[ "$screen" == "home" ]]; then
+              wait_for_checked_tab "$screen_label" \
+                "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
+              # The empty-state label follows the launcher cards and may be
+              # below the fold. Scroll it into view before asserting it, then
+              # restore the Home baseline to the initial top position.
+              for attempt in {1..10}; do
+                if python3 scripts/ci/android_accessibility_assert_visible.py \
+                  "$visual_artifacts/$screen.xml" \
+                  'No apps on this page yet. Long-press an app in All apps to pin it here.' \
+                  >/dev/null 2>&1; then
+                  printf 'Android Home layout ready (attempt %s)\n' "$attempt"
+                  break
+                fi
+                adb shell input swipe 205 700 205 235 400
+                sleep 0.5
+                python3 scripts/ci/android_accessibility_dump.py \
+                  "/sdcard/omaapp-visual-$screen-layout.xml" "$visual_artifacts/$screen.xml"
+              done
+              python3 scripts/ci/android_accessibility_assert_visible.py \
+                "$visual_artifacts/$screen.xml" \
+                'No apps on this page yet. Long-press an app in All apps to pin it here.'
+              for attempt in {1..6}; do
+                adb shell input swipe 205 235 205 700 400
+                sleep 0.25
+              done
+              python3 scripts/ci/android_accessibility_dump.py \
+                "/sdcard/omaapp-visual-$screen-top.xml" "$visual_artifacts/$screen.xml"
+              adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
+              test -s "$smoke_artifacts/launcher-before-pin.png"
+            fi
+            # Android has already launched OmaApp as the selected HOME app,
+            # so the Home screen is the current screen. Some Qt Android
+            # accessibility bridges omit the selected tab from uiautomator's
+            # clickable tree; capture it in place and tap the other tabs.
+            if [[ "$screen" != "home" ]]; then
+              screen_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$visual_artifacts/$screen.xml" "$screen_label")"
+              read -r screen_x screen_y <<< "$screen_target"
+              adb shell input tap "$screen_x" "$screen_y"
+              wait_for_checked_tab "$screen_label" \
+                "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
+            fi
+            if [[ "$screen" == "settings" ]]; then
+              # The OWL-store smoke scrolls Settings to add the Canvas sampler.
+              # Return to its stable top before comparing the Settings baseline.
+              adb shell input swipe 205 250 205 760 450
+              adb shell input swipe 205 250 205 760 450
+              sleep 1
+              python3 scripts/ci/android_accessibility_dump.py \
+                /sdcard/omaapp-visual-settings-top.xml "$visual_artifacts/settings.xml"
+            fi
+            adb exec-out screencap -p > "$visual_artifacts/$screen.png"
+            if [[ "$screen" == "apps" ]]; then
+              bash scripts/ci/android_launcher_home_smoke.sh "$smoke_artifacts" "$app_pid"
+              app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+              test -n "$app_pid"
+              printf '%s\n' "$app_pid" > "$smoke_artifacts/app-pid-after-launcher-smoke.txt"
+            fi
+          done
+          # Verify the live tab control can leave Settings; its earlier XML
+          # snapshot is not valid once the taller Settings page is displayed.
+          license_target=""
+          for attempt in {1..10}; do
+            python3 scripts/ci/android_accessibility_dump.py \
+              /sdcard/omaapp-settings-licenses.xml \
+              "$smoke_artifacts/window-settings-licenses.xml"
+            if license_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+              "$smoke_artifacts/window-settings-licenses.xml" \
+              'Open-source notices and licenses' 2>/dev/null)"; then
+              break
+            fi
+            adb shell input swipe 205 760 205 250 450
+            sleep 0.3
+          done
+          test -n "$license_target"
+          read -r license_x license_y <<< "$license_target"
+          adb shell input tap "$license_x" "$license_y"
           sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-new-folder-name.xml || true
-          adb pull /sdcard/omaapp-new-folder-name.xml "$smoke_artifacts/window-new-folder-name.xml" || true
-          folder_name_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-new-folder-name.xml" 'New folder name')"
-          read -r folder_name_x folder_name_y <<< "$folder_name_target"
-          adb shell input tap "$folder_name_x" "$folder_name_y"
-          adb shell input text CI_Folder
+          python3 scripts/ci/android_accessibility_dump.py \
+            /sdcard/omaapp-open-source-notices.xml \
+            "$smoke_artifacts/window-open-source-notices.xml"
+          python3 scripts/ci/android_accessibility_assert_visible.py \
+            "$smoke_artifacts/window-open-source-notices.xml" \
+            'License texts are available offline.'
+          close_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+            "$smoke_artifacts/window-open-source-notices.xml" 'Close')"
+          read -r close_x close_y <<< "$close_target"
+          adb shell input tap "$close_x" "$close_y"
+          sleep 0.5
+          python3 scripts/ci/android_accessibility_dump.py \
+            /sdcard/omaapp-settings-navigation.xml \
+            "$smoke_artifacts/window-settings-navigation.xml"
+          apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-settings-navigation.xml" 'Apps')"
+          read -r apps_x apps_y <<< "$apps_target"
+          printf 'Returning to Apps at %s,%s\n' "$apps_x" "$apps_y" | tee "$smoke_artifacts/return-to-apps-target.txt"
+          adb shell input tap "$apps_x" "$apps_y"
           sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-create-folder-confirm.xml || true
-          adb pull /sdcard/omaapp-create-folder-confirm.xml "$smoke_artifacts/window-create-folder-confirm.xml" || true
-          create_confirm_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-create-folder-confirm.xml" 'OK')"
-          read -r create_confirm_x create_confirm_y <<< "$create_confirm_target"
-          adb shell input tap "$create_confirm_x" "$create_confirm_y"
-          sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-contents.xml || true
-          adb pull /sdcard/omaapp-folder-contents.xml "$smoke_artifacts/window-folder-contents.xml" || true
-          add_folder_apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-folder-contents.xml" 'Add apps to CI_Folder')"
-          read -r add_folder_apps_x add_folder_apps_y <<< "$add_folder_apps_target"
-          adb shell input tap "$add_folder_apps_x" "$add_folder_apps_y"
-          sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-apps.xml || true
-          adb pull /sdcard/omaapp-folder-apps.xml "$smoke_artifacts/window-folder-apps.xml" || true
-          add_drive_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-folder-apps.xml" 'Add Drive to CI_Folder')"
-          read -r add_drive_x add_drive_y <<< "$add_drive_target"
-          adb shell input tap "$add_drive_x" "$add_drive_y"
-          sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-drive-added.xml || true
-          adb pull /sdcard/omaapp-folder-drive-added.xml "$smoke_artifacts/window-folder-drive-added.xml" || true
-          grep -F 'Remove Drive from CI_Folder' "$smoke_artifacts/window-folder-drive-added.xml"
-          adb shell input keyevent 4
-          adb shell input keyevent 4
-          sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-folder-on-home.xml || true
-          adb pull /sdcard/omaapp-folder-on-home.xml "$smoke_artifacts/window-folder-on-home.xml" || true
-          grep -F 'Open CI_Folder folder, 1 apps' "$smoke_artifacts/window-folder-on-home.xml"
-          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
-          adb shell uiautomator dump --compressed /sdcard/omaapp-before-pin.xml || true
-          adb pull /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml" || true
-          pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml")"
-          printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
-          read -r pin_x pin_y <<< "$pin_target"
-          printf 'Long-pressing launcher app at %s,%s\n' "$pin_x" "$pin_y"
-          adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
-          sleep 2
-          adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
-          adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
-          grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
-          adb shell am force-stop app.omaapp
-          adb shell am start -W -n app.omaapp/org.qtproject.qt.android.bindings.QtActivity
-          sleep 8
-          restarted_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
-          test -n "$restarted_pid"
-          printf '%s\n' "$restarted_pid" > "$smoke_artifacts/restarted-pid.txt"
-          adb logcat -d -v threadtime --pid="$restarted_pid" -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
-          grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' "$smoke_artifacts/restarted-logcat.txt"
-          grep -E 'OmaApp: cached launcher icon for ' "$smoke_artifacts/restarted-logcat.txt"
-          adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
-          test -s "$smoke_artifacts/launcher-before-tap.png"
-          adb shell uiautomator dump --compressed /sdcard/omaapp-after-restart.xml || true
-          adb pull /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml" || true
-          grep -F 'Open CI_Folder folder, 1 apps' "$smoke_artifacts/window-after-restart.xml"
-          persisted_folder_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$smoke_artifacts/window-after-restart.xml" 'Open CI_Folder folder, 1 apps')"
-          read -r persisted_folder_x persisted_folder_y <<< "$persisted_folder_target"
-          adb shell input tap "$persisted_folder_x" "$persisted_folder_y"
-          sleep 1
-          adb shell uiautomator dump --compressed /sdcard/omaapp-persisted-folder.xml || true
-          adb pull /sdcard/omaapp-persisted-folder.xml "$smoke_artifacts/window-persisted-folder.xml" || true
-          grep -F 'Launch Drive' "$smoke_artifacts/window-persisted-folder.xml"
-          adb shell input keyevent 4
-          sleep 1
-          tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
-          printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
-          read -r tap_x tap_y <<< "$tap_target"
-          printf 'Tapping launcher app at %s,%s\n' "$tap_x" "$tap_y"
-          adb shell input tap "$tap_x" "$tap_y"
-          sleep 3
-          adb logcat -d -v threadtime --pid="$restarted_pid" -t 5000 > "$smoke_artifacts/launch-logcat.txt"
-          grep -E 'OmaApp: launch activity ' "$smoke_artifacts/launch-logcat.txt" || true
-          adb shell screencap -p /sdcard/omaapp-after-tap.png
-          adb pull /sdcard/omaapp-after-tap.png "$smoke_artifacts/launcher-after-tap.png"
-          adb shell dumpsys activity activities > launched-app.txt
-          resumed_activity="$(tr -d '\r' < launched-app.txt | grep -E 'mResumedActivity|topResumedActivity|^[[:space:]]*Resumed:' | head -n 1)"
-          printf '%s\n' "$resumed_activity"
-          printf '%s\n' "$resumed_activity" > "$smoke_artifacts/resumed-activity.txt"
-          if [[ -z "$resumed_activity" || "$resumed_activity" == *app.omaapp* ]]; then
-            printf 'Tapping the first launcher entry did not open another app.\n' >&2
+          python3 scripts/ci/android_accessibility_dump.py \
+            /sdcard/omaapp-returned-to-apps.xml \
+            "$smoke_artifacts/window-returned-to-apps.xml"
+          adb exec-out screencap -p > "$smoke_artifacts/returned-to-apps.png"
+          python3 scripts/ci/android_accessibility_assert_checked.py \
+            "$smoke_artifacts/window-returned-to-apps.xml" 'Apps'
+          python3 scripts/ci/android_accessibility_tap_target.py \
+            "$smoke_artifacts/window-returned-to-apps.xml" 'Create folder' >/dev/null
+          # Retain logs from after the style screen has exercised the surface shader.
+          adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
+          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
+          if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
           fi
-          adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
+          baseline_dir=tests/visual_baselines/android
+          if [[ "${{ matrix.rhi_backend }}" == "OpenGL" ]]; then
+            baseline_dir="$baseline_dir/opengl"
+          fi
+          python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
+            --baselines "$baseline_dir" --verify-style-surface
           sleep 8
           adb shell pidof app.omaapp
           final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           adb logcat -d -v threadtime --pid="$final_pid" -t 10000 > "$smoke_artifacts/final-logcat.txt"
           grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' "$smoke_artifacts/final-logcat.txt"
-          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed' "$smoke_artifacts/final-logcat.txt"; then
+          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed|ReferenceError:|Detected recursive rearrange|Failed to build graphics pipeline state' "$smoke_artifacts/final-logcat.txt"; then
             exit 1
           fi
           adb shell pm clear app.omaapp
           python3 scripts/ci/android_pairing_smoke.py
+          python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
+            --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
+            --verify-style-surface --require-gradient --gradient-angle 37
+          python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme/density-240" \
+            --baselines tests/visual_baselines/android-paired --screens style \
+            --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
+            --require-gradient --gradient-angle 37
+          trap - ERR
 
       - name: Upload Android smoke screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: OmaApp-android-smoke-screenshots
+          name: OmaApp-android-smoke-screenshots-${{ matrix.rhi_backend }}
           path: ${{ github.workspace }}/ci-artifacts/android-smoke/
           if-no-files-found: warn
           retention-days: 7

@@ -15,6 +15,7 @@
     "displayName": "OmaApp",
     "description": "Pair Android devices and manage their Omarchy theme sync",
     "category": "System",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaultSection": "right"
   }
 }

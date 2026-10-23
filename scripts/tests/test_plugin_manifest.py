@@ -42,6 +42,12 @@ class PluginManifestTest(unittest.TestCase):
         self.write_manifest(manifest)
         self.assertTrue(any("reserved" in error for error in validate_plugin(self.plugin_dir)))
 
+    def test_rejects_unknown_default_bar_section(self):
+        manifest = self.read_manifest()
+        manifest["barWidget"]["defaultSection"] = "center-right"
+        self.write_manifest(manifest)
+        self.assertTrue(any("defaultSection" in error for error in validate_plugin(self.plugin_dir)))
+
     def test_rejects_symbolic_links(self):
         (self.plugin_dir / "linked.qml").symlink_to(self.plugin_dir / "BarWidget.qml")
         self.assertTrue(any("symbolic links" in error for error in validate_plugin(self.plugin_dir)))

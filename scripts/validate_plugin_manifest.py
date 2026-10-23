@@ -97,6 +97,11 @@ def validate_plugin(root: Path) -> list[str]:
                     errors.append(f"barWidget.{field} must be a non-empty string")
             if not isinstance(widget.get("allowMultiple"), bool):
                 errors.append("barWidget.allowMultiple must be a boolean")
+            if "defaultSection" in widget and (
+                not isinstance(widget["defaultSection"], str)
+                or widget["defaultSection"] not in {"left", "center", "right"}
+            ):
+                errors.append("barWidget.defaultSection must be left, center, or right")
 
     return errors
 

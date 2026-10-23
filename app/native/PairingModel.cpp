@@ -1,5 +1,6 @@
 #include "PairingModel.h"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTimer>
@@ -31,6 +32,8 @@ bool PairingModel::connected() const { return m_connected; }
 bool PairingModel::hasPairedDevice() const { return m_hasPairedDevice; }
 bool PairingModel::hasPendingRequest() const { return m_hasPendingRequest; }
 QVariantMap PairingModel::snapshot() const { return m_snapshot; }
+QVariantMap PairingModel::features() const { return m_features; }
+QString PairingModel::featureMessage() const { return m_featureMessage; }
 QString PairingModel::wallpaperUrl() const { return m_wallpaperUrl; }
 QString PairingModel::candidateHostName() const { return m_candidateHostName; }
 QString PairingModel::candidateFingerprint() const { return m_candidateFingerprint; }
@@ -104,13 +107,93 @@ void PairingModel::forget()
 #endif
 }
 
-void PairingModel::poll()
+void PairingModel::pushClipboard()
 {
 #ifdef Q_OS_ANDROID
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "pushClipboard", "(Landroid/content/Context;)V",
+        context.object<jobject>());
+#endif
+}
+
+void PairingModel::pullClipboard()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "pullClipboard", "(Landroid/content/Context;)V",
+        context.object<jobject>());
+#endif
+}
+
+void PairingModel::startFileTransfer()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "startFileTransfer", "(Landroid/content/Context;)V",
+        context.object<jobject>());
+#endif
+}
+
+void PairingModel::activateWorkspace(int workspaceId)
+{
+#ifdef Q_OS_ANDROID
+    if (workspaceId < 0 || workspaceId > 1000)
+        return;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "activateWorkspace", "(Landroid/content/Context;I)V",
+        context.object<jobject>(), workspaceId);
+#endif
+}
+
+void PairingModel::mediaAction(const QString &player, const QString &action)
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject playerName = QJniObject::fromString(player);
+    const QJniObject command = QJniObject::fromString(action);
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "mediaAction",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V",
+        context.object<jobject>(), playerName.object<jstring>(), command.object<jstring>());
+#endif
+}
+
+void PairingModel::executeCommand(const QString &commandId)
+{
+#ifdef Q_OS_ANDROID
+    if (commandId.size() > 48)
+        return;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject id = QJniObject::fromString(commandId);
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "executeCommand",
+        "(Landroid/content/Context;Ljava/lang/String;)V",
+        context.object<jobject>(), id.object<jstring>());
+#endif
+}
+
+void PairingModel::poll()
+{
+#ifdef Q_OS_ANDROID
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    static bool traceNextPoll = true;
+    const bool traceStartupPoll = traceNextPoll;
+    traceNextPoll = false;
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingModel first poll entered";
+#endif
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
         "app/omaapp/PairingBridge", "refresh",
         "(Landroid/content/Context;)V", context.object<jobject>());
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingBridge refresh returned";
+#endif
 
     const QJniObject scanned = QJniObject::callStaticObjectMethod(
         "app/omaapp/PairingBridge", "consumeScannedQr",
@@ -122,12 +205,18 @@ void PairingModel::poll()
     const QJniObject state = QJniObject::callStaticObjectMethod(
         "app/omaapp/PairingBridge", "stateJson",
         "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+#if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    if (traceStartupPoll)
+        qWarning().noquote() << "OmaApp startup: PairingBridge state returned";
+#endif
     const QJsonDocument document = QJsonDocument::fromJson(state.toString().toUtf8());
     if (!document.isObject())
         return;
 
     const QJsonObject object = document.object();
     const QJsonObject snapshotObject = object.value(QStringLiteral("snapshot")).toObject();
+    const QVariantMap nextFeatures = object.value(QStringLiteral("features")).toObject().toVariantMap();
+    const QString nextFeatureMessage = object.value(QStringLiteral("featureMessage")).toString();
     const QString wallpaperPath = object.value(QStringLiteral("wallpaperPath")).toString();
     const QString wallpaperUrl = wallpaperPath.isEmpty()
             ? QString()
@@ -143,6 +232,7 @@ void PairingModel::poll()
     if (m_phase != nextPhase || m_hostName != nextHost || m_error != nextError
         || m_connected != nextConnected || m_hasPairedDevice != nextPaired
         || m_hasPendingRequest != nextPending || m_snapshot != nextSnapshot
+        || m_features != nextFeatures || m_featureMessage != nextFeatureMessage
         || m_wallpaperUrl != wallpaperUrl) {
         m_phase = nextPhase;
         m_hostName = nextHost;
@@ -151,6 +241,8 @@ void PairingModel::poll()
         m_hasPairedDevice = nextPaired;
         m_hasPendingRequest = nextPending;
         m_snapshot = nextSnapshot;
+        m_features = nextFeatures;
+        m_featureMessage = nextFeatureMessage;
         m_wallpaperUrl = wallpaperUrl;
         emit stateChanged();
     }

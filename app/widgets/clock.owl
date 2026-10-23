@@ -1,0 +1,13 @@
+widget "Omarchy clock" {
+  meta { owl: 1; description: "A local clock and date in the current Omarchy colors." }
+  source now = clock every 1s
+  size: 2x1
+  padding: 14
+  background: surface
+
+  Column {
+    gap: 2
+    Text { text: fmtTime(now, "HH:mm"); style: huge; color: accent; maxLines: 1 }
+    Text { text: fmtTime(now, "EEEE, d MMMM"); style: muted; maxLines: 1 }
+  }
+}
