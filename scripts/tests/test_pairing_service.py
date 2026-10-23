@@ -415,8 +415,12 @@ class PairingServiceTests(unittest.TestCase):
             self.assertEqual(self.get("/v1/clipboard", auth), (200, {"text": "from computer"}))
             self.assertEqual(self.post("/v1/clipboard", {"text": "from phone"}, auth),
                              (200, {"status": "copied"}))
+            escaped = "a\n" * 30_000
+            self.assertEqual(self.post("/v1/clipboard", {"text": escaped}, auth),
+                             (200, {"status": "copied"}))
             self.assertEqual(self.post("/v1/clipboard", {"text": "x" * (service.MAX_CLIPBOARD_BYTES + 1)}, auth)[0], 400)
         self.assertEqual(observed[1][1], b"from phone")
+        self.assertEqual(observed[2][1], escaped.encode("utf-8"))
 
     def test_file_transfer_is_scoped_confined_and_does_not_overwrite(self):
         auth = self.enable_device({"files.receive": True, "files.send": True})

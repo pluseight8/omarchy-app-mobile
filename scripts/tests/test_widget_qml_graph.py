@@ -29,9 +29,20 @@ class WidgetQmlGraphTests(unittest.TestCase):
     def test_text_nodes_measure_their_rendered_text(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 
-        self.assertIn('nodeType === "Text" ? Math.max(48, textContent.implicitWidth + nodePadding * 2)', node_qml)
-        self.assertIn('nodeType === "Text" ? Math.max(24, textContent.implicitHeight + nodePadding * 2)', node_qml)
+        self.assertIn('nodeType === "Text" ? textContent.implicitWidth', node_qml)
+        self.assertIn('nodeType === "Text" ? textContent.implicitHeight', node_qml)
+        self.assertIn("Math.max(48, contentImplicitWidth + nodePadding * 2)", node_qml)
+        self.assertIn("Math.max(24, contentImplicitHeight + nodePadding * 2)", node_qml)
         self.assertIn("id: textContent", node_qml)
+
+    def test_container_nodes_measure_their_active_layout(self):
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn('nodeType === "Row" ? rowContent.implicitWidth', node_qml)
+        self.assertIn('nodeType === "Flow" ? flowContent.implicitWidth', node_qml)
+        self.assertIn('nodeType === "Grid" ? gridContent.implicitWidth', node_qml)
+        self.assertIn('nodeType === "Box" ? boxContent.childrenRect.width', node_qml)
+        self.assertIn("id: rowContent", node_qml)
 
     def test_only_event_long_poll_owns_the_persisted_event_cursor(self):
         bridge = (ROOT / "app/android/src/app/omaapp/PairingBridge.java").read_text(encoding="utf-8")

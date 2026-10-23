@@ -40,6 +40,7 @@ PAIRING_TTL_SECONDS = 180
 MAX_JSON_BYTES = 16 * 1024
 MAX_WALLPAPER_BYTES = 30 * 1024 * 1024
 MAX_CLIPBOARD_BYTES = 64 * 1024
+MAX_CLIPBOARD_JSON_BYTES = MAX_CLIPBOARD_BYTES * 6 + 1024
 MAX_TRANSFER_BYTES = 100 * 1024 * 1024
 DEVICE_ID_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
 DEVICE_NAME_MAX = 80
@@ -1582,7 +1583,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._reply(status, result)
             return
         if path == "/v1/clipboard":
-            body = self._feature_json("clipboard", MAX_CLIPBOARD_BYTES + 1024)
+            body = self._feature_json("clipboard", MAX_CLIPBOARD_JSON_BYTES)
             if body is None:
                 return
             text = body.get("text")

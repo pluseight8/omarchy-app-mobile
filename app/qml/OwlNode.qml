@@ -14,21 +14,31 @@ Item {
     property real nodePadding: widgetRoot.scalar(nodeProps.padding, 0)
     property color nodeForeground: widgetRoot.colorValue(nodeProps.color, Theme.foreground)
     property real spacerSize: widgetRoot.scalar(nodeProps.size, 0)
+    property real contentImplicitWidth: nodeType === "Text" ? textContent.implicitWidth
+                                       : nodeType === "Row" ? rowContent.implicitWidth
+                                       : nodeType === "Flow" ? flowContent.implicitWidth
+                                       : nodeType === "Grid" ? gridContent.implicitWidth
+                                       : nodeType === "Box" ? boxContent.childrenRect.width
+                                       : contentLayout.implicitWidth
+    property real contentImplicitHeight: nodeType === "Text" ? textContent.implicitHeight
+                                        : nodeType === "Row" ? rowContent.implicitHeight
+                                        : nodeType === "Flow" ? flowContent.implicitHeight
+                                        : nodeType === "Grid" ? gridContent.implicitHeight
+                                        : nodeType === "Box" ? boxContent.childrenRect.height
+                                        : contentLayout.implicitHeight
 
     implicitWidth: preferredWidth > 0 ? preferredWidth
                    : nodeType === "Spacer" ? spacerSize
                    : nodeType === "Ring" ? 64
                    : nodeType === "Sparkline" ? 96
                    : nodeType === "Image" ? 48
-                   : nodeType === "Text" ? Math.max(48, textContent.implicitWidth + nodePadding * 2)
-                   : Math.max(48, contentLayout.implicitWidth)
+                   : Math.max(48, contentImplicitWidth + nodePadding * 2)
     implicitHeight: preferredHeight > 0 ? preferredHeight
                     : nodeType === "Spacer" ? spacerSize
                     : nodeType === "Ring" ? 64
                     : nodeType === "Sparkline" ? 36
                     : nodeType === "Image" ? 48
-                    : nodeType === "Text" ? Math.max(24, textContent.implicitHeight + nodePadding * 2)
-                    : Math.max(24, contentLayout.implicitHeight)
+                    : Math.max(24, contentImplicitHeight + nodePadding * 2)
     height: implicitHeight
 
     ColumnLayout {
@@ -83,8 +93,9 @@ Item {
     }
 
     RowLayout {
+        id: rowContent
         anchors.fill: parent
-        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        anchors.margins: node.nodePadding
         visible: node.nodeType === "Row"
         spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
         Repeater {
@@ -101,7 +112,7 @@ Item {
     Flow {
         id: flowContent
         anchors.fill: parent
-        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        anchors.margins: node.nodePadding
         visible: node.nodeType === "Flow"
         spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
 
@@ -120,7 +131,7 @@ Item {
     GridLayout {
         id: gridContent
         anchors.fill: parent
-        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        anchors.margins: node.nodePadding
         visible: node.nodeType === "Grid"
         columns: Math.max(1, Math.min(8, Math.floor(widgetRoot.scalar(node.nodeProps.columns, 2))))
         rowSpacing: widgetRoot.scalar(node.nodeProps.gap, 4)
