@@ -47,7 +47,7 @@ jobs:
           packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 emulator system-images;android-36;google_apis;x86_64
 
       - name: Set up Python for Qt installer
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
 
