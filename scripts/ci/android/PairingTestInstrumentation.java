@@ -180,6 +180,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!unsafe.has("error")) {
             throw new IllegalStateException("The offline OWL runtime accepted a network source.");
         }
+        JSONObject explosiveValue = new JSONObject(OwlBridge.render(
+                "widget \"serialization budget\" { meta { owl: 11 } "
+                        + "Text { text: reduce(range(30), (a, x) => [a, a], [1]) } }",
+                320.0, 156.0, theme.toString()));
+        if (!explosiveValue.optString("error").contains("serialization budget")) {
+            throw new IllegalStateException("OWL recursive values escaped the bounded JSON serializer: "
+                    + explosiveValue.optString("error"));
+        }
         String boxSource = "widget \"CI box\" {\n"
                 + "  meta { owl: 1 }\n"
                 + "  size: 2x1\n"

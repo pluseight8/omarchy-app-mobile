@@ -35,6 +35,9 @@ object OwlBridge {
     private const val MAX_SOURCE_CHARS = 64 * 1024
     private const val MAX_RENDERED_NODES = 500
     private const val MAX_RENDER_DEPTH = 32
+    private const val MAX_SERIALIZED_VALUE_DEPTH = 32
+    private const val MAX_SERIALIZED_VALUE_COUNT = 16_384
+    private const val MAX_SERIALIZED_JSON_CHARS = 1024 * 1024
     private val supportedProperties = mapOf(
         "Column" to setOf("gap", "fill", "width", "height", "weight", "padding"),
         "Row" to setOf("gap", "fill", "width", "height", "weight", "padding"),
@@ -94,7 +97,7 @@ object OwlBridge {
                 .put("name", program.name)
                 .put("padding", program.padding)
                 .put("size", program.size?.let { JSONArray().put(it.first).put(it.second) } ?: JSONObject.NULL)
-                .put("background", background?.let { toJson(it) } ?: JSONObject.NULL)
+                .put("background", background?.let { toJson(it, host.serialization) } ?: JSONObject.NULL)
                 .put("animated", program.animated || program.globals.any { it is Global.Source })
                 .put("nodes", nodes)
                 .toString()
@@ -138,7 +141,7 @@ object OwlBridge {
                         require(value !is Gradient) {
                             "offline gradients are supported only on OWL canvas fill and stroke paints"
                         }
-                        props.put(name, toJson(value))
+                        props.put(name, toJson(value, host.serialization))
                     }
                     val children = JSONArray()
                     val childEnv = if (item.kind == "Canvas") host.canvasScope(env, props) else env
@@ -174,7 +177,7 @@ object OwlBridge {
                         require(value !is Gradient) {
                             "offline component wrappers cannot use gradient properties"
                         }
-                        props.put(name, toJson(value))
+                        props.put(name, toJson(value, host.serialization))
                     }
                     val children = JSONArray()
                     appendNodes(item.body, componentEnv, host, children, depth + 1)
@@ -203,7 +206,7 @@ object OwlBridge {
             }
             coordinates.forEach { args.put(it!!) }
         } else {
-            item.args.forEach { args.put(toJson(host.evaluate(it, env))) }
+            item.args.forEach { args.put(toJson(host.evaluate(it, env), host.serialization)) }
         }
         val named = JSONObject()
         for ((name, expression) in item.named) {
@@ -211,7 +214,7 @@ object OwlBridge {
             require(value !is Gradient || name == "fill" || name == "stroke") {
                 "offline gradients are supported only on OWL canvas fill and stroke paints"
             }
-            named.put(name, toJson(value))
+            named.put(name, toJson(value, host.serialization))
         }
         val children = item.children?.let {
             JSONArray().also { output -> appendNodes(it, env, host, output, depth + 1) }
@@ -225,24 +228,77 @@ object OwlBridge {
         return result
     }
 
-    private fun toJson(value: Value): Any = when (value) {
-        Null -> JSONObject.NULL
-        is Bool -> value.v
-        is Num -> if (value.v.isFinite()) value.v else JSONObject.NULL
-        is Str -> value.v
-        is Col -> JSONObject()
-            .put("__owlColor", true)
-            .put("theme", value.theme ?: JSONObject.NULL)
-            .put("argb", String.format("#%08x", value.argb))
-            .put("alpha", value.alpha.toDouble())
-        is Lst -> JSONArray().also { result -> value.items.forEach { result.put(toJson(it)) } }
-        is Obj -> JSONObject().also { result -> value.fields.forEach { (key, item) -> result.put(key, toJson(item)) } }
-        is Gradient -> JSONObject()
-            .put("__owlGradient", true)
-            .put("radial", value.radial)
-            .put("coords", JSONArray(value.coords))
-            .put("colors", JSONArray().also { result -> value.colors.forEach { result.put(toJson(it)) } })
-        else -> JSONObject.NULL
+    private fun toJson(value: Value, budget: SerializationBudget, depth: Int = 0): Any {
+        budget.enter(depth)
+        return when (value) {
+            Null -> JSONObject.NULL
+            is Bool -> value.v
+            is Num -> if (value.v.isFinite()) value.v else JSONObject.NULL
+            is Str -> value.v.also(budget::reserveText)
+            is Col -> {
+                budget.reserveCharacters(128)
+                JSONObject()
+                    .put("__owlColor", true)
+                    .put("theme", value.theme?.also(budget::reserveText) ?: JSONObject.NULL)
+                    .put("argb", String.format("#%08x", value.argb))
+                    .put("alpha", value.alpha.toDouble())
+            }
+            is Lst -> JSONArray().also { result ->
+                value.items.forEach { result.put(toJson(it, budget, depth + 1)) }
+            }
+            is Obj -> JSONObject().also { result ->
+                value.fields.forEach { (key, item) ->
+                    budget.reserveText(key)
+                    result.put(key, toJson(item, budget, depth + 1))
+                }
+            }
+            is Gradient -> {
+                budget.reserveCharacters(160L + value.coords.size * 32L)
+                budget.reserveEntries(value.coords.size)
+                JSONObject()
+                    .put("__owlGradient", true)
+                    .put("radial", value.radial)
+                    .put("coords", JSONArray(value.coords))
+                    .put("colors", JSONArray().also { result ->
+                        value.colors.forEach { result.put(toJson(it, budget, depth + 1)) }
+                    })
+            }
+            else -> JSONObject.NULL
+        }
+    }
+
+    private class SerializationBudget {
+        private var remainingValues = MAX_SERIALIZED_VALUE_COUNT
+        private var remainingCharacters = MAX_SERIALIZED_JSON_CHARS.toLong()
+
+        fun enter(depth: Int) {
+            if (depth > MAX_SERIALIZED_VALUE_DEPTH) {
+                throw WidgetError("widget values are nested too deeply to serialize")
+            }
+            if (remainingValues-- <= 0) {
+                throw WidgetError("widget values exceed the offline serialization budget")
+            }
+            reserveCharacters(8)
+        }
+
+        fun reserveEntries(count: Int) {
+            if (count < 0 || count > remainingValues) {
+                throw WidgetError("widget values exceed the offline serialization budget")
+            }
+            remainingValues -= count
+        }
+
+        fun reserveText(value: String) {
+            // Six chars per UTF-16 code unit covers worst-case JSON control escaping.
+            reserveCharacters(value.length.toLong() * 6L + 2L)
+        }
+
+        fun reserveCharacters(count: Long) {
+            if (count < 0L || count > remainingCharacters) {
+                throw WidgetError("widget output exceeds the offline serialization budget")
+            }
+            remainingCharacters -= count
+        }
     }
 
     private class OfflineHost(
@@ -252,6 +308,7 @@ object OwlBridge {
         private val theme: JSONObject,
     ) : Host {
         override val budget = Budget(200_000)
+        val serialization = SerializationBudget()
         private val slots = MutableList<Value?>(program.globals.size) { null }
         private val initializing = HashSet<Int>()
         private val embeddedAssets = program.globals.filterIsInstance<Global.Asset>().associate { asset ->
@@ -277,7 +334,7 @@ object OwlBridge {
                     || String(bytes, 0, 6, Charsets.US_ASCII) == "GIF89a") -> "image/gif"
                 else -> throw WidgetError("offline image assets must be PNG, JPEG, WebP, or GIF")
             }
-            return "data:$mime;base64,$encoded"
+            return "data:$mime;base64,$encoded".also(serialization::reserveText)
         }
 
         fun stepNode() {
