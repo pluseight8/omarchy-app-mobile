@@ -10,7 +10,11 @@ Loader {
     property bool configured: false
 
     function loadNode() {
-        if (!configured || nodeData === undefined || widgetRoot === undefined)
+        // QML var properties start as null. Wait for both required bindings so
+        // an early Repeater creation cannot instantiate an OwlNode with a null
+        // renderer before the delegate's bindings have propagated.
+        if (!configured || nodeData === undefined || nodeData === null
+                || widgetRoot === undefined || widgetRoot === null)
             return
         setSource(Qt.resolvedUrl("OwlNode.qml"), {
             "nodeData": root.nodeData,
