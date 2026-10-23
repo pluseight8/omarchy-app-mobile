@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
 from check_visual_regression import (  # noqa: E402
     compare_images,
+    compare_image_variants,
     decode_png,
     verify_style_surface_rendered,
 )
@@ -107,6 +108,36 @@ class VisualRegressionTests(unittest.TestCase):
 
         self.assertEqual(changed, 0)
         self.assertEqual(fraction, 0)
+
+    def test_selects_closest_reviewed_home_layout_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            standard = Path(directory) / "standard.png"
+            inset = Path(directory) / "inset.png"
+            dark = (10, 20, 30, 255)
+            bright = (220, 230, 240, 255)
+            standard_pixels = [[dark] * 412 for _ in range(892)]
+            inset_pixels = [[dark] * 412 for _ in range(892)]
+            actual_pixels = [[dark] * 412 for _ in range(892)]
+            standard_pixels[500][100] = bright
+            inset_pixels[600][100] = bright
+            actual_pixels[600][100] = bright
+            png_file(actual, tuple(tuple(row) for row in actual_pixels))
+            png_file(standard, tuple(tuple(row) for row in standard_pixels))
+            png_file(inset, tuple(tuple(row) for row in inset_pixels))
+
+            baseline, changed, fraction = compare_image_variants(actual, [standard, inset])
+
+        self.assertEqual(baseline.name, "inset.png")
+        self.assertEqual(changed, 0)
+        self.assertEqual(fraction, 0)
+
+    def test_variant_comparison_requires_a_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            actual = Path(directory) / "actual.png"
+            png_file(actual, (((0, 0, 0, 255),),))
+            with self.assertRaisesRegex(ValueError, "at least one visual baseline"):
+                compare_image_variants(actual, [])
 
     def test_higher_density_capture_is_compared_in_logical_pixels(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
