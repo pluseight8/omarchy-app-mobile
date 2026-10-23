@@ -387,10 +387,13 @@ def _run_user_command(command_id: str) -> bool:
 
 def _private_directory(path: Path) -> None:
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) \
+        | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
     try:
-        path.chmod(0o700)
-    except OSError:
-        pass
+        os.fchmod(descriptor, 0o700)
+    finally:
+        os.close(descriptor)
 
 
 def _atomic_json(path: Path, value: Any) -> None:
@@ -1340,7 +1343,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
 
         directory = _transfer_directory()
-        _private_directory(directory)
+        try:
+            _private_directory(directory)
+        except OSError:
+            self._reply(503, {"error": "destination_unavailable"})
+            return
         descriptor, temporary_name = tempfile.mkstemp(prefix=".omaapp-", dir=directory)
         received = 0
         try:

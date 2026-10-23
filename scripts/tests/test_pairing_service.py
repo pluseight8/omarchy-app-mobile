@@ -492,6 +492,28 @@ class PairingServiceTests(unittest.TestCase):
             connection.close()
             self.assertEqual(response.status, 403)
 
+    def test_file_receive_rejects_symlink_destination_directory(self):
+        auth = self.enable_device({"files.receive": True})
+        downloads = Path(self.temp_dir.name) / "downloads"
+        downloads.mkdir()
+        outside = Path(self.temp_dir.name) / "outside"
+        outside.mkdir(mode=0o755)
+        (downloads / "OmaApp").symlink_to(outside, target_is_directory=True)
+
+        with patch.dict(os.environ, {"XDG_DOWNLOAD_DIR": str(downloads)}):
+            connection = self.connection()
+            connection.request("POST", "/v1/files", b"do not escape", {
+                "X-OmaApp-File-Name": "unexpected.desktop",
+            } | auth)
+            response = connection.getresponse()
+            result = json.loads(response.read())
+            connection.close()
+
+        self.assertEqual(response.status, 503)
+        self.assertEqual(result, {"error": "destination_unavailable"})
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
+
     def test_user_commands_run_only_host_configured_argument_vectors(self):
         auth = self.enable_device({"commands": True})
         config_root = Path(self.temp_dir.name) / "config"
