@@ -382,8 +382,9 @@ public final class PairingBridge {
                     sleepQuietly(1_000L);
                     continue;
                 }
-                long revision = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                        .getLong("event_revision", 0L);
+                android.content.SharedPreferences preferences =
+                        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+                long revision = EventRevisionCursor.current(preferences);
                 HttpsURLConnection connection = null;
                 try {
                     connection = openConnection(credentials,
@@ -391,8 +392,7 @@ public final class PairingBridge {
                     eventConnection = connection;
                     int status = connection.getResponseCode();
                     if (status == 400) {
-                        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-                                .putLong("event_revision", 0L).apply();
+                        EventRevisionCursor.reset(preferences);
                         continue;
                     }
                     if (status != 200) {
@@ -402,11 +402,8 @@ public final class PairingBridge {
                     markConnectionAlive(context);
                     byte[] bytes = readBounded(connection.getInputStream(), 16 * 1024);
                     JSONObject event = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-                    long nextRevision = event.optLong("revision", revision);
                     String kind = event.optString("kind", "");
-                    if (nextRevision > revision) {
-                        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-                                .putLong("event_revision", nextRevision).apply();
+                    if (EventRevisionCursor.acceptEvent(preferences, event)) {
                         if ("theme".equals(kind) || "features".equals(kind)) {
                             queueEventRefresh(context, credentials, kind);
                         }
@@ -760,10 +757,8 @@ public final class PairingBridge {
         if (features.status != 200) {
             throw new IllegalStateException(featureError(features));
         }
-        long eventRevision = Math.max(0L, features.body.optLong("eventRevision", 0L));
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
                 .putString(FEATURES_CACHE_KEY, features.body.toString())
-                .putLong("event_revision", eventRevision)
                 .apply();
         markConnectionAlive(context);
     }
@@ -1065,7 +1060,7 @@ public final class PairingBridge {
                 .remove(LAST_CONTACT_KEY)
                 .remove(WALLPAPER_PATH_KEY).remove(WALLPAPER_ID_KEY)
                 .remove(FEATURES_CACHE_KEY).remove(FEATURE_MESSAGE_KEY)
-                .remove("event_revision")
+                .remove(EventRevisionCursor.KEY)
                 .apply();
     }
 

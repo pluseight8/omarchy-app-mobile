@@ -26,6 +26,24 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertNotIn('featureEnabled("media")', main_qml)
         self.assertIn('featureEnabled("media.control")', main_qml)
 
+    def test_text_nodes_measure_their_rendered_text(self):
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn('nodeType === "Text" ? Math.max(48, textContent.implicitWidth + nodePadding * 2)', node_qml)
+        self.assertIn('nodeType === "Text" ? Math.max(24, textContent.implicitHeight + nodePadding * 2)', node_qml)
+        self.assertIn("id: textContent", node_qml)
+
+    def test_only_event_long_poll_owns_the_persisted_event_cursor(self):
+        bridge = (ROOT / "app/android/src/app/omaapp/PairingBridge.java").read_text(encoding="utf-8")
+        watch_events = bridge.split("private static void watchEvents(", 1)[1].split(
+            "private static void queueEventRefresh(", 1)[0]
+        fetch_features = bridge.split("private static void fetchFeatures(", 1)[1].split(
+            "private static void runFeatureRequest(", 1)[0]
+
+        self.assertIn("EventRevisionCursor.acceptEvent(preferences, event)", watch_events)
+        self.assertNotIn("event_revision", fetch_features)
+        self.assertNotIn("EventRevisionCursor", fetch_features)
+
 
 if __name__ == "__main__":
     unittest.main()

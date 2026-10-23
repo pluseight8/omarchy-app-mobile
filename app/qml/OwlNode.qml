@@ -11,6 +11,7 @@ Item {
     property string nodeType: nodeData.type || ""
     property real preferredWidth: widgetRoot.scalar(nodeProps.width, 0)
     property real preferredHeight: widgetRoot.scalar(nodeProps.height, 0)
+    property real nodePadding: widgetRoot.scalar(nodeProps.padding, 0)
     property color nodeForeground: widgetRoot.colorValue(nodeProps.color, Theme.foreground)
     property real spacerSize: widgetRoot.scalar(nodeProps.size, 0)
 
@@ -18,12 +19,16 @@ Item {
                    : nodeType === "Spacer" ? spacerSize
                    : nodeType === "Ring" ? 64
                    : nodeType === "Sparkline" ? 96
-                   : nodeType === "Image" ? 48 : Math.max(48, contentLayout.implicitWidth)
+                   : nodeType === "Image" ? 48
+                   : nodeType === "Text" ? Math.max(48, textContent.implicitWidth + nodePadding * 2)
+                   : Math.max(48, contentLayout.implicitWidth)
     implicitHeight: preferredHeight > 0 ? preferredHeight
                     : nodeType === "Spacer" ? spacerSize
                     : nodeType === "Ring" ? 64
                     : nodeType === "Sparkline" ? 36
-                    : nodeType === "Image" ? 48 : Math.max(24, contentLayout.implicitHeight)
+                    : nodeType === "Image" ? 48
+                    : nodeType === "Text" ? Math.max(24, textContent.implicitHeight + nodePadding * 2)
+                    : Math.max(24, contentLayout.implicitHeight)
     height: implicitHeight
 
     ColumnLayout {
@@ -140,7 +145,9 @@ Item {
     }
 
     Text {
+        id: textContent
         anchors.fill: parent
+        anchors.margins: node.nodePadding
         visible: node.nodeType === "Text"
         text: node.nodeProps.text === undefined ? "" : String(node.nodeProps.text)
         color: node.nodeForeground

@@ -62,7 +62,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
             }
-            runEventRefreshQueueSmoke();
+            runEventRefreshQueueSmoke(context);
             runOwlRuntimeSmoke();
             if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
                 runLauncherShortcutSmoke(context);
@@ -277,7 +277,21 @@ public final class PairingTestInstrumentation extends Instrumentation {
         Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
     }
 
-    private static void runEventRefreshQueueSmoke() {
+    private static void runEventRefreshQueueSmoke(Context context) throws Exception {
+        android.content.SharedPreferences preferences = context.getSharedPreferences(
+                PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
+        preferences.edit().remove(EventRevisionCursor.KEY).commit();
+        if (EventRevisionCursor.current(preferences) != 0L
+                || !EventRevisionCursor.acceptEvent(preferences,
+                new JSONObject().put("revision", 12L).put("kind", "theme"))
+                || EventRevisionCursor.current(preferences) != 12L
+                || EventRevisionCursor.acceptEvent(preferences,
+                new JSONObject().put("revision", 9L).put("kind", "features"))
+                || EventRevisionCursor.current(preferences) != 12L) {
+            throw new IllegalStateException("The event cursor failed its monotonic event-only update.");
+        }
+        EventRevisionCursor.reset(preferences);
+
         EventRefreshQueue queue = new EventRefreshQueue();
         if (!queue.enqueue("features") || queue.takePending() != EventRefreshQueue.FEATURES) {
             throw new IllegalStateException("The event queue did not start a feature refresh.");
