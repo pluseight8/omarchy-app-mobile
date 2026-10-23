@@ -49,6 +49,8 @@ public final class PairingBridge {
     private static final String FEATURES_CACHE_KEY = "features_cache";
     private static final String FEATURE_MESSAGE_KEY = "feature_message";
     private static final int MAX_JSON_BYTES = 128 * 1024;
+    private static final int MAX_CLIPBOARD_BYTES = 64 * 1024;
+    private static final int MAX_CLIPBOARD_JSON_BYTES = MAX_CLIPBOARD_BYTES * 6 + 1024;
     private static final int MAX_WALLPAPER_BYTES = 30 * 1024 * 1024;
     private static final long PAIRING_TIMEOUT_MILLIS = 180_000L;
     private static final long CONNECTED_WINDOW_MILLIS = 45_000L;
@@ -94,7 +96,7 @@ public final class PairingBridge {
             return;
         }
         CharSequence value = clipboard.getPrimaryClip().getItemAt(0).coerceToText(context);
-        if (value == null || value.toString().getBytes(StandardCharsets.UTF_8).length > 64 * 1024) {
+        if (value == null || value.toString().getBytes(StandardCharsets.UTF_8).length > MAX_CLIPBOARD_BYTES) {
             setFeatureMessage(context, "Clipboard text is empty or exceeds 64 KiB.");
             return;
         }
@@ -126,6 +128,9 @@ public final class PairingBridge {
                     throw new IllegalStateException(featureError(response));
                 }
                 String text = response.body.getString("text");
+                if (text.getBytes(StandardCharsets.UTF_8).length > MAX_CLIPBOARD_BYTES) {
+                    throw new IllegalStateException("The computer clipboard exceeds 64 KiB.");
+                }
                 new Handler(Looper.getMainLooper()).post(() -> {
                     ClipboardManager clipboard = (ClipboardManager) appContext
                             .getSystemService(Context.CLIPBOARD_SERVICE);
@@ -918,7 +923,9 @@ public final class PairingBridge {
             }
             int code = connection.getResponseCode();
             InputStream stream = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            byte[] bytes = readBounded(stream, MAX_JSON_BYTES);
+            int responseLimit = "/v1/clipboard".equals(path)
+                    ? MAX_CLIPBOARD_JSON_BYTES : MAX_JSON_BYTES;
+            byte[] bytes = readBounded(stream, responseLimit);
             JSONObject response = bytes.length == 0 ? new JSONObject()
                     : new JSONObject(new String(bytes, StandardCharsets.UTF_8));
             return new HttpResult(code, response);

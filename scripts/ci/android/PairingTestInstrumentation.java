@@ -109,7 +109,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
 
             if (Boolean.parseBoolean(testArguments.getString("featureSmoke"))) {
-                runFeatureSmoke(context);
+                runFeatureSmoke(context,
+                        Boolean.parseBoolean(testArguments.getString("clipboardStress")));
             }
 
             if (Boolean.parseBoolean(testArguments.getString("revoke"))) {
@@ -465,7 +466,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         throw new IllegalStateException("Timed out waiting for pairing revocation.");
     }
 
-    private void runFeatureSmoke(Context context) throws Exception {
+    private void runFeatureSmoke(Context context, boolean clipboardStress) throws Exception {
         JSONObject credentials = PairingStore.readCredential(context);
         if (credentials == null || !credentials.has("token")) {
             throw new IllegalStateException("Feature smoke requires a paired device token.");
@@ -518,19 +519,22 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         // The plugin exposes the actual desktop clipboard. Verify its initial value
         // reaches Android before replacing that value with the phone clipboard.
+        String largeQuotes = clipboardStress ? repeated('"', 65_536) : "from computer";
         setClipboardOnMainThread(clipboard, "");
         PairingBridge.pullClipboard(context);
-        awaitClipboard(clipboard, "from computer", 15_000L);
+        awaitClipboard(clipboard, largeQuotes, 15_000L);
         PersistableBundle clipboardExtras = clipboard.getPrimaryClip().getDescription().getExtras();
         if (clipboardExtras == null || !clipboardExtras.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE)) {
             throw new IllegalStateException("Incoming clipboard text was not marked sensitive.");
         }
 
-        setClipboardOnMainThread(clipboard, "OmaApp CI phone clipboard");
+        String phoneClipboard = clipboardStress
+                ? repeated("a\n", 30_000) : "OmaApp CI phone clipboard";
+        setClipboardOnMainThread(clipboard, phoneClipboard);
         PairingBridge.pushClipboard(context);
         awaitFeatureMessage(context, "Phone clipboard sent to the computer.", 15_000L);
         JSONObject computerClipboard = requireJson(credentials, "/v1/clipboard", "GET", null, 200);
-        if (!"OmaApp CI phone clipboard".equals(computerClipboard.optString("text"))) {
+        if (!phoneClipboard.equals(computerClipboard.optString("text"))) {
             throw new IllegalStateException("Phone clipboard text did not reach the computer.");
         }
 
@@ -781,6 +785,20 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!completed.await(5, TimeUnit.SECONDS)) {
             throw new IllegalStateException("Timed out setting the Android clipboard.");
         }
+    }
+
+    private static String repeated(char value, int count) {
+        char[] characters = new char[count];
+        java.util.Arrays.fill(characters, value);
+        return new String(characters);
+    }
+
+    private static String repeated(String value, int count) {
+        StringBuilder result = new StringBuilder(value.length() * count);
+        for (int index = 0; index < count; ++index) {
+            result.append(value);
+        }
+        return result.toString();
     }
 
     private static void awaitClipboard(ClipboardManager clipboard, String expected,

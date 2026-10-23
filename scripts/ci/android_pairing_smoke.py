@@ -99,6 +99,7 @@ def main() -> int:
     def run_android_instrumentation(state: service.ServiceState, qr: str, *, expected_theme: str,
                                    updated_theme: str = "", revoke: bool = False,
                                    feature_smoke: bool = False,
+                                   clipboard_stress: bool = False,
                                    assert_reconnect_theme: str = "") -> str:
         command = [
             "adb", "shell", "am", "instrument", "-w",
@@ -114,6 +115,8 @@ def main() -> int:
             command.extend(["-e", "revoke", "true"])
         if feature_smoke:
             command.extend(["-e", "featureSmoke", "true"])
+        if clipboard_stress:
+            command.extend(["-e", "clipboardStress", "true"])
         command.append("app.omaapp/app.omaapp.PairingTestInstrumentation")
         listed = subprocess.run(
             ["adb", "shell", "pm", "list", "instrumentation"],
@@ -385,7 +388,7 @@ def main() -> int:
         fixture_state = Path(temporary) / "fixture-state"
         fixture_state.mkdir()
         clipboard_path = fixture_state / "clipboard.txt"
-        clipboard_path.write_text("from computer", encoding="utf-8")
+        clipboard_path.write_text('"' * (64 * 1024), encoding="utf-8")
         workspace_path = fixture_state / "workspaces.json"
         workspace_path.write_text(json.dumps([
             {"id": 1, "name": "1", "monitor": "CI", "focused": True, "windows": 2},
@@ -489,9 +492,9 @@ else:
                 first_qr = qr_payload(state)
                 run_android_instrumentation(
                     state, first_qr, expected_theme="CI_Everforest", updated_theme="CI_Night",
-                    feature_smoke=True,
+                    feature_smoke=True, clipboard_stress=True,
                 )
-                if clipboard_path.read_text(encoding="utf-8") != "OmaApp CI phone clipboard":
+                if clipboard_path.read_text(encoding="utf-8") != "a\n" * 30_000:
                     raise RuntimeError("Android did not send clipboard text to the computer.")
                 if marker_path.read_text(encoding="utf-8") != "approved":
                     raise RuntimeError("Android did not execute the configured safe command.")
