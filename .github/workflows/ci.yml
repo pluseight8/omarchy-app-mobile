@@ -380,17 +380,13 @@ jobs:
           baseline_dir=tests/visual_baselines/android
           if [[ "${{ matrix.rhi_backend }}" == "OpenGL" ]]; then
             baseline_dir="$baseline_dir/opengl"
-            python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
-              --baselines "$baseline_dir" --verify-style-surface
-          else
-            # The first Vulkan HOME frame can have a shorter usable viewport.
-            # Compare a reviewed compact layout and full-height baseline;
-            # do not mask pixels.
-            python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
-              --baselines "$baseline_dir" \
-              --home-alternate-baseline tests/visual_baselines/android/home-compact-viewport.png \
-              --verify-style-surface
           fi
+          # Android's initial HOME frame can use a shorter content viewport.
+          # Each RHI has its own exact compact screenshot; no pixels are masked.
+          python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
+            --baselines "$baseline_dir" \
+            --home-alternate-baseline "$baseline_dir/home-compact-viewport.png" \
+            --verify-style-surface
           sleep 8
           adb shell pidof app.omaapp
           final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
