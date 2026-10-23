@@ -141,6 +141,14 @@ def compare_images(actual: Path, baseline: Path) -> tuple[int, float]:
     return changed, changed / max(1, total)
 
 
+def compare_image_variants(actual: Path, baselines: list[Path]) -> tuple[Path, int, float]:
+    """Compare against reviewed layout variants and return the closest match."""
+    if not baselines:
+        raise ValueError("at least one visual baseline is required")
+    results = [(baseline, *compare_images(actual, baseline)) for baseline in baselines]
+    return min(results, key=lambda result: result[2])
+
+
 def verify_style_surface_rendered(
     image: Path, *, require_gradient: bool = False, gradient_angle: float = 45.0
 ) -> None:
@@ -281,6 +289,8 @@ def main() -> int:
                         help="expected physical screenshot size (default: 412 892)")
     parser.add_argument("--record", action="store_true",
                         help="replace baseline images with the current screenshots")
+    parser.add_argument("--home-alternate-baseline", type=Path,
+                        help="additional reviewed Home screenshot for a compact Android viewport")
     parser.add_argument("--allow-missing-baseline", action="store_true",
                         help="allow capture-only CI while bootstrapping reviewed baseline images")
     parser.add_argument("--max-changed", type=float, default=0.015,
@@ -322,8 +332,17 @@ def main() -> int:
             elif not baseline.is_file():
                 missing_baselines.append(screen)
             else:
-                changed, fraction = compare_images(actual, baseline)
-                print(f"{screen}: {changed} changed pixels ({fraction:.2%})")
+                candidates = [baseline]
+                if screen == "home" and args.home_alternate_baseline is not None:
+                    if not args.home_alternate_baseline.is_file():
+                        raise ValueError(
+                            "missing alternate Home visual baseline: "
+                            f"{args.home_alternate_baseline}"
+                        )
+                    candidates.append(args.home_alternate_baseline)
+                closest, changed, fraction = compare_image_variants(actual, candidates)
+                baseline_note = f", closest baseline: {closest.name}" if len(candidates) > 1 else ""
+                print(f"{screen}: {changed} changed pixels ({fraction:.2%}{baseline_note})")
                 if fraction > args.max_changed:
                     failures.append(f"{screen}: changed-pixel ratio {fraction:.2%} exceeds {args.max_changed:.2%}")
         except (OSError, ValueError, zlib.error) as error:
