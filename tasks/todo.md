@@ -16,7 +16,7 @@
 
 ## Remaining work and validation limits
 
-- [ ] Pass CI after switching OWL delegates to indexed numeric models: desktop, arm64 APK, OpenGL, Vulkan, rendered OWL assets, loader regression, and confirmed process-death checks.
+- [x] Pass CI after switching OWL delegates to indexed numeric models: desktop, arm64 APK, OpenGL, Vulkan, rendered OWL assets, loader regression, and confirmed process-death checks.
 - [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
 - [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
@@ -26,7 +26,7 @@
 
 - `python3 -m unittest discover -s scripts/tests -q`: 115 tests pass.
 - `python3 scripts/ci/check_translations.py`: 291 Russian source strings validated.
-- Changed OWL QML passes `qmllint`; shell syntax checks and `git diff --check` pass.
-- CI [#220](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40130375435), [#221](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131445004), and [#222](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131911857) found the installed Canvas sampler blank on both backends. CI #223 diagnostics report one rendered root node with no error but no OWL Loader delegate on OpenGL; Vulkan is still running. CI #224 checks numeric indexed OWL models.
+- Changed OWL QML passes `qmllint`; shell syntax checks and `git diff --check` pass. A local Qt Quick 6.11.2 regression confirmed a numeric Repeater model creates and indexes a delegate from parsed JSON.
+- CI [#220](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40130375435), [#221](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131445004), and [#222](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131911857) found the installed Canvas sampler blank on both backends. CI [#223](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40132703086) isolated the missing Loader delegates. CI [#224](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40133379574) passed desktop, arm64, OpenGL, and Vulkan; each emulator smoke confirmed both OWL image nodes rendered on Home.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
