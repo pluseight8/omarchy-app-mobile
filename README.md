@@ -21,10 +21,22 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
 - OmaApp does not install Arch Linux ARM or PRoot. It does not bundle the Quickshell executable or Linux/Wayland modules into the APK.
-- This development iteration adds localization, automatic launcher-app refresh, an Android widget-host proof, secure DNS-SD rediscovery, and opt-in haptic feedback. Check the current build and emulator results in [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). It does not claim a signed release.
+- This development iteration adds localization, automatic launcher-app refresh, an Android widget-host proof, secure DNS-SD rediscovery, opt-in haptic feedback, and phone-width Russian OWL/navigation polish. Check the current build and emulator results in [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). The CI APK is a test artifact; this iteration does not claim a signed release.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This working copy passes 102 Python tests, a 286-string translation check, shell/Python syntax checks, and the Android version-code regression test. GitHub Actions run #195 passed desktop, arm64, OpenGL, and Vulkan, including launcher refresh, OWL, localization, and opt-in haptics smoke checks. Run #197 passed OpenGL with translated OWL labels visible; its Vulkan cold-start accessibility timeout is being retried. The latest UI adjustment stacks OWL and backup actions on phone screens. The full build is unavailable locally because the Qt ShaderTools package and Android SDK/JDK are missing. No Pixel device is attached, so Pixel 10 / GrapheneOS behavior remains unverified.
+This working copy passes 105 Python tests and validates 291 Russian UI strings. GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64, OpenGL, and Vulkan. Emulator smoke coverage includes launcher transitions, localization, OWL editing and backup, pairing/reconnect, permissions, and revocation; both GPU backends produced screenshots. Earlier work installed and restarted the plugin in a real Omarchy 4.0.4 / Quickshell 0.3.1 session, but Android DNS-SD against a live Omarchy host has not been exercised end to end. The full build is unavailable locally because Qt ShaderTools and the Android SDK/JDK are missing. No Pixel device is attached, so Pixel 10 / GrapheneOS behavior remains unverified.
+
+### Emulator screenshots
+
+The Russian Settings screen was captured at 412 × 892 in each emulator graphics backend during CI run #200.
+
+![Russian Settings on OpenGL](docs/screenshots/ci-200-opengl-settings-ru.png)
+
+![Russian Settings on Vulkan](docs/screenshots/ci-200-vulkan-settings-ru.png)
+
+![Home on OpenGL](docs/screenshots/ci-200-opengl-home.png)
+
+![Home on Vulkan](docs/screenshots/ci-200-vulkan-home.png)
 
 ## Build the desktop preview
 

@@ -1480,13 +1480,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _reply(self, status: int, body: dict[str, Any], content_type: str = "application/json") -> None:
         encoded = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", content_type + "; charset=utf-8")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type + "; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(encoded)
+        except OSError:
+            # A phone may cancel a request while leaving a page or stopping discovery.
+            # Once the peer closes its TLS socket, there is nothing useful to log or retry.
+            return
 
     def _read_json(self, maximum: int = MAX_JSON_BYTES) -> dict[str, Any] | None:
         try:

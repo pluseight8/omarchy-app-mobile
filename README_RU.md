@@ -21,10 +21,22 @@ OmaApp — Android-лаунчер и прямой компаньон Omarchy н�
 - Настольная версия — только предпросмотр. Список приложений на ней не подменяется фиктивными данными.
 - Сетевой слушатель запускается при запросе QR-кода или наличии сохранённых устройств. Python-помощник и генератор QR входят в состав одного плагина; отдельная программа или системная служба не устанавливаются.
 - OmaApp не устанавливает Arch Linux ARM или PRoot и не включает Quickshell executable или Linux/Wayland-модули в APK.
-- Текущая ветка добавляет локализацию, автоматическое обновление списка приложений, тест AppWidgetHost, безопасное DNS-SD-переподключение и настраиваемый виброотклик. Текущий статус сборок смотрите в [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). Подписанный релиз не заявляется этой итерацией.
+- Текущая итерация добавляет локализацию, автоматическое обновление списка приложений, тест AppWidgetHost, безопасное DNS-SD-переподключение, настраиваемый виброотклик и доработку русского OWL-интерфейса и навигации для узких экранов. Текущий статус сборок — в [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). APK из CI предназначен для тестов; подписанный релиз этой итерацией не заявляется.
 - В Android-приложение не включён Quickshell: приложение использует Qt Quick, а плагин Omarchy исполняется внутри Quickshell.
 
-Плагин уже устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. В рабочей копии проходят 102 Python-теста и проверка 286 русских строк; также проходят shell/Python syntax checks и Android versionCode regression test. GitHub Actions #195 успешно проверил desktop, arm64, OpenGL и Vulkan, включая обновление списка приложений, OWL и отправку haptic API с сохранением настройки после перезапуска. В #197 OpenGL также подтвердил русские названия OWL; повторно запускается Vulkan после таймаута accessibility при холодном старте. Последняя правка раскладывает кнопки виджетов и backup в столбец для чтения на телефоне. Локальная полная сборка недоступна без Android SDK/JDK и Qt ShaderTools. Pixel 10 / GrapheneOS физически не проверен.
+Текущая рабочая копия проходит 105 Python-тестов и проверку 291 русской строки. GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) успешно проверил desktop, arm64, OpenGL и Vulkan. Эмулятор проверяет переходы лаунчера, локализацию, OWL и backup, сопряжение и переподключение, разрешения и их отзыв; оба графических backend сохранили скриншоты. В предыдущей работе плагин устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1, но сквозное Android DNS-SD-переподключение к работающему компьютеру Omarchy не проверено. Полная сборка локально недоступна: отсутствуют Qt ShaderTools, Android SDK и JDK. Pixel 10 / GrapheneOS не проверялся.
+
+### Скриншоты эмулятора
+
+Экран Settings на русском снят в разрешении 412 × 892 в обоих графических backend во время CI run #200.
+
+![Settings на русском, OpenGL](docs/screenshots/ci-200-opengl-settings-ru.png)
+
+![Settings на русском, Vulkan](docs/screenshots/ci-200-vulkan-settings-ru.png)
+
+![Home, OpenGL](docs/screenshots/ci-200-opengl-home.png)
+
+![Home, Vulkan](docs/screenshots/ci-200-vulkan-home.png)
 
 ## Сборка настольного предпросмотра
 

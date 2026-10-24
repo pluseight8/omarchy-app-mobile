@@ -2,26 +2,29 @@
 
 ## Completed in this development iteration
 
-- [x] Add offline English/Russian Qt Linguist translations, Android system-language detection, a persistent Settings selector, Java-native UI translation, CI checks for missing or unfinished catalog entries, and localized OWL catalog metadata.
-- [x] Refresh the launcher after protected Android package add/change/replace/remove broadcasts, coalesce broadcast bursts, and refresh on Activity resume.
-- [x] Verify launcher discovery on emulator with a real CI-only Android launcher fixture that is installed and removed while OmaApp remains Home.
-- [x] Add an emulator proof of concept using Android `AppWidgetHost`, the system binding flow, a live `AppWidgetHostView`, and a real click sent to its provider. Keep the provider test-only and document the current Qt/QML boundary.
-- [x] Add plugin DNS-SD advertisement with the current private IPv4, service port, protocol, and public TLS fingerprint; do not advertise pairing secrets or device tokens.
-- [x] Add foreground Android DNS-SD discovery that starts only after QR pairing, rejects untrusted fingerprints, checks the pinned TLS certificate and token before changing the saved address, and releases discovery resources on pause.
-- [x] Add opt-in Android haptic feedback through `View.performHapticFeedback`; persist the preference in launcher settings and layout backups and add emulator assertions for dispatch and Activity restart persistence.
-- [x] Add Retry and update pairing/install docs for local-network discovery and fallback QR reconnect.
-- [x] Add regression tests for DNS-SD contents/query filtering/goodbye records, Android trust gates, launcher package events, translation completeness, and test-only widget wiring.
-- [x] Update English and Russian READMEs, the changelog, task status, pairing guide, and AppWidgetHost findings.
+- [x] Add offline English/Russian Qt Linguist catalogs, Android system-language detection, a persistent Settings selector, localized native messages, and CI checks for missing or unfinished translations.
+- [x] Refresh the launcher after protected Android package lifecycle broadcasts, coalesce broadcast bursts, and refresh on Activity resume; verify app discovery with an installed and removed Android launcher fixture.
+- [x] Add a test-only Android `AppWidgetHost` proof using system binding confirmation, a live `AppWidgetHostView`, a real provider click, and widget ID cleanup. Keep the Qt/QML layout limitation documented.
+- [x] Add plugin DNS-SD advertisement and foreground Android discovery of an already QR-trusted Omarchy host. Require the saved certificate pin and token before an endpoint address can change.
+- [x] Add opt-in system-respecting Android haptic feedback, persisted in launcher settings and backups, with emulator assertions for dispatch and restart persistence.
+- [x] Localize OWL catalog titles and descriptions, expose them to accessibility, refresh labels on language changes, and keep OWL and backup actions readable on phone-width layouts.
+- [x] Use concise Russian bottom-tab text with full accessible names.
+- [x] Test graceful cancellation of a plugin event long poll and a response write when the TLS client disconnects.
+- [x] Update English and Russian READMEs, changelog, task status, pairing guide, AppWidgetHost findings, and checked-in OpenGL/Vulkan emulator screenshots.
 
-## Remaining work
+## Remaining work and validation limits
 
-- [ ] Verify the Vulkan retry for #197 and run CI on the latest phone-width OWL/backup layout. OpenGL #197 confirmed translated OWL titles/descriptions and cleared stale English status text; its screenshot exposed clipped titles and backup buttons, which the latest layout stacks/wraps.
-- [ ] Integrate ordinary Android widgets into saved Home layout only after a supported Qt-to-native placement/lifecycle bridge is designed and tested. Current status is an overlay proof of concept, not a product feature.
-- [ ] Test installation, language switching, app discovery, QR pairing, theme sync, DNS-SD reconnect, clipboard/files, and idle behavior on a physical Pixel 10 with GrapheneOS.
-- [ ] Review the current PR, address CI/review feedback, and keep the APK signing key owner-managed. Do not publish a signed release until the existing release workflow succeeds with the permanent secrets.
+- [ ] Verify CI on the current PR head, including the response-disconnect regression test and docs/screenshots.
+- [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
+- [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
+- [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
+- [ ] Review and merge the current PR; publish an Alpha pre-release only with the owner's permanent signing secrets.
 
-## Local verification limits
+## Local verification
 
-- `python3 -m unittest discover -s scripts/tests -q`: 102 tests pass. Russian catalog check validates 286 source strings; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass. CI #195 passed all jobs; #196 passed desktop/arm64; #197 passed OpenGL and its Vulkan retry is running.
-- The workspace lacks JDK/Android SDK/NDK and the Qt ShaderTools development package, so no local Android APK, emulator, full desktop CMake build, or screenshot run is claimed.
-- No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior are unverified.
+- `python3 -m unittest discover -s scripts/tests -q`: 105 tests pass.
+- `python3 scripts/ci/check_translations.py`: 291 Russian source strings validated.
+- Shell/Python syntax checks, Android version-code regression, and `git diff --check` pass.
+- GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64, OpenGL, and Vulkan jobs on the prior PR revision. The current PR head still needs its own green check.
+- This workspace lacks JDK, Android SDK/NDK, and Qt ShaderTools development files. No local Android APK build, full CMake build, or emulator run is claimed.
+- No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.

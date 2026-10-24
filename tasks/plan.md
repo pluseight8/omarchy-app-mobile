@@ -2,43 +2,44 @@
 
 ## Product architecture
 
-OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Quick, C++, QML and a small Java bridge. The plugin runs inside Quickshell and owns its Python HTTPS helper. There is no extra Android app, desktop daemon, Linux guest, PRoot, or remote shell.
+OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Quick, C++, QML, and a small Java bridge. The plugin runs inside Quickshell and owns its Python HTTPS helper. There is no extra Android app, desktop daemon, Linux guest, PRoot, or remote shell.
 
 ## Implemented launcher and localization
 
 - Offline Home with multiple pages, drag and drop, dock, Android app icons/search, folders, dynamic shortcuts, configurable grid and gestures, OWL store/editor, and local backup/restore.
-- Optional Android haptic feedback for Home app launches and editing actions is off by default, follows system touch-feedback settings, and is included in launcher settings and layout backups.
-- Launcher app enumeration refreshes after package lifecycle broadcasts and Activity resume. Emulator CI installs and removes a real launcher fixture to exercise package discovery.
-- English and Russian use a Qt Linguist `.ts`/`.qm` catalog. Android locale selects the default; Settings can persist `system`, `en`, or `ru`. CI verifies the source catalog and emulator smoke checks Russian UI, Android-native dialogs/messages, process restart persistence, and switching back to English.
-- Ordinary Android App Widgets are not yet integrated into Home. CI's test-only `AppWidgetHost` proof binds a real widget provider, shows its live `RemoteViews` in an `AppWidgetHostView` above the Qt activity, taps it, and frees the allocated ID. The proof documents that this overlay does not participate in the Qt/QML layout tree.
+- Optional Android haptics for Home app launches and editing actions are off by default, follow system touch-feedback settings, and are included in launcher settings and layout backups.
+- Launcher app enumeration refreshes after package lifecycle broadcasts and Activity resume. Emulator CI installs and removes a real launcher fixture.
+- English and Russian use Qt Linguist `.ts`/`.qm` catalogs. Android locale selects the default; Settings persists `system`, `en`, or `ru`. CI checks catalog completeness and smoke-tests language switching, native Android messages, process restart persistence, and Russian UI accessibility.
+- Phone-width OWL titles and actions wrap or stack. Russian bottom-tab labels are compact while their accessibility names remain complete.
+- Ordinary Android App Widgets are not integrated into saved Home layouts. CI binds a real test provider and exercises its `RemoteViews` in an `AppWidgetHostView` overlay over QtActivity; this confirms the platform APIs work but does not provide user-managed widget placement or persistence.
 
 ## Pairing, sync, and local rediscovery
 
-- The first trust relationship still requires QR certificate review and approval on the computer. Android stores the per-device token and pinned certificate using Android Keystore encryption; the plugin stores only token hashes.
-- While a paired app is foregrounded, Android DNS-SD discovers `_omaapp._tcp`. The plugin advertises only its private address, port, protocol, and public certificate fingerprint. OmaApp accepts an endpoint update only after comparing the advertised fingerprint to its saved pin and completing authenticated HTTPS with the pinned certificate. mDNS is a location hint, never a trust grant.
-- `Retry` and fresh-QR reconnect remain available if multicast is blocked. Discovery resources are stopped when the launcher Activity pauses.
-- The plugin syncs Omarchy colors, `shell.toml`, wallpaper, Hyprland geometry and animations. Theme/workspace updates use file/socket events with a 30-second foreground fallback for missed events and metrics; cached theme remains local and usable offline.
-- Optional clipboard, file transfer, MPRIS, metrics, workspace, and configured command operations retain separate per-device grants and bounded input validation.
+- First trust requires QR certificate review and approval on the computer. Android stores its per-device token and pinned certificate using Android Keystore encryption; the plugin stores token hashes.
+- Foreground Android DNS-SD discovers `_omaapp._tcp` after pairing. The plugin advertises only its private address, port, protocol, and public TLS fingerprint. OmaApp accepts an endpoint update only after checking the saved certificate pin and authenticating HTTPS with the stored token.
+- Retry and fresh-QR reconnect remain available when multicast is blocked. Discovery stops when the launcher Activity pauses. DNS-SD has plugin packet tests and Android trust-gate coverage, but Android NSD has not been tested end to end against a live Omarchy host.
+- The plugin syncs Omarchy colors, `shell.toml`, wallpaper, Hyprland geometry and animations. Theme/workspace updates use file/socket events with a slower foreground refresh for missed events and metrics; cached theme remains local and usable offline.
+- Clipboard, file transfer, MPRIS, metrics, workspace, and configured command operations retain separate per-device grants and bounded input validation.
+- A cancelled TLS client response is treated as a disconnected peer. A regression test covers response writes, and the event long-poll integration test checks that a client RST does not log a traceback.
 
 ## Current verification
 
-- Local repository suite: 102 Python tests passed. The 286-entry Russian catalog check, shell/Python syntax checks, Android version-code regression test, and whitespace validation also pass.
-- CI #195 passed desktop, arm64, OpenGL, and Vulkan. Both emulator artifacts show successful Android haptic API dispatch, the opt-in checkbox still enabled after Activity restart, Russian and English UI checks, launcher refresh, and the AppWidgetHost proof. The run also confirmed the deterministic Settings launch target and the fixed scrolling tap coordinates.
-- CI #196 passed desktop and arm64, but both emulator jobs stopped at the new OWL metadata visibility check. Its Vulkan artifact confirmed that Russian translations reached the OWL action labels; the title and description Text controls lacked accessibility names. CI #197 passed OpenGL with the exact Russian OWL titles/descriptions exposed to accessibility. Its first Vulkan attempt timed out before the UI smoke because the Home accessibility tree stayed empty after cold launch; only that failed job is being retried.
-- The #197 screenshot also exposed clipped OWL titles and layout-backup buttons on phone width. The current working revision wraps OWL titles, gives widget details the full card width, and stacks action and backup buttons; emulator screenshot coverage is queued in the next CI.
-- The plugin has previously been installed/restarted in Omarchy 4.0.4 / Quickshell 0.3.1. That does not substitute for a fresh test of this branch's mDNS change.
-- This workspace has no JDK or Android SDK/NDK and lacks Qt ShaderTools development files, so the full build and emulator render cannot be verified locally. No Pixel 10 / GrapheneOS device is attached.
+- Local suite: 105 Python tests pass. The Russian catalog checker validates 291 source strings; shell/Python syntax checks, Android version-code regression, and `git diff --check` pass.
+- GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64 APK build, OpenGL emulator smoke, and Vulkan emulator smoke. It ran before the follow-up response-disconnect regression test; check the PR status for the current commit.
+- CI #200 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Both renderer jobs produced screenshots; Russian Settings snapshots are checked in under `docs/screenshots/`.
+- The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
+- The workspace lacks JDK, Android SDK/NDK, and Qt ShaderTools development files. Full local Android/desktop builds and rendering are therefore not claimed. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 
-1. Finish the Vulkan retry and validate CI for the phone-width OWL/backup layout; inspect the Russian screenshot and verify the prior English deletion message is cleared after switching languages.
-2. Add runtime Android DNS-SD discovery/reconnect coverage with a controlled plugin fixture if the emulator network can carry multicast reliably. Exercise IP changes and wrong-fingerprint rejection with real TLS test traffic.
-3. Design a supported native-to-QML widget placement bridge before exposing ordinary AppWidgets to users; persist IDs/positions, resize/configure, restore, drag and teardown all require lifecycle coverage.
-4. Run the physical Pixel 10 GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, theme sync, battery, and performance observations only after the device is available.
-5. Review and merge through the current PR. Keep signing credentials in owner-controlled GitHub secrets and use only the existing release workflow for a signed Pre-release.
+1. Confirm CI for the current PR head, including the response-disconnect regression test and updated documentation/screenshots.
+2. Exercise Android NSD reconnect, IP changes, and wrong-fingerprint rejection end to end against a live Omarchy host when a suitable network fixture is available.
+3. Design and test a supported Qt-to-native placement/lifecycle bridge before integrating ordinary Android App Widgets into persistent Home layouts.
+4. Run the physical Pixel 10 / GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, sync, battery, and performance only after device testing.
+5. Review and merge through the PR. Publish a signed pre-release only through the existing workflow with the owner's permanent GitHub signing secrets.
 
-## Release constraints
+## Release and safety constraints
 
 - Never add or commit a production signing key. The release workflow must stop without the owner's permanent signing secrets.
 - Preserve Simon Schubert's Omalauncher attribution and all Qt, OWL, and Hyprland notices.
-- No arbitrary Linux command execution from offline OWL or the pairing protocol.
+- Offline OWL does not execute Linux commands. The pairing protocol does not accept arbitrary shell commands.

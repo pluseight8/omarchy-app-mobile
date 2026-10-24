@@ -2,6 +2,7 @@ import hashlib
 import http.client
 import json
 import os
+import runpy
 import select
 import socket
 import ssl
@@ -17,6 +18,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = ROOT / "omarchy-plugin" / "service.py"
+sys.path.insert(0, str(SERVICE.parent))
+try:
+    HTTP_HANDLER = runpy.run_path(str(SERVICE), run_name="oma_service_test")["Handler"]
+finally:
+    sys.path.pop(0)
 DEVICE_ID = "pixel-10-integration"
 TOKEN = "a-real-helper-process-test-token"
 
@@ -86,6 +92,25 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
             "X-OmaApp-Device": DEVICE_ID,
             "Authorization": "Bearer " + TOKEN,
         }
+
+    def test_reply_suppresses_a_client_disconnect_while_writing(self):
+        class DisconnectedWriter:
+            def write(self, _payload):
+                raise BrokenPipeError("client closed the socket")
+
+        class HandlerStub:
+            wfile = DisconnectedWriter()
+
+            def send_response(self, _status):
+                pass
+
+            def send_header(self, _name, _value):
+                pass
+
+            def end_headers(self):
+                pass
+
+        HTTP_HANDLER._reply(HandlerStub(), 200, {"ok": True})
 
     def request(self, path, headers=None):
         context = ssl._create_unverified_context()
