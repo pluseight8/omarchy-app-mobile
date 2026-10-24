@@ -224,6 +224,11 @@ jobs:
           test -n "$apk"
           adb install "$apk"
           adb logcat -c
+          # Qt's Android accessibility bridge attaches its virtual QML tree
+          # only while AccessibilityManager reports accessibility enabled.
+          # Keep it enabled for shell-driven UIAutomator snapshots below.
+          adb shell settings put secure accessibility_enabled 1
+          test "$(adb shell settings get secure accessibility_enabled | tr -d '\r')" = "1"
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
