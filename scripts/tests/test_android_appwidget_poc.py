@@ -78,9 +78,10 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("automation.getWindows()", accessible_click)
         self.assertIn("window.getRoot()", accessible_click)
         self.assertIn(
-            "getUiAutomation(UiAutomation.FLAG_RETRIEVE_INTERACTIVE_WINDOWS)",
+            "serviceInfo.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS",
             instrumentation,
         )
+        self.assertIn("automation.setServiceInfo(serviceInfo)", instrumentation)
         self.assertIn("describeInteractiveWindows(automation)", instrumentation)
         self.assertIn("summary.length() < 1800", instrumentation)
         self.assertNotIn("findAccessibilityNodeInfosByText", confirmation)

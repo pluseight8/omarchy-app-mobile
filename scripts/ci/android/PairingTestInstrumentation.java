@@ -15,9 +15,9 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -197,9 +197,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not open Qt Quick Home for the Android widget overlay test.");
         }
         reportAppWidgetStage("activity_started");
-        UiAutomation automation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
-                ? getUiAutomation(UiAutomation.FLAG_RETRIEVE_INTERACTIVE_WINDOWS)
-                : getUiAutomation();
+        UiAutomation automation = getUiAutomation();
+        AccessibilityServiceInfo serviceInfo = automation.getServiceInfo();
+        serviceInfo.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        automation.setServiceInfo(serviceInfo);
         if (!awaitAccessibleControlClick(automation, "Home", 8_000L)) {
             throw new IllegalStateException("The Home navigation control did not become clickable.");
         }
