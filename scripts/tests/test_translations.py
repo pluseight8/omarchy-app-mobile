@@ -19,6 +19,27 @@ class TranslationCatalogTests(unittest.TestCase):
         language_controls = qml[start:end]
         self.assertEqual(language_controls.count("Accessible.name: text"), 2)
 
+    def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
+        qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
+            encoding="utf-8"
+        )
+        connection = qml.split("function onLanguageChanged() {", 1)[1].split("\n        }", 1)[0]
+        self.assertIn("owl.refreshLocalizedText()", connection)
+        self.assertIn('window.widgetMessage = ""', connection)
+        self.assertIn('window.layoutMessage = ""', connection)
+
+        smoke = (Path(__file__).resolve().parents[2] / "scripts/ci/android_translation_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        for label in (
+            "Часы Omarchy",
+            "Локальные часы и дата на основе текстовых и компоновочных узлов OWL.",
+            "Демонстрация Canvas",
+            "Небольшой живой холст с фигурами OWL, выражениями и цветами Omarchy.",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(label, smoke)
+
     def test_rejects_unfinished_catalog_entries(self):
         with TemporaryDirectory() as directory:
             catalog = Path(directory) / "unfinished.ts"

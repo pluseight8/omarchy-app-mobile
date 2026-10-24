@@ -38,6 +38,15 @@ ApplicationWindow {
     property string openSourceNoticesText: ""
     property bool languageSaveFailed: false
 
+    Connections {
+        target: appTranslations
+        function onLanguageChanged() {
+            owl.refreshLocalizedText()
+            window.layoutMessage = ""
+            window.widgetMessage = ""
+        }
+    }
+
     function widgetThemeColor(value) {
         const color = Qt.color(value)
         function hexByte(channel) {

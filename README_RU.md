@@ -24,7 +24,7 @@ OmaApp — Android-лаунчер и прямой компаньон Omarchy н�
 - Текущая ветка добавляет локализацию, автоматическое обновление списка приложений, тест AppWidgetHost, безопасное DNS-SD-переподключение и настраиваемый виброотклик. Текущий статус сборок смотрите в [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). Подписанный релиз не заявляется этой итерацией.
 - В Android-приложение не включён Quickshell: приложение использует Qt Quick, а плагин Omarchy исполняется внутри Quickshell.
 
-Плагин уже устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. В этой рабочей копии проходят 82 Python-теста, проверка каталога из 278 переводов, shell/Python syntax checks и Android versionCode regression test. Полную сборку здесь не выполнить: отсутствуют Android SDK/JDK и Qt ShaderTools package; Android APK и emulator smoke требуют CI. Pixel 10 / GrapheneOS ещё не проверен физически.
+Плагин уже устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. В рабочей копии проходят 102 Python-теста и проверка 286 русских строк; также проходят shell/Python syntax checks и Android versionCode regression test. GitHub Actions #195 успешно проверил desktop, arm64, OpenGL и Vulkan, включая обновление списка приложений, OWL и отправку haptic API с сохранением настройки после перезапуска. Локальная полная сборка недоступна без Android SDK/JDK и Qt ShaderTools. Изменения локализации метаданных OWL после #195 ожидают нового CI. Pixel 10 / GrapheneOS физически не проверен.
 
 ## Сборка настольного предпросмотра
 

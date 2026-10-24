@@ -1116,6 +1116,33 @@
         </message>
     </context>
     <context>
+        <name>OwlModel</name>
+        <message>
+            <source>A local clock and date, rendered with the OWL text and layout nodes.</source>
+            <translation>Локальные часы и дата на основе текстовых и компоновочных узлов OWL.</translation>
+        </message>
+        <message>
+            <source>A small live canvas using OWL shapes, expressions, and Omarchy colors.</source>
+            <translation>Небольшой живой холст с фигурами OWL, выражениями и цветами Omarchy.</translation>
+        </message>
+        <message>
+            <source>Canvas sampler</source>
+            <translation>Демонстрация Canvas</translation>
+        </message>
+        <message>
+            <source>Custom widget</source>
+            <translation>Пользовательский виджет</translation>
+        </message>
+        <message>
+            <source>Omarchy clock</source>
+            <translation>Часы Omarchy</translation>
+        </message>
+        <message>
+            <source>Saved on this device; available offline.</source>
+            <translation>Сохранено на этом устройстве и доступно офлайн.</translation>
+        </message>
+    </context>
+    <context>
         <name>OwlWidgetView</name>
         <message>
             <source>OWL preview could not be rendered.</source>
