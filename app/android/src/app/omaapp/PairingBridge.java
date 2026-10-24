@@ -5,11 +5,13 @@ import android.content.Intent;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
+import android.content.pm.ApplicationInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PersistableBundle;
+import android.util.Log;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -58,6 +60,7 @@ public final class PairingBridge {
     private static final int DEFAULT_REQUEST_READ_TIMEOUT_MILLIS = 10_000;
     private static final ExecutorService NETWORK = Executors.newSingleThreadExecutor();
     private static final ExecutorService EVENTS = Executors.newSingleThreadExecutor();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final Object OPERATION_LOCK = new Object();
     private static final AtomicBoolean REALTIME_SYNC_ENABLED = new AtomicBoolean(false);
     private static final AtomicBoolean EVENT_LOOP_RUNNING = new AtomicBoolean(false);
@@ -66,6 +69,10 @@ public final class PairingBridge {
     private static volatile boolean cancelRequested;
     private static long lastRefreshRequested;
     private static long lastDiscoveredRefresh;
+    private static boolean discoveredRetryQueued;
+    private static String queuedDiscoveryAddress;
+    private static int queuedDiscoveryPort;
+    private static String queuedDiscoveryFingerprint;
     private static volatile HttpsURLConnection eventConnection;
 
     private PairingBridge() {}
@@ -421,22 +428,57 @@ public final class PairingBridge {
         }
         final Context appContext = context.getApplicationContext();
         final JSONObject saved = PairingStore.readCredential(appContext);
-        if (saved == null || !saved.has("token")
-                || !advertisedFingerprint.equalsIgnoreCase(saved.optString("fingerprint", ""))) {
+        if (saved == null || !saved.has("token")) {
+            debugDiscoveryLog(appContext, "Ignored DNS-SD candidate because no paired token is saved.");
+            return;
+        }
+        if (!advertisedFingerprint.equalsIgnoreCase(saved.optString("fingerprint", ""))) {
+            debugDiscoveryLog(appContext, "Ignored DNS-SD candidate because its certificate hint did not match.");
             return;
         }
         final String serverUrl = "https://" + address + ":" + port;
         if (serverUrl.equals(saved.optString("serverUrl", ""))) {
+            debugDiscoveryLog(appContext, "DNS-SD resolved the currently saved endpoint.");
             return;
         }
+        boolean queueRetry = false;
+        boolean startNetwork = false;
         synchronized (OPERATION_LOCK) {
             long now = System.currentTimeMillis();
-            if (operationRunning || now - lastDiscoveredRefresh < 10_000L) {
+            if (operationRunning) {
+                queuedDiscoveryAddress = address;
+                queuedDiscoveryPort = port;
+                queuedDiscoveryFingerprint = advertisedFingerprint;
+                if (!discoveredRetryQueued) {
+                    discoveredRetryQueued = true;
+                    queueRetry = true;
+                }
+            } else if (now - lastDiscoveredRefresh < 10_000L) {
+                debugDiscoveryLog(appContext, "Skipped duplicate DNS-SD reconnect within the retry window.");
                 return;
+            } else {
+                operationRunning = true;
+                lastDiscoveredRefresh = now;
+                startNetwork = true;
             }
-            operationRunning = true;
-            lastDiscoveredRefresh = now;
         }
+        if (queueRetry) {
+            debugDiscoveryLog(appContext, "Queued DNS-SD reconnect until the current network operation finishes.");
+            if (!MAIN.postDelayed(() -> retryQueuedDiscovery(appContext), 250L)) {
+                synchronized (OPERATION_LOCK) {
+                    discoveredRetryQueued = false;
+                    queuedDiscoveryAddress = null;
+                    queuedDiscoveryFingerprint = null;
+                    queuedDiscoveryPort = 0;
+                }
+            }
+            return;
+        }
+        if (!startNetwork) {
+            // A retry was already posted. Keep only the newest resolved endpoint in its slot.
+            return;
+        }
+        debugDiscoveryLog(appContext, "Checking a discovered endpoint with pinned TLS and token auth.");
         NETWORK.execute(() -> {
             try {
                 JSONObject candidate = new JSONObject(saved.toString());
@@ -458,17 +500,44 @@ public final class PairingBridge {
                 current.put("hostName", saved.optString("hostName", "Omarchy computer"));
                 current.put("fingerprint", saved.optString("fingerprint", ""));
                 PairingStore.writeCredential(appContext, current);
+                debugDiscoveryLog(appContext, "Updated the trusted endpoint after TLS and token verification.");
                 setUiState(appContext, "connecting", current.optString("hostName"), "");
                 applyStatus(appContext, current, response.body);
-            } catch (Exception ignored) {
+            } catch (Exception error) {
                 // An mDNS record is only a hint. Keep the saved endpoint and theme unless
                 // the TLS-pinned service proves that it is the already trusted computer.
+                debugDiscoveryLog(appContext, "Discovered endpoint validation failed ("
+                        + error.getClass().getSimpleName() + ").");
             } finally {
                 synchronized (OPERATION_LOCK) {
                     operationRunning = false;
                 }
             }
         });
+    }
+
+    private static void retryQueuedDiscovery(Context context) {
+        String address;
+        String fingerprint;
+        int port;
+        synchronized (OPERATION_LOCK) {
+            address = queuedDiscoveryAddress;
+            port = queuedDiscoveryPort;
+            fingerprint = queuedDiscoveryFingerprint;
+            queuedDiscoveryAddress = null;
+            queuedDiscoveryPort = 0;
+            queuedDiscoveryFingerprint = null;
+            discoveredRetryQueued = false;
+        }
+        if (address != null && fingerprint != null) {
+            reconnectDiscovered(context, address, port, fingerprint);
+        }
+    }
+
+    private static void debugDiscoveryLog(Context context, String message) {
+        if (context != null && (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            Log.i("OmaAppDiscovery", message);
+        }
     }
 
     public static void setRealtimeSync(Context context, boolean enabled) {

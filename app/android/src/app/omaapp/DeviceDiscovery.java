@@ -6,10 +6,12 @@ import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
 import android.os.ext.SdkExtensions;
+import android.util.Log;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Foreground DNS-SD rediscovery for a computer whose TLS identity was paired by QR. */
 public final class DeviceDiscovery {
     private static final String SERVICE_TYPE = "_omaapp._tcp.";
+    private static final String TAG = "OmaAppDiscovery";
     private static final Set<String> RESOLVING = ConcurrentHashMap.newKeySet();
     private static Context appContext;
     private static NsdManager manager;
@@ -56,6 +59,7 @@ public final class DeviceDiscovery {
                         || !service.getServiceName().startsWith("OmaApp-")) {
                     return;
                 }
+                debugLog(discoveryContext, "DNS-SD candidate found.");
                 String key = service.getServiceName() + "\u001f" + service.getServiceType();
                 if (!RESOLVING.add(key)) {
                     return;
@@ -65,6 +69,8 @@ public final class DeviceDiscovery {
                         @Override
                         public void onResolveFailed(NsdServiceInfo ignored, int errorCode) {
                             RESOLVING.remove(key);
+                            debugLog(discoveryContext,
+                                    "DNS-SD resolve failed with platform code " + errorCode + ".");
                         }
 
                         @Override
@@ -74,12 +80,20 @@ public final class DeviceDiscovery {
                                 return;
                             }
                             String fingerprint = advertisedFingerprint(resolved.getAttributes());
-                            InetAddress address = resolved.getHost();
-                            if (fingerprint.isEmpty() || !(address instanceof Inet4Address)
-                                    || !address.isSiteLocalAddress()
+                            InetAddress address = firstSiteLocalIpv4(resolved);
+                            int addressCount = Build.VERSION.SDK_INT >= 34
+                                    ? resolved.getHostAddresses().size() : (address == null ? 0 : 1);
+                            if (fingerprint.isEmpty() || address == null
                                     || resolved.getPort() < 1 || resolved.getPort() > 65535) {
+                                debugLog(discoveryContext, "DNS-SD candidate resolved but failed validation: "
+                                        + "addresses=" + addressCount
+                                        + ", fingerprint=" + !fingerprint.isEmpty()
+                                        + ", port=" + (resolved.getPort() >= 1 && resolved.getPort() <= 65535)
+                                        + ".");
                                 return;
                             }
+                            debugLog(discoveryContext, "DNS-SD candidate resolved with "
+                                    + addressCount + " address(es) and a valid trust hint.");
                             PairingBridge.reconnectDiscovered(discoveryContext,
                                     address.getHostAddress(), resolved.getPort(), fingerprint);
                         }
@@ -154,6 +168,27 @@ public final class DeviceDiscovery {
         }
         String fingerprint = new String(value, StandardCharsets.US_ASCII).toLowerCase(java.util.Locale.ROOT);
         return fingerprint.matches("[a-f0-9]{64}") ? fingerprint : "";
+    }
+
+    private static InetAddress firstSiteLocalIpv4(NsdServiceInfo service) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            List<InetAddress> addresses = service.getHostAddresses();
+            for (InetAddress address : addresses) {
+                if (address instanceof Inet4Address && address.isSiteLocalAddress()) {
+                    return address;
+                }
+            }
+            return null;
+        }
+        InetAddress address = service.getHost();
+        return address instanceof Inet4Address && address.isSiteLocalAddress() ? address : null;
+    }
+
+    private static void debugLog(Context context, String message) {
+        if (context != null && (context.getApplicationInfo().flags
+                & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            Log.i(TAG, message);
+        }
     }
 
     private static void acquireLegacyMulticastLock(Context context) {
