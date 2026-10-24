@@ -32,12 +32,16 @@ find_scrolling_label() {
       return 0
     fi
     if [[ "$direction" == "up" ]]; then
-      adb shell input swipe 205 300 205 720 450
+      # Keep the gesture in the scroll viewport's left gutter. The center of
+      # the screen can start on a button (for example Restore) after changing
+      # languages, which makes Android consume the drag instead of scrolling.
+      adb shell input swipe 20 300 20 720 650
     else
-      adb shell input swipe 205 720 205 300 450
+      adb shell input swipe 20 720 20 300 650
     fi
-    sleep 0.3
+    sleep 0.4
   done
+  adb exec-out screencap -p > "$artifacts/scroll-failure.png" 2>/dev/null || true
   printf 'Could not find visible Settings control %s.\n' "$label" >&2
   return 1
 }
