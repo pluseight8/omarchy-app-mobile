@@ -95,6 +95,10 @@
             <translation>Приложения</translation>
         </message>
         <message>
+            <source>Apps compact</source>
+            <translation>Прилож.</translation>
+        </message>
+        <message>
             <source>Backup JSON copied to clipboard.</source>
             <translation>JSON-копия раскладки скопирована в буфер обмена.</translation>
         </message>
@@ -239,6 +243,10 @@
             <translation>Устройства</translation>
         </message>
         <message>
+            <source>Devices compact</source>
+            <translation>Устр.</translation>
+        </message>
+        <message>
             <source>Dock</source>
             <translation>Док-панель</translation>
         </message>
@@ -329,6 +337,10 @@
         <message>
             <source>Home</source>
             <translation>Главный экран</translation>
+        </message>
+        <message>
+            <source>Home compact</source>
+            <translation>Домой</translation>
         </message>
         <message>
             <source>Home app</source>
@@ -799,6 +811,10 @@
             <translation>Настройки</translation>
         </message>
         <message>
+            <source>Settings compact</source>
+            <translation>Настр.</translation>
+        </message>
+        <message>
             <source>Show %1 on Home</source>
             <translation>Показывать %1 на главном экране</translation>
         </message>
@@ -809,6 +825,10 @@
         <message>
             <source>Style</source>
             <translation>Оформление</translation>
+        </message>
+        <message>
+            <source>Style compact</source>
+            <translation>Стиль</translation>
         </message>
         <message>
             <source>Swipe between Home pages</source>

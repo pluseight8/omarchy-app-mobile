@@ -94,12 +94,18 @@ class AndroidNavigationLayoutTests(unittest.TestCase):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
             encoding="utf-8"
         )
-        start = qml.rindex('model: [', 0, qml.index('label: qsTr("Home"), page: 0'))
+        start = qml.rindex(
+            'model: [', 0,
+            qml.index('label: qsTr("Home"), compactLabel: qsTr("Home compact")'),
+        )
         end = qml.index("        }\n    }\n}", start)
         navigation = qml[start:end]
         self.assertIn("Accessible.name: modelData.label", navigation)
         self.assertIn("Layout.minimumWidth: 0", navigation)
         self.assertIn("Layout.preferredWidth: 1", navigation)
+        self.assertIn('appTranslations.language === "ru"', navigation)
+        self.assertIn("modelData.compactLabel", navigation)
+        self.assertIn("font.pixelSize: Theme.fontSize(10)", navigation)
         self.assertIn("wrapMode: Text.Wrap", navigation)
 
 

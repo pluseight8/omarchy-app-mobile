@@ -789,18 +789,27 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void runConnectivityHeartbeatSmoke(Context context) throws Exception {
+        // The persistent event listener can refresh last_contact while this test
+        // deliberately ages it. Stop that worker for the boundary assertion,
+        // then resume event-driven updates for the rest of the pairing smoke.
+        PairingBridge.setRealtimeSync(context, false);
+        SystemClock.sleep(2_100L);
         android.content.SharedPreferences preferences = context.getSharedPreferences(
                 PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
-        long now = System.currentTimeMillis();
-        preferences.edit().putString("phase", "connected")
-                .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
-        if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
-            throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
-        }
+        try {
+            long now = System.currentTimeMillis();
+            preferences.edit().putString("phase", "connected")
+                    .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
+            if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+                throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
+            }
 
-        preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
-        if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
-            throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+            preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
+            if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+                throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+            }
+        } finally {
+            PairingBridge.setRealtimeSync(context, true);
         }
 
         reportStage("connectivity_heartbeat_waiting");

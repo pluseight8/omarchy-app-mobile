@@ -3149,11 +3149,11 @@ ApplicationWindow {
 
             Repeater {
                 model: [
-                    { label: qsTr("Home"), page: 0 },
-                    { label: qsTr("Apps"), page: 1 },
-                    { label: qsTr("Devices"), page: 2 },
-                    { label: qsTr("Style"), page: 3 },
-                    { label: qsTr("Settings"), page: 4 }
+                    { label: qsTr("Home"), compactLabel: qsTr("Home compact"), page: 0 },
+                    { label: qsTr("Apps"), compactLabel: qsTr("Apps compact"), page: 1 },
+                    { label: qsTr("Devices"), compactLabel: qsTr("Devices compact"), page: 2 },
+                    { label: qsTr("Style"), compactLabel: qsTr("Style compact"), page: 3 },
+                    { label: qsTr("Settings"), compactLabel: qsTr("Settings compact"), page: 4 }
                 ]
 
                 delegate: Button {
@@ -3161,7 +3161,8 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
                     Layout.preferredWidth: 1
-                    text: modelData.label
+                    text: appTranslations.language === "ru"
+                          ? modelData.compactLabel : modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
                     Accessible.name: modelData.label
@@ -3176,7 +3177,7 @@ ApplicationWindow {
                     contentItem: Text {
                         text: parent.text
                         color: parent.checked ? Theme.foreground : Theme.muted
-                        font.pixelSize: Theme.fontSize(11)
+                        font.pixelSize: Theme.fontSize(10)
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         wrapMode: Text.Wrap

@@ -56,6 +56,21 @@ class TranslationCatalogTests(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, smoke)
 
+    def test_russian_bottom_navigation_uses_compact_visual_labels_and_full_accessible_names(self):
+        qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
+            encoding="utf-8"
+        )
+        navigation = qml.rsplit('model: [', 1)[1].split("            }", 1)[0]
+        self.assertIn('appTranslations.language === "ru"', navigation)
+        self.assertIn("modelData.compactLabel", navigation)
+        self.assertIn("Accessible.name: modelData.label", navigation)
+        for label in (
+            "Apps compact", "Devices compact", "Home compact",
+            "Settings compact", "Style compact",
+        ):
+            with self.subTest(label=label):
+                self.assertIn(f'compactLabel: qsTr("{label}")', navigation)
+
     def test_rejects_unfinished_catalog_entries(self):
         with TemporaryDirectory() as directory:
             catalog = Path(directory) / "unfinished.ts"

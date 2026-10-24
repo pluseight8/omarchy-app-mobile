@@ -1622,7 +1622,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if revision > current_revision:
                 self._reply(400, {"error": "invalid_revision"})
                 return
-            self._reply(200, self.service_state.event_hub.wait_after(revision))
+            try:
+                self._reply(200, self.service_state.event_hub.wait_after(revision))
+            except OSError:
+                # A phone may cancel a pending long poll while reconnecting or
+                # stopping its event listener. The client will retry with the
+                # same revision, so a broken response socket is expected here.
+                return
             return
         if path.startswith("/v1/pair/status/"):
             request_id = path.removeprefix("/v1/pair/status/")

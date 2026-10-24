@@ -5,6 +5,7 @@ import os
 import select
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -177,6 +178,40 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
                 self.assertEqual(event["devices"], [])
                 break
         self.assertEqual(self.request("/v1/status", self.auth())[0], 401)
+
+    def test_abandoned_event_long_poll_does_not_log_disconnect_traceback(self):
+        self.start_helper()
+        status, features = self.request("/v1/features", self.auth())
+        self.assertEqual(status, 200)
+
+        context = ssl._create_unverified_context()
+        raw = socket.create_connection(("127.0.0.1", self.port), timeout=3)
+        client = context.wrap_socket(raw, server_hostname="localhost")
+        revision = features["eventRevision"]
+        request = (
+            f"GET /v1/events?since={revision} HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            f"X-OmaApp-Device: {DEVICE_ID}\r\n"
+            f"Authorization: Bearer {TOKEN}\r\n"
+            "Connection: keep-alive\r\n\r\n"
+        )
+        client.sendall(request.encode("ascii"))
+        time.sleep(0.1)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        client.close()
+
+        self.command({"action": "set_permission", "deviceId": DEVICE_ID,
+                      "permission": "system.read", "enabled": True})
+        event = self.read_event(timeout=3)
+        self.assertEqual(event.get("event"), "devices")
+        time.sleep(0.1)
+
+        process = self.process
+        self.command({"action": "stop"})
+        _, stderr = process.communicate(timeout=5)
+        self.process = None
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("BrokenPipeError", stderr)
 
 
 if __name__ == "__main__":
