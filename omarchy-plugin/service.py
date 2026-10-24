@@ -849,8 +849,6 @@ class MdnsAdvertiser:
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         try:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if hasattr(socket, "SO_REUSEPORT"):
-                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             listener.bind(("", MDNS_PORT))
             membership = socket.inet_aton(MDNS_GROUP) + socket.inet_aton("0.0.0.0")
             listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
