@@ -15,13 +15,13 @@
 
 ## Remaining work
 
-- [ ] Verify follow-up CI for OWL widget metadata retranslation and stale-message clearing. CI #195 already passed the earlier Android UI smoke on OpenGL and Vulkan, including haptic dispatch and preference persistence.
+- [ ] Verify follow-up CI after exposing translated OWL title/description strings to accessibility. CI #195 passed the earlier Android UI smoke on OpenGL and Vulkan, including haptic dispatch and preference persistence; #196's new exact-string check showed the visible metadata did not expose accessible names.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported Qt-to-native placement/lifecycle bridge is designed and tested. Current status is an overlay proof of concept, not a product feature.
 - [ ] Test installation, language switching, app discovery, QR pairing, theme sync, DNS-SD reconnect, clipboard/files, and idle behavior on a physical Pixel 10 with GrapheneOS.
 - [ ] Review the current PR, address CI/review feedback, and keep the APK signing key owner-managed. Do not publish a signed release until the existing release workflow succeeds with the permanent secrets.
 
 ## Local verification limits
 
-- `python3 -m unittest discover -s scripts/tests -q`: 102 tests pass. Russian catalog check validates 286 source strings; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass. CI #195 passed desktop, arm64, OpenGL, and Vulkan before the latest OWL localization changes.
+- `python3 -m unittest discover -s scripts/tests -q`: 102 tests pass. Russian catalog check validates 286 source strings; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass. CI #195 passed desktop, arm64, OpenGL, and Vulkan; #196 passed desktop/arm64 but both emulator smokes found the accessibility issue described above.
 - The workspace lacks JDK/Android SDK/NDK and the Qt ShaderTools development package, so no local Android APK, emulator, full desktop CMake build, or screenshot run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior are unverified.

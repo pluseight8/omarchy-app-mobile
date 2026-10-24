@@ -2918,6 +2918,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.name
+                                        Accessible.name: text
                                         color: Theme.foreground
                                         font.pixelSize: Theme.fontSize(13)
                                         font.weight: Font.DemiBold
@@ -2926,6 +2927,7 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.description
+                                        Accessible.name: text
                                         color: Theme.muted
                                         font.pixelSize: Theme.fontSize(10)
                                         wrapMode: Text.WordWrap

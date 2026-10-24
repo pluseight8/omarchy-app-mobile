@@ -28,6 +28,11 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn('window.widgetMessage = ""', connection)
         self.assertIn('window.layoutMessage = ""', connection)
 
+        widget_store = qml.split('model: owl.widgetStore', 1)[1].split(
+            'HyprlandSurface {', 1
+        )[0]
+        self.assertEqual(widget_store.count("Accessible.name: text"), 2)
+
         smoke = (Path(__file__).resolve().parents[2] / "scripts/ci/android_translation_smoke.sh").read_text(
             encoding="utf-8"
         )
