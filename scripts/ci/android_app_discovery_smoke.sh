@@ -7,7 +7,13 @@ fixture_package="app.omaapp.launcherfixture"
 mkdir -p "$artifacts"
 
 latest_launcher_count() {
-  adb logcat -d -v brief -t 2000 \
+  local logcat_output
+  if ! logcat_output="$(adb logcat -d -v brief -t 2000 2>/dev/null)"; then
+    # Package install/uninstall can briefly invalidate the emulator's ADB
+    # transport. Keep that transient failure inside the bounded wait below.
+    return 0
+  fi
+  printf '%s\n' "$logcat_output" \
     | sed -n 's/.*OmaApp: enumerated \([0-9][0-9]*\) launcher activities.*/\1/p' \
     | tail -n 1
 }
@@ -20,11 +26,16 @@ await_launcher_count() {
     if [[ "$observed" == "$expected" ]]; then
       return 0
     fi
+    if [[ -z "$observed" ]] && (( attempt % 5 == 0 )); then
+      adb reconnect offline >/dev/null 2>&1 || true
+    fi
     sleep 1
   done
   printf 'Timed out waiting for launcher activity count %s; observed %s.\n' \
     "$expected" "$(latest_launcher_count)" >&2
-  adb logcat -d -v threadtime -t 3000 > "$artifacts/launcher-discovery-failure.log"
+  adb logcat -d -v threadtime -t 3000 > "$artifacts/launcher-discovery-failure.log" 2>&1 \
+    || printf 'ADB logcat remained unavailable after bounded launcher refresh retries.\n' \
+      >> "$artifacts/launcher-discovery-failure.log"
   return 1
 }
 

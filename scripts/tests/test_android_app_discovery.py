@@ -1,4 +1,7 @@
 from pathlib import Path
+import os
+import subprocess
+import tempfile
 import unittest
 
 
@@ -77,6 +80,59 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
         self.assertIn('await_launcher_count "$((baseline + 1))"', smoke)
         self.assertIn('await_launcher_count "$baseline"', smoke)
         self.assertIn("android_app_discovery_smoke.sh", workflow)
+
+    def test_smoke_retries_after_transient_adb_logcat_disconnect(self):
+        smoke = ROOT / "scripts/ci/android_app_discovery_smoke.sh"
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory)
+            fake_bin = temporary / "bin"
+            state = temporary / "state"
+            artifacts = temporary / "artifacts"
+            fake_bin.mkdir()
+            state.mkdir()
+            fake_adb = fake_bin / "adb"
+            fake_adb.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+state="$OMAAPP_FAKE_ADB_STATE"
+case "${1:-}" in
+  shell) exit 0 ;;
+  install) touch "$state/installed"; printf 'Success\\n'; exit 0 ;;
+  uninstall) touch "$state/removed"; printf 'Success\\n'; exit 0 ;;
+  reconnect) exit 0 ;;
+  logcat)
+    if [[ -e "$state/installed" && ! -e "$state/removed" && ! -e "$state/disconnected" ]]; then
+      touch "$state/disconnected"
+      printf 'error: device offline\\n' >&2
+      exit 255
+    fi
+    if [[ -e "$state/installed" && ! -e "$state/removed" ]]; then count=11; else count=10; fi
+    printf 'OmaApp: enumerated %s launcher activities\\n' "$count"
+    ;;
+  *) printf 'unexpected adb arguments: %s\\n' "$*" >&2; exit 2 ;;
+esac
+""",
+                encoding="utf-8",
+            )
+            fake_adb.chmod(0o755)
+            fake_sleep = fake_bin / "sleep"
+            fake_sleep.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_sleep.chmod(0o755)
+            environment = os.environ.copy()
+            environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+            environment["OMAAPP_FAKE_ADB_STATE"] = str(state)
+
+            completed = subprocess.run(
+                ["bash", str(smoke), "fixture.apk", str(artifacts)],
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("OmaApp: enumerated 11 launcher activities", completed.stdout)
+        self.assertIn("OmaApp: enumerated 10 launcher activities", completed.stdout)
 
     def test_dns_sd_discovery_requires_saved_trust_and_pinned_tls_refresh(self):
         discovery = (ROOT / "app/android/src/app/omaapp/DeviceDiscovery.java").read_text(

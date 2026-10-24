@@ -389,16 +389,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 }
                 if (matches) {
                     AccessibilityNodeInfo parent = node.getParent();
-                    if (parent != null) {
-                        try {
-                            if (parent.isVisibleToUser() && parent.isClickable()
+                    try {
+                        for (int depth = 0; parent != null && depth < 8; depth++) {
+                            if (parent.isVisibleToUser() && parent.isEnabled() && parent.isClickable()
                                     && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                                 clicked = true;
                                 break;
                             }
-                        } finally {
+                            AccessibilityNodeInfo ancestor = parent.getParent();
+                            parent.recycle();
+                            parent = ancestor;
+                        }
+                    } finally {
+                        if (parent != null) {
                             parent.recycle();
                         }
+                    }
+                    if (clicked) {
+                        break;
                     }
                 }
                 for (int child = 0; child < node.getChildCount() && pending.size() < 512; child++) {
@@ -484,21 +492,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
-        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-        if (root == null) {
-            return false;
-        }
-        for (String label : new String[] {"Allow", "Add", "Add widget"}) {
-            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(label);
-            for (AccessibilityNodeInfo node : nodes) {
-                if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    return true;
-                }
-                AccessibilityNodeInfo parent = node.getParent();
-                if (parent != null && parent.isClickable()
-                        && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    return true;
-                }
+        for (String label : new String[] {"Allow", "Add", "Add widget", "Разрешить", "Добавить"}) {
+            if (clickAccessibleControl(automation, label)) {
+                return true;
             }
         }
         return false;

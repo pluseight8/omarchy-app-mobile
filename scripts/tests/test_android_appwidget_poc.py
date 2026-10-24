@@ -55,6 +55,21 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("nodeDescription.toString().contains(expected)", instrumentation)
         self.assertIn('reportAppWidgetStage("activity_starting")', instrumentation)
         self.assertIn('reportAppWidgetStage("touch_received")', instrumentation)
+        confirmation = instrumentation[
+            instrumentation.index("private static boolean clickWidgetBindConfirmation") :
+            instrumentation.index("private static void runOwlRuntimeSmoke")
+        ]
+        accessible_click = instrumentation[
+            instrumentation.index("private static boolean clickAccessibleControl") :
+            instrumentation.index("private static boolean awaitAccessibleControlClick")
+        ]
+        self.assertIn('"Allow", "Add", "Add widget", "Разрешить", "Добавить"', confirmation)
+        self.assertIn("clickAccessibleControl(automation, label)", confirmation)
+        self.assertIn("nodeDescription != null && label.contentEquals(nodeDescription)", accessible_click)
+        self.assertIn("parent.isEnabled() && parent.isClickable()", accessible_click)
+        self.assertIn("depth < 8", accessible_click)
+        self.assertIn("node.recycle()", accessible_click)
+        self.assertNotIn("findAccessibilityNodeInfosByText", confirmation)
         self.assertIn(
             "timeout 90s adb shell am instrument -w -e appWidgetHost true", workflow
         )
