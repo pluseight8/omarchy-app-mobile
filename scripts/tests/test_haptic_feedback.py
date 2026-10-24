@@ -66,8 +66,8 @@ class HapticFeedbackTests(unittest.TestCase):
         scrolling_helper = smoke.split("find_scrolling_label() {", 1)[1].split("\n}", 1)[0]
         self.assertIn("dump_ui > /dev/null", scrolling_helper)
         self.assertIn('printf \'%s\\n\' "$target"', scrolling_helper)
-        self.assertIn("adb shell input swipe 20 300 20 720 650", scrolling_helper)
-        self.assertIn("adb shell input swipe 20 720 20 300 650", scrolling_helper)
+        self.assertIn("adb shell input swipe 32 300 32 720 650", scrolling_helper)
+        self.assertIn("adb shell input swipe 32 720 32 300 650", scrolling_helper)
         self.assertIn('"$artifacts/scroll-failure.png"', scrolling_helper)
 
         haptics = smoke.split("# Haptics are explicitly opt-in", 1)[1]

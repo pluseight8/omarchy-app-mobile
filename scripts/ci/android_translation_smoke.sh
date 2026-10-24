@@ -32,12 +32,12 @@ find_scrolling_label() {
       return 0
     fi
     if [[ "$direction" == "up" ]]; then
-      # Keep the gesture in the scroll viewport's left gutter. The center of
-      # the screen can start on a button (for example Restore) after changing
-      # languages, which makes Android consume the drag instead of scrolling.
-      adb shell input swipe 20 300 20 720 650
+      # Keep the gesture in the Settings card's left gutter. The center of the
+      # screen can start on a button (for example Restore) after changing
+      # languages, while x=20 is outside the content margin and cannot scroll.
+      adb shell input swipe 32 300 32 720 650
     else
-      adb shell input swipe 20 720 20 300 650
+      adb shell input swipe 32 720 32 300 650
     fi
     sleep 0.4
   done
