@@ -18,15 +18,14 @@ tap_label() {
   adb shell input tap "$x" "$y"
 }
 
-tap_scrolling_label() {
+find_scrolling_label() {
   local label="$1"
-  local target x y
+  local target
   for attempt in {1..12}; do
     dump_ui
     if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
       "$artifacts/translation-ui.xml" "$label" 2>/dev/null)"; then
-      read -r x y <<< "$target"
-      adb shell input tap "$x" "$y"
+      printf '%s\n' "$target"
       return 0
     fi
     adb shell input swipe 205 720 205 300 450
@@ -34,6 +33,13 @@ tap_scrolling_label() {
   done
   printf 'Could not find visible Settings control %s.\n' "$label" >&2
   return 1
+}
+
+tap_scrolling_label() {
+  local target x y
+  target="$(find_scrolling_label "$1")"
+  read -r x y <<< "$target"
+  adb shell input tap "$x" "$y"
 }
 
 dump_ui
@@ -94,9 +100,7 @@ sleep 5
 dump_ui
 tap_label 'Settings'
 sleep 1
-tap_scrolling_label 'Enable haptic feedback'
-sleep 1
-dump_ui
+find_scrolling_label 'Enable haptic feedback' > /dev/null
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Enable haptic feedback'
 
