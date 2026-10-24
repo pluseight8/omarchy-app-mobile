@@ -168,9 +168,14 @@ Item {
 
     onWidthChanged: refresh()
     onHeightChanged: refresh()
+    onOwlModelChanged: refresh()
     onWidgetIdChanged: refresh()
     onThemeJsonChanged: refresh()
     onSourceTextChanged: refresh()
     onUseSourceTextChanged: refresh()
+    onVisibleChanged: {
+        if (visible)
+            refresh()
+    }
     Component.onCompleted: Qt.callLater(refresh)
 }

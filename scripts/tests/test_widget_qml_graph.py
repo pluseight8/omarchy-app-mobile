@@ -24,6 +24,13 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("nodeData === null", loader_qml)
         self.assertIn("widgetRoot === null", loader_qml)
 
+    def test_widget_refreshes_when_model_arrives_or_becomes_visible(self):
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("onOwlModelChanged: refresh()", widget_qml)
+        self.assertIn("onVisibleChanged:", widget_qml)
+        self.assertIn("if (visible)\n            refresh()", widget_qml)
+
     def test_owl_node_bindings_tolerate_loader_initialization(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 
