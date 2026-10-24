@@ -227,7 +227,7 @@ jobs:
           # Qt's Android accessibility bridge attaches its virtual QML tree
           # only while AccessibilityManager reports accessibility enabled.
           # Keep it enabled for shell-driven UIAutomator snapshots below.
-          accessibility_service='app.omaapp/app.omaapp.CiAccessibilityService'
+          accessibility_service='app.omaapp/.CiAccessibilityService'
           available_accessibility_services=''
           for attempt in {1..20}; do
             available_accessibility_services="$(adb shell cmd package query-services --components --user 0 -a android.accessibilityservice.AccessibilityService | tr -d '\r')"
@@ -241,6 +241,11 @@ jobs:
             adb shell dumpsys package app.omaapp
             exit 1
           fi
+          # Android 13+ blocks accessibility for restricted sideloads until the
+          # user trusts the app. This allowance is test-only: the service is
+          # injected into this throwaway emulator APK, never the product APK.
+          adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow
+          adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS
           adb shell settings put secure enabled_accessibility_services "$accessibility_service"
           adb shell settings put secure accessibility_enabled 1
           enabled_accessibility_services=''

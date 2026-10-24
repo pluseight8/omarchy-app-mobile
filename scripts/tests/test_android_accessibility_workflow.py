@@ -17,6 +17,9 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
         service_discovery = workflow.index(
             "adb shell cmd package query-services --components --user 0 -a android.accessibilityservice.AccessibilityService"
         )
+        enable_restricted_settings = workflow.index(
+            "adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow"
+        )
         enable_service = workflow.index(
             'adb shell settings put secure enabled_accessibility_services "$accessibility_service"'
         )
@@ -39,6 +42,8 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
         )
 
         self.assertLess(service_discovery, enable_service)
+        self.assertLess(service_discovery, enable_restricted_settings)
+        self.assertLess(enable_restricted_settings, enable_service)
         self.assertLess(enable_service, enable)
         self.assertLess(enable, verify_service)
         self.assertLess(verify_service, membership_check)
@@ -47,6 +52,12 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
         self.assertLess(verify, launch)
         self.assertIn("for attempt in {1..20}; do", workflow[enable_service:membership_check])
         self.assertIn("grep -Fq 'CiAccessibilityService'", workflow[service_discovery:enable_service])
+        self.assertIn("accessibility_service='app.omaapp/.CiAccessibilityService'", workflow)
+        self.assertIn(
+            "adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS",
+            workflow[enable_restricted_settings:enable_service],
+        )
+        self.assertIn("injected into this throwaway emulator APK", workflow)
         self.assertIn("adb shell dumpsys accessibility", workflow[membership_check:launch])
         self.assertNotIn(
             'test "$(adb shell settings get secure enabled_accessibility_services',
