@@ -80,10 +80,11 @@ Item {
         spacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Column" || node.nodeType === "" ? node.nodeChildren : []
+            model: node.nodeType === "Column" || node.nodeType === ""
+                   ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
                 Layout.fillWidth: node.nodeProps.fill === "width" ||
                                   node.scalar(node.nodeProps.weight, 0) > 0
@@ -98,10 +99,10 @@ Item {
         visible: node.nodeType === "Box"
 
         Repeater {
-            model: node.nodeType === "Box" ? node.nodeChildren : []
+            model: node.nodeType === "Box" ? node.nodeChildren.length : 0
             delegate: Item {
                 id: alignedChild
-                required property var modelData
+                required property int index
                 property string alignment: String(node.nodeProps.align || "center")
                 width: child.implicitWidth
                 height: child.implicitHeight
@@ -116,7 +117,7 @@ Item {
                 OwlNodeLoader {
                     id: child
                     anchors.fill: parent
-                    nodeData: alignedChild.modelData
+                    nodeData: node.nodeChildren[alignedChild.index]
                     widgetRoot: node.widgetRoot
                 }
             }
@@ -130,10 +131,10 @@ Item {
         visible: node.nodeType === "Row"
         spacing: node.scalar(node.nodeProps.gap, 4)
         Repeater {
-            model: node.nodeType === "Row" ? node.nodeChildren : []
+            model: node.nodeType === "Row" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
                 Layout.fillWidth: node.scalar(node.nodeProps.weight, 0) > 0
             }
@@ -148,12 +149,12 @@ Item {
         spacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Flow" ? node.nodeChildren : []
+            model: node.nodeType === "Flow" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
+                required property int index
                 width: implicitWidth
                 height: implicitHeight
-                nodeData: modelData
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
             }
         }
@@ -169,10 +170,10 @@ Item {
         columnSpacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Grid" ? node.nodeChildren : []
+            model: node.nodeType === "Grid" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
                 Layout.fillWidth: true
             }

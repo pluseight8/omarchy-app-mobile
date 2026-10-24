@@ -131,10 +131,10 @@ Item {
                 spacing: Theme.space(8)
 
                 Repeater {
-                    model: root.document.nodes || []
+                    model: Array.isArray(root.document.nodes) ? root.document.nodes.length : 0
                     delegate: OwlNodeLoader {
-                        required property var modelData
-                        nodeData: modelData
+                        required property int index
+                        nodeData: root.document.nodes[index]
                         widgetRoot: root
                         Layout.fillWidth: true
                     }

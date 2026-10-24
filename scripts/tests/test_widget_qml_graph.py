@@ -66,7 +66,18 @@ class WidgetQmlGraphTests(unittest.TestCase):
     def test_box_only_instantiates_its_own_children(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 
-        self.assertIn('model: node.nodeType === "Box" ? node.nodeChildren : []', node_qml)
+        self.assertIn('model: node.nodeType === "Box" ? node.nodeChildren.length : 0', node_qml)
+        self.assertIn("nodeData: node.nodeChildren[alignedChild.index]", node_qml)
+
+    def test_owl_repeaters_index_json_arrays_with_numeric_models(self):
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn("Array.isArray(root.document.nodes) ? root.document.nodes.length : 0", widget_qml)
+        self.assertIn("nodeData: root.document.nodes[index]", widget_qml)
+        self.assertEqual(node_qml.count("required property int index"), 5)
+        self.assertEqual(node_qml.count("nodeData: node.nodeChildren[index]"), 4)
+        self.assertNotIn("model: node.nodeChildren : []", node_qml)
 
     def test_home_media_controls_use_the_plugin_permission_key(self):
         main_qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
