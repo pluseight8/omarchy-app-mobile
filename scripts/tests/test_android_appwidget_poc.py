@@ -63,12 +63,26 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
             instrumentation.index("private static boolean clickAccessibleControl") :
             instrumentation.index("private static boolean awaitAccessibleControlClick")
         ]
-        self.assertIn('"Allow", "Add", "Add widget", "Разрешить", "Добавить"', confirmation)
+        self.assertIn(
+            '"Allow", "Add", "Add widget", "Разрешить", "Добавить"', confirmation
+        )
         self.assertIn("clickAccessibleControl(automation, label)", confirmation)
-        self.assertIn("nodeDescription != null && label.contentEquals(nodeDescription)", accessible_click)
-        self.assertIn("parent.isEnabled() && parent.isClickable()", accessible_click)
+        self.assertIn(
+            "nodeDescription != null && label.contentEquals(nodeDescription)",
+            accessible_click,
+        )
+        self.assertIn("parent.isEnabled()", accessible_click)
+        self.assertIn("parent.isClickable()", accessible_click)
         self.assertIn("depth < 8", accessible_click)
         self.assertIn("node.recycle()", accessible_click)
+        self.assertIn("automation.getWindows()", accessible_click)
+        self.assertIn("window.getRoot()", accessible_click)
+        self.assertIn(
+            "getUiAutomation(UiAutomation.FLAG_RETRIEVE_INTERACTIVE_WINDOWS)",
+            instrumentation,
+        )
+        self.assertIn("describeInteractiveWindows(automation)", instrumentation)
+        self.assertIn("summary.length() < 1800", instrumentation)
         self.assertNotIn("findAccessibilityNodeInfosByText", confirmation)
         self.assertIn(
             "timeout 90s adb shell am instrument -w -e appWidgetHost true", workflow

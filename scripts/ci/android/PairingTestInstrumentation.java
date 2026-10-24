@@ -17,6 +17,7 @@ import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,6 +30,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 import android.app.UiAutomation;
 import android.widget.FrameLayout;
 
@@ -195,7 +197,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not open Qt Quick Home for the Android widget overlay test.");
         }
         reportAppWidgetStage("activity_started");
-        UiAutomation automation = getUiAutomation();
+        UiAutomation automation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                ? getUiAutomation(UiAutomation.FLAG_RETRIEVE_INTERACTIVE_WINDOWS)
+                : getUiAutomation();
         if (!awaitAccessibleControlClick(automation, "Home", 8_000L)) {
             throw new IllegalStateException("The Home navigation control did not become clickable.");
         }
@@ -240,6 +244,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 }
             }
             if (manager.getAppWidgetInfo(widgetId) == null) {
+                Log.w(TAG, "AppWidget confirmation accessibility nodes: "
+                        + describeInteractiveWindows(automation));
                 throw new IllegalStateException("Android did not confirm AppWidget binding.");
             }
             reportAppWidgetStage("binding_confirmed");
@@ -368,12 +374,31 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static boolean clickAccessibleControl(UiAutomation automation, String label) {
-        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-        if (root == null) {
+        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
+        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
+        if (activeRoot != null) {
+            pending.add(activeRoot);
+        }
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows != null) {
+            try {
+                for (AccessibilityWindowInfo window : windows) {
+                    AccessibilityNodeInfo windowRoot = window.getRoot();
+                    if (windowRoot != null && pending.size() < 512) {
+                        pending.add(windowRoot);
+                    } else if (windowRoot != null) {
+                        windowRoot.recycle();
+                    }
+                }
+            } finally {
+                for (AccessibilityWindowInfo window : windows) {
+                    window.recycle();
+                }
+            }
+        }
+        if (pending.isEmpty()) {
             return false;
         }
-        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
-        pending.add(root);
         boolean clicked = false;
         try {
             for (int index = 0; index < pending.size() && index < 512; index++) {
@@ -382,7 +407,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 CharSequence nodeDescription = node.getContentDescription();
                 boolean matches = (nodeText != null && label.contentEquals(nodeText))
                         || (nodeDescription != null && label.contentEquals(nodeDescription));
-                if (matches && node.isVisibleToUser() && node.isClickable()
+                if (matches && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
                         && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     clicked = true;
                     break;
@@ -391,7 +416,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     AccessibilityNodeInfo parent = node.getParent();
                     try {
                         for (int depth = 0; parent != null && depth < 8; depth++) {
-                            if (parent.isVisibleToUser() && parent.isEnabled() && parent.isClickable()
+                            if (parent.isVisibleToUser() && parent.isEnabled()
+                                    && parent.isClickable()
                                     && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                                 clicked = true;
                                 break;
@@ -492,12 +518,67 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
-        for (String label : new String[] {"Allow", "Add", "Add widget", "Разрешить", "Добавить"}) {
+        for (String label : new String[] {
+                "Allow", "Add", "Add widget", "Разрешить", "Добавить"}) {
             if (clickAccessibleControl(automation, label)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static String describeInteractiveWindows(UiAutomation automation) {
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows == null || windows.isEmpty()) {
+            return "no interactive windows";
+        }
+        StringBuilder summary = new StringBuilder();
+        try {
+            for (AccessibilityWindowInfo window : windows) {
+                AccessibilityNodeInfo root = window.getRoot();
+                if (root == null) {
+                    continue;
+                }
+                ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
+                pending.add(root);
+                try {
+                    for (int index = 0; index < pending.size() && index < 512; index++) {
+                        AccessibilityNodeInfo node = pending.get(index);
+                        CharSequence text = node.getText();
+                        CharSequence description = node.getContentDescription();
+                        if ((text != null || description != null) && summary.length() < 1800) {
+                            summary.append(node.getClassName()).append(':');
+                            if (text != null) {
+                                summary.append(text);
+                            }
+                            if (description != null) {
+                                summary.append('|').append(description);
+                            }
+                            summary.append(';');
+                        }
+                        for (int child = 0; child < node.getChildCount()
+                                && pending.size() < 512; child++) {
+                            AccessibilityNodeInfo childNode = node.getChild(child);
+                            if (childNode != null) {
+                                pending.add(childNode);
+                            }
+                        }
+                    }
+                } finally {
+                    for (AccessibilityNodeInfo node : pending) {
+                        node.recycle();
+                    }
+                }
+                if (summary.length() >= 1800) {
+                    break;
+                }
+            }
+        } finally {
+            for (AccessibilityWindowInfo window : windows) {
+                window.recycle();
+            }
+        }
+        return summary.length() == 0 ? "no labeled nodes" : summary.toString();
     }
 
     private static void runOwlRuntimeSmoke() throws Exception {
