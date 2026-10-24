@@ -796,8 +796,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         SystemClock.sleep(2_100L);
         android.content.SharedPreferences preferences = context.getSharedPreferences(
                 PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
         try {
-            long now = System.currentTimeMillis();
             preferences.edit().putString("phase", "connected")
                     .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
             if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
