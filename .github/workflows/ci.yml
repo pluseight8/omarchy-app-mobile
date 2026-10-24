@@ -244,13 +244,15 @@ jobs:
           # Android 13+ blocks accessibility for restricted sideloads until the
           # user trusts the app. This allowance is test-only: the service is
           # injected into this throwaway emulator APK, never the product APK.
-          adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow
-          adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS
-          adb shell settings put secure enabled_accessibility_services "$accessibility_service"
-          adb shell settings put secure accessibility_enabled 1
           enabled_accessibility_services=''
           accessibility_enabled=''
           for attempt in {1..20}; do
+            # Package restriction initialization can clear the secure setting
+            # just after install. Reapply the test-only AppOp and setting until
+            # Android reports the service as enabled.
+            adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow
+            adb shell settings put secure enabled_accessibility_services "$accessibility_service"
+            adb shell settings put secure accessibility_enabled 1
             enabled_accessibility_services="$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')"
             accessibility_enabled="$(adb shell settings get secure accessibility_enabled | tr -d '\r')"
             if [[ ":${enabled_accessibility_services}:" == *":${accessibility_service}:"* \
@@ -259,6 +261,7 @@ jobs:
             fi
             sleep 0.5
           done
+          adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS
           printf 'Enabled accessibility services: %s\n' "$enabled_accessibility_services"
           printf 'Accessibility enabled: %s\n' "$accessibility_enabled"
           if [[ ":${enabled_accessibility_services}:" != *":${accessibility_service}:"* ]]; then

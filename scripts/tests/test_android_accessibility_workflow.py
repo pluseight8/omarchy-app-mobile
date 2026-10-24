@@ -20,6 +20,7 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
         enable_restricted_settings = workflow.index(
             "adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow"
         )
+        enable_loop = workflow.rfind("for attempt in {1..20}; do", 0, enable_restricted_settings)
         enable_service = workflow.index(
             'adb shell settings put secure enabled_accessibility_services "$accessibility_service"'
         )
@@ -40,6 +41,8 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
             "adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME",
             verify,
         )
+        enable_loop_end = workflow.index("done", enable_restricted_settings)
+        enable_loop_text = workflow[enable_loop:enable_loop_end]
 
         self.assertLess(service_discovery, enable_service)
         self.assertLess(service_discovery, enable_restricted_settings)
@@ -50,12 +53,17 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
         self.assertLess(membership_check, launch)
         self.assertLess(verify, membership_check)
         self.assertLess(verify, launch)
-        self.assertIn("for attempt in {1..20}; do", workflow[enable_service:membership_check])
+        self.assertIn("for attempt in {1..20}; do", enable_loop_text)
+        self.assertIn("ACCESS_RESTRICTED_SETTINGS allow", enable_loop_text)
+        self.assertIn("adb shell settings put secure enabled_accessibility_services", enable_loop_text)
+        self.assertIn("adb shell settings put secure accessibility_enabled 1", enable_loop_text)
+        self.assertIn("adb shell settings get secure enabled_accessibility_services", enable_loop_text)
+        self.assertIn("Package restriction initialization can clear the secure setting", enable_loop_text)
         self.assertIn("grep -Fq 'CiAccessibilityService'", workflow[service_discovery:enable_service])
         self.assertIn("accessibility_service='app.omaapp/.CiAccessibilityService'", workflow)
         self.assertIn(
             "adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS",
-            workflow[enable_restricted_settings:enable_service],
+            workflow[enable_loop_end:launch],
         )
         self.assertIn("injected into this throwaway emulator APK", workflow)
         self.assertIn("adb shell dumpsys accessibility", workflow[membership_check:launch])
