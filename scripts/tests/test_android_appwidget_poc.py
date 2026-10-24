@@ -50,6 +50,9 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn(
             'awaitAccessibleControlClick(automation, "Home", 8_000L)', instrumentation
         )
+        self.assertIn("accessibilityTreeContains(automation, text)", instrumentation)
+        self.assertIn("nodeText.toString().contains(expected)", instrumentation)
+        self.assertIn("nodeDescription.toString().contains(expected)", instrumentation)
         self.assertIn('reportAppWidgetStage("activity_starting")', instrumentation)
         self.assertIn('reportAppWidgetStage("touch_received")', instrumentation)
         self.assertIn(

@@ -443,13 +443,44 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private boolean awaitAccessibilityText(UiAutomation automation, String text, long timeoutMillis) {
         long deadline = SystemClock.uptimeMillis() + timeoutMillis;
         while (SystemClock.uptimeMillis() < deadline) {
-            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-            if (root != null && !root.findAccessibilityNodeInfosByText(text).isEmpty()) {
+            if (accessibilityTreeContains(automation, text)) {
                 return true;
             }
             SystemClock.sleep(250L);
         }
         return false;
+    }
+
+    private static boolean accessibilityTreeContains(UiAutomation automation, String expected) {
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root == null) {
+            return false;
+        }
+        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
+        pending.add(root);
+        try {
+            for (int index = 0; index < pending.size() && index < 512; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                if ((nodeText != null && nodeText.toString().contains(expected))
+                        || (nodeDescription != null
+                                && nodeDescription.toString().contains(expected))) {
+                    return true;
+                }
+                for (int child = 0; child < node.getChildCount() && pending.size() < 512; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+            return false;
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
     }
 
     private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
