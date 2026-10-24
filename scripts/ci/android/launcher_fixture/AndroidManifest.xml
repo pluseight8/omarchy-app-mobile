@@ -8,7 +8,11 @@
     <application android:label="OmaApp CI launcher fixture">
         <service
             android:name=".NsdFixtureService"
-            android:exported="true" />
+            android:exported="false" />
+        <activity
+            android:name=".NsdFixtureActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity
             android:name=".LauncherFixtureActivity"
             android:exported="true"

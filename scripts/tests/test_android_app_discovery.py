@@ -167,6 +167,9 @@ esac
         nsd_fixture = (
             ROOT / "scripts/ci/android/launcher_fixture/NsdFixtureService.java"
         ).read_text(encoding="utf-8")
+        nsd_activity = (
+            ROOT / "scripts/ci/android/launcher_fixture/NsdFixtureActivity.java"
+        ).read_text(encoding="utf-8")
         fixture_manifest = (
             ROOT / "scripts/ci/android/launcher_fixture/AndroidManifest.xml"
         ).read_text(encoding="utf-8")
@@ -182,7 +185,13 @@ esac
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn("startDnsSdFixture(context", instrumentation)
         self.assertIn("NsdFixtureService", instrumentation)
+        self.assertIn("NsdFixtureActivity", instrumentation)
+        self.assertIn("context.startActivity(fixtureActivity)", instrumentation)
+        self.assertIn("stopDnsSdFixture(context)", instrumentation)
         self.assertIn("manager.registerService(service, NsdManager.PROTOCOL_DNS_SD", nsd_fixture)
+        self.assertIn("startService(service)", nsd_activity)
+        self.assertIn("stopService(new Intent(this, NsdFixtureService.class))", nsd_activity)
+        self.assertIn('"app.omaapp", "app.omaapp.OmaAppActivity"', nsd_activity)
         self.assertIn("DeviceDiscovery.start(context)", instrumentation)
         self.assertIn('"0".repeat(64)', instrumentation)
         self.assertIn("An untrusted DNS-SD fingerprint changed the saved endpoint.", instrumentation)
@@ -191,7 +200,9 @@ esac
         self.assertIn('new InetSocketAddress("10.0.2.2", targetPort)', instrumentation)
         self.assertIn("service.setHostAddresses(Collections.singletonList(host))", nsd_fixture)
         self.assertIn('android:name=".NsdFixtureService"', fixture_manifest)
-        self.assertIn('android:exported="true"', fixture_manifest)
+        self.assertIn('android:name=".NsdFixtureActivity"', fixture_manifest)
+        self.assertIn('android:exported="false"', fixture_manifest)
+        self.assertIn('"$source_dir/NsdFixtureActivity.java"', fixture_build)
         self.assertIn('"$source_dir/NsdFixtureService.java"', fixture_build)
         self.assertIn('FIXTURE_QUERY =', prepare)
         install = workflow.index("adb install build/android-launcher-fixture/launcher-fixture.apk")

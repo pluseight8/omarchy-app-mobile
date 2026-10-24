@@ -400,7 +400,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (expectedUrl.equals(originalUrl)) {
                 throw new IllegalStateException("The DNS-SD fixture did not change the saved endpoint.");
             }
-            Intent untrusted = startDnsSdFixture(context,
+            startDnsSdFixture(context,
                     "OmaApp-ci-rogue-" + Long.toHexString(SystemClock.elapsedRealtime()),
                     host, discoveryPort, "0".repeat(64));
             try {
@@ -410,11 +410,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     throw new IllegalStateException("An untrusted DNS-SD fingerprint changed the saved endpoint.");
                 }
             } finally {
-                context.stopService(untrusted);
+                stopDnsSdFixture(context);
                 SystemClock.sleep(500L);
             }
 
-            Intent trusted = startDnsSdFixture(context,
+            startDnsSdFixture(context,
                     "OmaApp-" + fingerprint.substring(0, 12) + "-ci-" + discoveryPort,
                     host, discoveryPort, fingerprint);
             try {
@@ -434,26 +434,37 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 }
                 Log.i(TAG, "Android NSD resolved the fixture and accepted the endpoint after pinned TLS verification.");
             } finally {
-                context.stopService(trusted);
+                stopDnsSdFixture(context);
             }
         } finally {
             proxy.close();
         }
     }
 
-    private static Intent startDnsSdFixture(Context context, String name, InetAddress host,
-                                            int port, String fingerprint) {
-        Intent intent = new Intent().setComponent(new ComponentName(
+    private static void startDnsSdFixture(Context context, String name, InetAddress host,
+                                          int port, String fingerprint) {
+        Intent serviceIntent = new Intent().setComponent(new ComponentName(
                 "app.omaapp.launcherfixture",
                 "app.omaapp.launcherfixture.NsdFixtureService"));
-        intent.putExtra("serviceName", name);
-        intent.putExtra("serviceHost", host.getHostAddress());
-        intent.putExtra("servicePort", port);
-        intent.putExtra("fingerprint", fingerprint);
-        if (context.startService(intent) == null) {
-            throw new IllegalStateException("The CI DNS-SD service fixture could not be started.");
-        }
-        return intent;
+        serviceIntent.putExtra("serviceName", name);
+        serviceIntent.putExtra("serviceHost", host.getHostAddress());
+        serviceIntent.putExtra("servicePort", port);
+        serviceIntent.putExtra("fingerprint", fingerprint);
+        Intent fixtureActivity = new Intent().setComponent(new ComponentName(
+                "app.omaapp.launcherfixture",
+                "app.omaapp.launcherfixture.NsdFixtureActivity"));
+        fixtureActivity.putExtras(serviceIntent);
+        fixtureActivity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(fixtureActivity);
+    }
+
+    private static void stopDnsSdFixture(Context context) {
+        Intent fixtureActivity = new Intent().setComponent(new ComponentName(
+                "app.omaapp.launcherfixture",
+                "app.omaapp.launcherfixture.NsdFixtureActivity"));
+        fixtureActivity.setAction("app.omaapp.launcherfixture.STOP_NSD_FIXTURE");
+        fixtureActivity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(fixtureActivity);
     }
 
     /** Transparent TLS tunnel from an emulator-local NSD endpoint to the CI plugin fixture. */
