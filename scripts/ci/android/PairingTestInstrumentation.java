@@ -175,20 +175,32 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     /** Exercises Android's real widget binding, RemoteViews, host view, and QtActivity overlay. */
     private void runAppWidgetHostPoc(Context context) throws Exception {
+        reportAppWidgetStage("activity_starting");
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
         if (launch == null) {
             throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
         }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        Activity activity = startActivitySync(launch);
+        Instrumentation.ActivityMonitor monitor = new Instrumentation.ActivityMonitor(
+                launch.getComponent().getClassName(), null, false);
+        addMonitor(monitor);
+        Activity activity;
+        try {
+            context.startActivity(launch);
+            activity = monitor.waitForActivityWithTimeout(15_000L);
+        } finally {
+            removeMonitor(monitor);
+        }
         if (activity == null || activity.isFinishing()) {
             throw new IllegalStateException("Could not open Qt Quick Home for the Android widget overlay test.");
         }
+        reportAppWidgetStage("activity_started");
         UiAutomation automation = getUiAutomation();
         clickAccessibleControl(automation, "Home");
         if (!awaitAccessibilityText(automation, "Home page 1 of", 8_000L)) {
             throw new IllegalStateException("Could not select the existing Qt Quick Home page.");
         }
+        reportAppWidgetStage("home_selected");
 
         AppWidgetManager manager = AppWidgetManager.getInstance(activity);
         AppWidgetProviderInfo provider = null;
@@ -211,6 +223,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         AtomicReference<AppWidgetHostView> hostViewResult = new AtomicReference<>();
         AtomicReference<String> viewError = new AtomicReference<>("");
         try {
+            reportAppWidgetStage("binding_started");
             if (!manager.bindAppWidgetIdIfAllowed(widgetId, provider.provider)) {
                 Intent bind = new Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
                         .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
@@ -226,6 +239,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (manager.getAppWidgetInfo(widgetId) == null) {
                 throw new IllegalStateException("Android did not confirm AppWidget binding.");
             }
+            reportAppWidgetStage("binding_confirmed");
 
             activity.runOnUiThread(() -> {
                 try {
@@ -247,11 +261,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 throw new IllegalStateException("Could not attach AppWidgetHostView above Qt Quick: "
                         + viewError.get());
             }
+            reportAppWidgetStage("view_attached");
 
             if (!awaitAccessibilityText(automation, "CI live Android widget", 10_000L)) {
                 throw new IllegalStateException("The real RemoteViews content was not visible over Qt Quick Home.");
             }
+            reportAppWidgetStage("content_visible");
             saveAppWidgetScreenshot(activity, automation);
+            reportAppWidgetStage("screenshot_saved");
 
             AppWidgetHostView widgetView = hostViewResult.get();
             Rect buttonBounds = new Rect();
@@ -292,9 +309,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
             } finally {
                 up.recycle();
             }
+            reportAppWidgetStage("touch_sent");
             if (!awaitAccessibilityText(automation, "Widget tap received by Android provider", 10_000L)) {
                 throw new IllegalStateException("A touch on AppWidgetHostView did not reach its real provider.");
             }
+            reportAppWidgetStage("touch_received");
             Log.i(TAG, "Real AppWidgetHostView RemoteViews overlay and provider click passed.");
         } finally {
             AppWidgetHostView widgetView = hostViewResult.get();
@@ -309,6 +328,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
             host.stopListening();
             host.deleteAppWidgetId(widgetId);
         }
+    }
+
+    private void reportAppWidgetStage(String stage) {
+        Bundle status = new Bundle();
+        status.putString("stage", "app_widget_" + stage);
+        sendStatus(2, status);
     }
 
     private static int dp(Context context, int value) {

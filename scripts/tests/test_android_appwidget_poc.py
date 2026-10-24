@@ -38,6 +38,14 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("The CI AppWidget provider must not be part of the product manifest.", prepare)
         self.assertNotIn("CiAppWidgetProvider", manifest)
         self.assertIn("appWidgetHost true", workflow)
+        self.assertIn("new Instrumentation.ActivityMonitor(", instrumentation)
+        self.assertIn("waitForActivityWithTimeout(15_000L)", instrumentation)
+        self.assertNotIn("startActivitySync(", instrumentation)
+        self.assertIn('reportAppWidgetStage("activity_starting")', instrumentation)
+        self.assertIn('reportAppWidgetStage("touch_received")', instrumentation)
+        self.assertIn(
+            "timeout 90s adb shell am instrument -w -e appWidgetHost true", workflow
+        )
         self.assertNotIn("CiAppWidgetProvider", release)
 
 

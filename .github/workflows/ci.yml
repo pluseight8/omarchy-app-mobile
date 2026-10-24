@@ -418,7 +418,7 @@ jobs:
             --baselines tests/visual_baselines/android-paired --screens style \
             --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
             --require-gradient --gradient-angle 37
-          widget_output="$(adb shell am instrument -w -e appWidgetHost true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+          widget_output="$(timeout 90s adb shell am instrument -w -e appWidgetHost true app.omaapp/app.omaapp.PairingTestInstrumentation)"
           printf '%s\n' "$widget_output"
           grep -F 'INSTRUMENTATION_STATUS: stage=app_widget_host_overlay_and_touch_passed' <<< "$widget_output"
           adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-host-poc.png \
