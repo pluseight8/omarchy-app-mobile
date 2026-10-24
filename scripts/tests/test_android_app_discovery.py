@@ -20,6 +20,29 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
         )
         self.assertLess(refresh_pid, renderer_log)
 
+    def test_rhi_backend_is_asserted_from_initial_startup_log(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        startup_log = workflow.index(
+            'adb logcat -d -v threadtime -t 10000 '
+            '> "$smoke_artifacts/startup-logcat.txt"'
+        )
+        backend_assertion = workflow.index(
+            "grep -F 'OmaApp initialized Qt Quick graphics API: "
+            "${{ matrix.rhi_backend }}'"
+        )
+        translation_smoke = workflow.index(
+            'bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"'
+        )
+        self.assertLess(startup_log, backend_assertion)
+        self.assertLess(backend_assertion, translation_smoke)
+        self.assertIn(
+            '"$smoke_artifacts/startup-logcat.txt"',
+            workflow[backend_assertion : backend_assertion + 200],
+        )
+        self.assertNotIn(
+            "OmaApp initialized Qt Quick graphics API:", workflow[translation_smoke:]
+        )
+
     def test_package_lifecycle_refresh_is_scoped_and_coalesced(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
             encoding="utf-8"
