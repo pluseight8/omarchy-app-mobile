@@ -10,6 +10,8 @@ SOURCE = ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
 DESTINATION = ROOT / "app/android/src/app/omaapp/PairingTestInstrumentation.java"
 WIDGET_PROVIDER_SOURCE = ROOT / "scripts/ci/android/CiAppWidgetProvider.java"
 WIDGET_PROVIDER_DESTINATION = ROOT / "app/android/src/app/omaapp/CiAppWidgetProvider.java"
+ACCESSIBILITY_SERVICE_SOURCE = ROOT / "scripts/ci/android/CiAccessibilityService.java"
+ACCESSIBILITY_SERVICE_DESTINATION = ROOT / "app/android/src/app/omaapp/CiAccessibilityService.java"
 WIDGET_RESOURCES = ROOT / "scripts/ci/android/res"
 WIDGET_RESOURCE_DESTINATION = ROOT / "app/android/res"
 MANIFEST = ROOT / "app/android/AndroidManifest.xml"
@@ -35,6 +37,20 @@ WIDGET_PROVIDER = '''    <receiver
     </receiver>
 
 '''
+ACCESSIBILITY_SERVICE = '''        <service
+            android:name="app.omaapp.CiAccessibilityService"
+            android:exported="true"
+            android:label="OmaApp CI accessibility test service"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/omaapp_ci_accessibility_service" />
+        </service>
+
+'''
 
 
 def main() -> None:
@@ -43,14 +59,21 @@ def main() -> None:
         raise SystemExit("The CI instrumentation runner must not be part of the product manifest.")
     if "app.omaapp.CiAppWidgetProvider" in manifest:
         raise SystemExit("The CI AppWidget provider must not be part of the product manifest.")
+    if "app.omaapp.CiAccessibilityService" in manifest:
+        raise SystemExit("The CI accessibility service must not be part of the product manifest.")
     if MARKER not in manifest:
         raise SystemExit("Could not find the Android manifest insertion point.")
     if APPLICATION_MARKER not in manifest:
         raise SystemExit("Could not find the Android application component insertion point.")
     shutil.copyfile(SOURCE, DESTINATION)
     shutil.copyfile(WIDGET_PROVIDER_SOURCE, WIDGET_PROVIDER_DESTINATION)
+    shutil.copyfile(ACCESSIBILITY_SERVICE_SOURCE, ACCESSIBILITY_SERVICE_DESTINATION)
     shutil.copytree(WIDGET_RESOURCES, WIDGET_RESOURCE_DESTINATION, dirs_exist_ok=True)
-    manifest = manifest.replace(APPLICATION_MARKER, WIDGET_PROVIDER + APPLICATION_MARKER, 1)
+    manifest = manifest.replace(
+        APPLICATION_MARKER,
+        WIDGET_PROVIDER + ACCESSIBILITY_SERVICE + APPLICATION_MARKER,
+        1,
+    )
     MANIFEST.write_text(
         manifest.replace(MARKER, INSTRUMENTATION + MARKER, 1),
         encoding="utf-8",
