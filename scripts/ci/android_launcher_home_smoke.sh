@@ -140,12 +140,36 @@ python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml"
 pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml")"
 printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
-read -r pin_x pin_y <<< "$pin_target"
-printf 'Long-pressing launcher app at %s,%s\n' "$pin_x" "$pin_y"
-adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
-sleep 2
-adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
-adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+pin_succeeded=0
+for attempt in 1 2 3; do
+  if (( attempt > 1 )); then
+    python3 scripts/ci/android_accessibility_dump.py \
+      /sdcard/omaapp-before-pin-retry.xml "$smoke_artifacts/window-before-pin.xml"
+    select_apps_when_needed "$smoke_artifacts/window-before-pin.xml" \
+      /sdcard/omaapp-before-pin-retry.xml
+    pin_target="$(python3 scripts/ci/android_launcher_tap_target.py \
+      "$smoke_artifacts/window-before-pin.xml")"
+    printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
+  fi
+  read -r pin_x pin_y <<< "$pin_target"
+  printf 'Long-pressing launcher app at %s,%s (attempt %s/3)\n' \
+    "$pin_x" "$pin_y" "$attempt"
+  adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
+  sleep 2
+  adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
+  adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+  pinned_count="$(grep -E 'OmaApp: pinned app count [0-9]+' \
+    "$smoke_artifacts/pinned-logcat.txt" | tail -n 1 \
+    | sed -E 's/.*count ([0-9]+)$/\1/' || true)"
+  if [[ "${pinned_count:-0}" -gt 0 ]]; then
+    pin_succeeded=1
+    break
+  fi
+done
+if (( pin_succeeded == 0 )); then
+  printf 'Long-press did not pin an app after 3 attempts.\n' >&2
+  exit 1
+fi
 grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
 shortcut_output="$(adb shell am instrument -w -e launcherShortcuts true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$shortcut_output"
