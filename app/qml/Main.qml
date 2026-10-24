@@ -3080,6 +3080,8 @@ ApplicationWindow {
                 delegate: Button {
                     required property var modelData
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     text: modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
@@ -3095,9 +3097,10 @@ ApplicationWindow {
                     contentItem: Text {
                         text: parent.text
                         color: parent.checked ? Theme.foreground : Theme.muted
-                        font.pixelSize: Theme.fontSize(13)
+                        font.pixelSize: Theme.fontSize(11)
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.Wrap
                     }
                 }
             }

@@ -49,6 +49,10 @@ python3 scripts/ci/android_accessibility_assert_visible.py \
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Выберите язык приложения. Системная настройка следует языку телефона; английский и русский доступны без подключения к сети.'
 adb exec-out screencap -p > "$artifacts/settings-russian.png"
+cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-russian.xml"
+python3 scripts/ci/check_android_navigation_layout.py \
+  "$artifacts/settings-russian.png" "$artifacts/translation-ui-russian.xml" \
+  'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Настройки'
 native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$native_translation_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
@@ -68,6 +72,10 @@ dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Language'
 adb exec-out screencap -p > "$artifacts/settings-english-after-switch.png"
+cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-english.xml"
+python3 scripts/ci/check_android_navigation_layout.py \
+  "$artifacts/settings-english-after-switch.png" "$artifacts/translation-ui-english.xml" \
+  Home Apps Devices Style Settings
 
 # Returning from Android Settings invokes the Activity lifecycle callback and
 # refreshes the real PackageManager launcher list without a timer poll.
