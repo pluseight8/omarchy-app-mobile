@@ -61,6 +61,7 @@ class HapticFeedbackTests(unittest.TestCase):
         self.assertIn("am start -W -n app.omaapp/app.omaapp.OmaAppActivity", restart)
         self.assertIn("'Русский'", smoke)
         self.assertIn("'English'", smoke)
+        self.assertIn("tap_scrolling_label 'Английский' down", smoke)
 
         scrolling_helper = smoke.split("find_scrolling_label() {", 1)[1].split("\n}", 1)[0]
         self.assertIn("dump_ui > /dev/null", scrolling_helper)

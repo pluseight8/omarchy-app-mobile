@@ -128,7 +128,7 @@ ensure_settings_tab 'Настройки'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Русский'
 sleep 1
-tap_scrolling_label 'Английский' up
+tap_scrolling_label 'Английский' down
 sleep 2
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \

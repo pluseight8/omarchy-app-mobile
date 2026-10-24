@@ -24,6 +24,11 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("nodeData === null", loader_qml)
         self.assertIn("widgetRoot === null", loader_qml)
 
+    def test_android_smoke_fails_on_owl_null_binding_errors(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn(r"OwlNode\.qml:.*TypeError:", workflow)
+
     def test_box_only_instantiates_its_own_children(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 
