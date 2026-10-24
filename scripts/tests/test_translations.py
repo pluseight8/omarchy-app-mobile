@@ -19,6 +19,16 @@ class TranslationCatalogTests(unittest.TestCase):
         language_controls = qml[start:end]
         self.assertEqual(language_controls.count("Accessible.name: text"), 2)
 
+    def test_language_choice_surface_does_not_self_bind_gradient_end(self):
+        qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("borderEnd: borderStart", qml)
+        self.assertIn(
+            "borderEnd: parent.checked ? Theme.accent : Theme.outline",
+            qml,
+        )
+
     def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
             encoding="utf-8"

@@ -3116,7 +3116,7 @@ ApplicationWindow {
                                     background: HyprlandSurface {
                                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
                                         borderStart: parent.checked ? Theme.accent : Theme.outline
-                                        borderEnd: borderStart
+                                        borderEnd: parent.checked ? Theme.accent : Theme.outline
                                         radius: Theme.defaultCornerRadius
                                         borderWidth: 1
                                     }
