@@ -44,6 +44,14 @@ Item {
         } catch (error) {
             rendered = { error: qsTr("OWL preview could not be rendered.") }
         }
+        if (omaappQmlDiagnostics) {
+            const renderedNodes = rendered.nodes
+            console.warn("OmaApp OWL refresh:", root.widgetId,
+                         "active", root.active,
+                         "size", root.width, "x", root.height,
+                         "nodes", Array.isArray(renderedNodes) ? renderedNodes.length : -1,
+                         "error", Boolean(rendered.error))
+        }
         document = rendered
         renderError = rendered.error || ""
     }

@@ -33,6 +33,18 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("if (active)\n            refresh()", widget_qml)
         self.assertIn("active: window.selectedPage === 0", main_qml)
 
+    def test_owl_runtime_diagnostics_are_test_build_only_and_omit_widget_source(self):
+        main_cpp = (ROOT / "app/native/main.cpp").read_text(encoding="utf-8")
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        loader_qml = (ROOT / "app/qml/OwlNodeLoader.qml").read_text(encoding="utf-8")
+
+        self.assertIn('setContextProperty(QStringLiteral("omaappQmlDiagnostics"), true)', main_cpp)
+        self.assertIn('setContextProperty(QStringLiteral("omaappQmlDiagnostics"), false)', main_cpp)
+        self.assertIn('"nodes", Array.isArray(renderedNodes) ? renderedNodes.length : -1', widget_qml)
+        self.assertIn('"error", Boolean(rendered.error)', widget_qml)
+        self.assertNotIn('rendered.source', widget_qml)
+        self.assertIn('console.warn("OmaApp OWL loader:", phase, type', loader_qml)
+
     def test_owl_node_bindings_tolerate_loader_initialization(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 

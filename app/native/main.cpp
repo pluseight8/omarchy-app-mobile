@@ -144,7 +144,10 @@ int main(int argc, char *argv[])
     TranslationManager translations(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("appTranslations"), &translations);
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    engine.rootContext()->setContextProperty(QStringLiteral("omaappQmlDiagnostics"), true);
     qWarning().noquote() << "OmaApp startup: loading QML module";
+#else
+    engine.rootContext()->setContextProperty(QStringLiteral("omaappQmlDiagnostics"), false);
 #endif
     QObject::connect(
         &engine,

@@ -15,7 +15,7 @@
 
 ## Remaining work and validation limits
 
-- [ ] Pass CI after the OWL refresh change: desktop, arm64 APK, OpenGL, Vulkan, OWL image rendering, loader regression, and confirmed process-death checks.
+- [ ] Pass CI after the OWL render-state diagnostics: desktop, arm64 APK, OpenGL, Vulkan, rendered OWL assets, loader regression, and confirmed process-death checks.
 - [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
 - [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
@@ -23,9 +23,9 @@
 
 ## Local verification
 
-- `python3 -m unittest discover -s scripts/tests -q`: 113 tests pass.
+- `python3 -m unittest discover -s scripts/tests -q`: 114 tests pass.
 - `python3 scripts/ci/check_translations.py`: 291 Russian source strings validated.
 - Changed OWL QML passes `qmllint`; shell syntax checks and `git diff --check` pass.
-- CI [#220](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40130375435) passed desktop and arm64 builds but both Android graphics backends found the installed Canvas sampler blank. CI [#221](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131445004) is verifying the refresh change on both backends.
+- CI [#220](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40130375435) passed desktop and arm64 builds but both Android graphics backends found the installed Canvas sampler blank. CI [#221](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131445004) reproduced the blank on both backends after a model-only refresh change; CI [#222](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131911857) reproduced it again after adding an explicit Home active-state refresh. CI [#223](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml) will include render-state diagnostics on both backends.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
