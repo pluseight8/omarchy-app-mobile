@@ -45,6 +45,13 @@ class HapticFeedbackTests(unittest.TestCase):
         self.assertIn('settings-haptics-enabled.png', smoke)
         self.assertIn("OmaApp: Android haptic feedback request dispatched", smoke)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
+        self.assertIn("ensure_settings_page 'Язык' 'Настройки'", smoke)
+        self.assertIn("ensure_settings_page 'Language' 'Settings'", smoke)
+        ensure_settings = smoke.split("ensure_settings_page() {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("android_accessibility_assert_checked.py", ensure_settings)
+        self.assertIn("for attempt in {1..12}", ensure_settings)
+        self.assertIn("adb shell input swipe", ensure_settings)
+        self.assertIn("python3 scripts/ci/android_accessibility_assert_visible.py", smoke)
 
         scrolling_helper = smoke.split("find_scrolling_label() {", 1)[1].split("\n}", 1)[0]
         self.assertIn("dump_ui > /dev/null", scrolling_helper)

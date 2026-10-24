@@ -47,6 +47,7 @@ import java.net.InetAddress;
 import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
+import java.net.URI;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
@@ -421,11 +422,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 long deadline = SystemClock.uptimeMillis() + 25_000L;
                 JSONObject updated = PairingStore.readCredential(context);
                 while (SystemClock.uptimeMillis() < deadline
-                        && (updated == null || !expectedUrl.equals(updated.optString("serverUrl", "")))) {
+                        && (updated == null
+                        || originalUrl.equals(updated.optString("serverUrl", ""))
+                        || !isPrivateTlsEndpoint(updated.optString("serverUrl", ""), discoveryPort))) {
                     SystemClock.sleep(200L);
                     updated = PairingStore.readCredential(context);
                 }
-                if (updated == null || !expectedUrl.equals(updated.optString("serverUrl", ""))) {
+                if (updated == null
+                        || originalUrl.equals(updated.optString("serverUrl", ""))
+                        || !isPrivateTlsEndpoint(updated.optString("serverUrl", ""), discoveryPort)) {
                     throw new IllegalStateException("Android NSD did not reconnect to the TLS-pinned endpoint.");
                 }
                 if (!token.equals(updated.optString("token", ""))
@@ -438,6 +443,22 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         } finally {
             proxy.close();
+        }
+    }
+
+    private static boolean isPrivateTlsEndpoint(String value, int expectedPort) {
+        try {
+            URI endpoint = URI.create(value);
+            if (!"https".equalsIgnoreCase(endpoint.getScheme()) || endpoint.getUserInfo() != null
+                    || endpoint.getQuery() != null || endpoint.getFragment() != null
+                    || (endpoint.getPath() != null && !endpoint.getPath().isEmpty())
+                    || endpoint.getPort() != expectedPort || endpoint.getHost() == null) {
+                return false;
+            }
+            InetAddress address = InetAddress.getByName(endpoint.getHost());
+            return address instanceof Inet4Address && address.isSiteLocalAddress();
+        } catch (IllegalArgumentException | IOException error) {
+            return false;
         }
     }
 

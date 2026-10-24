@@ -49,6 +49,32 @@ tap_scrolling_label() {
   adb shell input tap "$x" "$y"
 }
 
+ensure_settings_page() {
+  local page_marker="$1"
+  local tab_label="$2"
+  if python3 scripts/ci/android_accessibility_assert_visible.py \
+    "$artifacts/translation-ui.xml" "$page_marker" >/dev/null 2>&1; then
+    return
+  fi
+  if ! python3 scripts/ci/android_accessibility_assert_checked.py \
+    "$artifacts/translation-ui.xml" "$tab_label" >/dev/null 2>&1; then
+    tap_label "$tab_label"
+    sleep 1
+  fi
+  for attempt in {1..12}; do
+    dump_ui
+    if python3 scripts/ci/android_accessibility_assert_visible.py \
+      "$artifacts/translation-ui.xml" "$page_marker" >/dev/null 2>&1; then
+      return
+    fi
+    # The Language setting can be above the saved scroll position after restart.
+    adb shell input swipe 205 300 205 720 450
+    sleep 0.3
+  done
+  printf 'Could not find Settings page content %s.\n' "$page_marker" >&2
+  return 1
+}
+
 dump_ui
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Apps'
@@ -93,7 +119,7 @@ adb shell am force-stop app.omaapp
 adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
 sleep 5
 dump_ui
-tap_label 'Настройки'
+ensure_settings_page 'Язык' 'Настройки'
 sleep 1
 tap_scrolling_label 'Английский'
 sleep 2
@@ -122,7 +148,7 @@ adb shell am force-stop app.omaapp
 adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
 sleep 5
 dump_ui
-tap_label 'Settings'
+ensure_settings_page 'Language' 'Settings'
 sleep 1
 find_scrolling_label 'Enable haptic feedback' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_checked.py \
