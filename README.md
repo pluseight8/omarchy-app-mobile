@@ -24,19 +24,19 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 - This development iteration adds localization, automatic launcher-app refresh, an Android widget-host proof, secure DNS-SD rediscovery, opt-in haptic feedback, and phone-width Russian OWL/navigation polish. Check the current build and emulator results in [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). The CI APK is a test artifact; this iteration does not claim a signed release.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-This working copy passes 105 Python tests and validates 291 Russian UI strings. GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64, OpenGL, and Vulkan. Emulator smoke coverage includes launcher transitions, localization, OWL editing and backup, pairing/reconnect, permissions, and revocation; both GPU backends produced screenshots. Earlier work installed and restarted the plugin in a real Omarchy 4.0.4 / Quickshell 0.3.1 session, but Android DNS-SD against a live Omarchy host has not been exercised end to end. The full build is unavailable locally because Qt ShaderTools and the Android SDK/JDK are missing. No Pixel device is attached, so Pixel 10 / GrapheneOS behavior remains unverified.
+This working copy passes 105 Python tests and validates 291 Russian UI strings. GitHub Actions [run #201](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40113154650) passed desktop, arm64, OpenGL, and Vulkan. Emulator smoke coverage includes launcher transitions, localization, OWL editing and backup, pairing/reconnect, permissions, and revocation; both GPU backends produced screenshots. Earlier work installed and restarted the plugin in a real Omarchy 4.0.4 / Quickshell 0.3.1 session, but Android DNS-SD against a live Omarchy host has not been exercised end to end. The full build is unavailable locally because Qt ShaderTools and the Android SDK/JDK are missing. No Pixel device is attached, so Pixel 10 / GrapheneOS behavior remains unverified.
 
 ### Emulator screenshots
 
-The Russian Settings screen was captured at 412 × 892 in each emulator graphics backend during CI run #200.
+The Russian Settings screen was captured at 412 × 892 in each emulator graphics backend during CI run #201.
 
-![Russian Settings on OpenGL](docs/screenshots/ci-200-opengl-settings-ru.png)
+![Russian Settings on OpenGL](docs/screenshots/ci-201-opengl-settings-ru.png)
 
-![Russian Settings on Vulkan](docs/screenshots/ci-200-vulkan-settings-ru.png)
+![Russian Settings on Vulkan](docs/screenshots/ci-201-vulkan-settings-ru.png)
 
-![Home on OpenGL](docs/screenshots/ci-200-opengl-home.png)
+![Home on OpenGL](docs/screenshots/ci-201-opengl-home.png)
 
-![Home on Vulkan](docs/screenshots/ci-200-vulkan-home.png)
+![Home on Vulkan](docs/screenshots/ci-201-vulkan-home.png)
 
 ## Build the desktop preview
 

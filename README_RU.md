@@ -24,19 +24,19 @@ OmaApp — Android-лаунчер и прямой компаньон Omarchy н�
 - Текущая итерация добавляет локализацию, автоматическое обновление списка приложений, тест AppWidgetHost, безопасное DNS-SD-переподключение, настраиваемый виброотклик и доработку русского OWL-интерфейса и навигации для узких экранов. Текущий статус сборок — в [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). APK из CI предназначен для тестов; подписанный релиз этой итерацией не заявляется.
 - В Android-приложение не включён Quickshell: приложение использует Qt Quick, а плагин Omarchy исполняется внутри Quickshell.
 
-Текущая рабочая копия проходит 105 Python-тестов и проверку 291 русской строки. GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) успешно проверил desktop, arm64, OpenGL и Vulkan. Эмулятор проверяет переходы лаунчера, локализацию, OWL и backup, сопряжение и переподключение, разрешения и их отзыв; оба графических backend сохранили скриншоты. В предыдущей работе плагин устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1, но сквозное Android DNS-SD-переподключение к работающему компьютеру Omarchy не проверено. Полная сборка локально недоступна: отсутствуют Qt ShaderTools, Android SDK и JDK. Pixel 10 / GrapheneOS не проверялся.
+Текущая рабочая копия проходит 105 Python-тестов и проверку 291 русской строки. GitHub Actions [run #201](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40113154650) успешно проверил desktop, arm64, OpenGL и Vulkan. Эмулятор проверяет переходы лаунчера, локализацию, OWL и backup, сопряжение и переподключение, разрешения и их отзыв; оба графических backend сохранили скриншоты. В предыдущей работе плагин устанавливался и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1, но сквозное Android DNS-SD-переподключение к работающему компьютеру Omarchy не проверено. Полная сборка локально недоступна: отсутствуют Qt ShaderTools, Android SDK и JDK. Pixel 10 / GrapheneOS не проверялся.
 
 ### Скриншоты эмулятора
 
-Экран Settings на русском снят в разрешении 412 × 892 в обоих графических backend во время CI run #200.
+Экран Settings на русском снят в разрешении 412 × 892 в обоих графических backend во время CI run #201.
 
-![Settings на русском, OpenGL](docs/screenshots/ci-200-opengl-settings-ru.png)
+![Settings на русском, OpenGL](docs/screenshots/ci-201-opengl-settings-ru.png)
 
-![Settings на русском, Vulkan](docs/screenshots/ci-200-vulkan-settings-ru.png)
+![Settings на русском, Vulkan](docs/screenshots/ci-201-vulkan-settings-ru.png)
 
-![Home, OpenGL](docs/screenshots/ci-200-opengl-home.png)
+![Home, OpenGL](docs/screenshots/ci-201-opengl-home.png)
 
-![Home, Vulkan](docs/screenshots/ci-200-vulkan-home.png)
+![Home, Vulkan](docs/screenshots/ci-201-vulkan-home.png)
 
 ## Сборка настольного предпросмотра
 

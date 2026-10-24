@@ -14,7 +14,7 @@
 
 ## Remaining work and validation limits
 
-- [ ] Verify CI on the current PR head, including the response-disconnect regression test and docs/screenshots.
+- [x] Pass CI on the functional PR revision: desktop, arm64 APK, OpenGL, Vulkan, and the response-disconnect regression test.
 - [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
 - [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
@@ -25,6 +25,6 @@
 - `python3 -m unittest discover -s scripts/tests -q`: 105 tests pass.
 - `python3 scripts/ci/check_translations.py`: 291 Russian source strings validated.
 - Shell/Python syntax checks, Android version-code regression, and `git diff --check` pass.
-- GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64, OpenGL, and Vulkan jobs on the prior PR revision. The current PR head still needs its own green check.
+- GitHub Actions [run #201](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40113154650) passed desktop, arm64, OpenGL, and Vulkan jobs.
 - This workspace lacks JDK, Android SDK/NDK, and Qt ShaderTools development files. No local Android APK build, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.

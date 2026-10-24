@@ -25,18 +25,17 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 ## Current verification
 
 - Local suite: 105 Python tests pass. The Russian catalog checker validates 291 source strings; shell/Python syntax checks, Android version-code regression, and `git diff --check` pass.
-- GitHub Actions [run #200](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40111689990) passed desktop, arm64 APK build, OpenGL emulator smoke, and Vulkan emulator smoke. It ran before the follow-up response-disconnect regression test; check the PR status for the current commit.
-- CI #200 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Both renderer jobs produced screenshots; Russian Settings snapshots are checked in under `docs/screenshots/`.
+- GitHub Actions [run #201](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40113154650) passed desktop, arm64 APK build, OpenGL emulator smoke, and Vulkan emulator smoke, including the response-disconnect regression test.
+- CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Both renderer jobs produced screenshots; Russian Settings and Home snapshots are checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
 - The workspace lacks JDK, Android SDK/NDK, and Qt ShaderTools development files. Full local Android/desktop builds and rendering are therefore not claimed. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 
-1. Confirm CI for the current PR head, including the response-disconnect regression test and updated documentation/screenshots.
-2. Exercise Android NSD reconnect, IP changes, and wrong-fingerprint rejection end to end against a live Omarchy host when a suitable network fixture is available.
-3. Design and test a supported Qt-to-native placement/lifecycle bridge before integrating ordinary Android App Widgets into persistent Home layouts.
-4. Run the physical Pixel 10 / GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, sync, battery, and performance only after device testing.
-5. Review and merge through the PR. Publish a signed pre-release only through the existing workflow with the owner's permanent GitHub signing secrets.
+1. Exercise Android NSD reconnect, IP changes, and wrong-fingerprint rejection end to end against a live Omarchy host when a suitable network fixture is available.
+2. Design and test a supported Qt-to-native placement/lifecycle bridge before integrating ordinary Android App Widgets into persistent Home layouts.
+3. Run the physical Pixel 10 / GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, sync, battery, and performance only after device testing.
+4. Review and merge through the PR. Publish a signed pre-release only through the existing workflow with the owner's permanent GitHub signing secrets.
 
 ## Release and safety constraints
 
