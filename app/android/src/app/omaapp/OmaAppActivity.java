@@ -49,7 +49,7 @@ public final class OmaAppActivity extends QtActivity {
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         IntentFilter filter = new IntentFilter();
