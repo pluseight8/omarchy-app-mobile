@@ -228,6 +228,19 @@ jobs:
           # only while AccessibilityManager reports accessibility enabled.
           # Keep it enabled for shell-driven UIAutomator snapshots below.
           accessibility_service='app.omaapp/app.omaapp.CiAccessibilityService'
+          available_accessibility_services=''
+          for attempt in {1..20}; do
+            available_accessibility_services="$(adb shell cmd package query-services --components --user 0 -a android.accessibilityservice.AccessibilityService | tr -d '\r')"
+            if grep -Fq 'CiAccessibilityService' <<< "$available_accessibility_services"; then
+              break
+            fi
+            sleep 0.5
+          done
+          printf 'Available accessibility services: %s\n' "$available_accessibility_services"
+          if ! grep -Fq 'CiAccessibilityService' <<< "$available_accessibility_services"; then
+            adb shell dumpsys package app.omaapp
+            exit 1
+          fi
           adb shell settings put secure enabled_accessibility_services "$accessibility_service"
           adb shell settings put secure accessibility_enabled 1
           enabled_accessibility_services=''
