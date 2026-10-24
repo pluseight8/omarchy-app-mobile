@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import socket
 import ssl
 import sys
 import tempfile
@@ -184,6 +185,92 @@ class PairingServiceTests(unittest.TestCase):
         self.assertFalse(service._mdns_questions_match(
             question("_printer._tcp.local."), instance, target))
         self.assertFalse(service._mdns_questions_match(b"malformed", instance, target))
+
+    def test_mdns_advertiser_sends_query_response_and_goodbye_over_loopback(self):
+        group = "239.255.42.99"
+        interface = "127.0.0.1"
+        fingerprint = "c" * 64
+        instance = f"OmaApp-{fingerprint[:12]}.{service.MDNS_SERVICE_TYPE}"
+        target = f"omaapp-{fingerprint[:12]}.local."
+
+        port_probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        port_probe.bind(("", 0))
+        port = port_probe.getsockname()[1]
+        port_probe.close()
+
+        receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        receiver.bind(("", port))
+        receiver.setsockopt(
+            socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+            socket.inet_aton(group) + socket.inet_aton(interface),
+        )
+        receiver.settimeout(2)
+
+        advertiser = service.MdnsAdvertiser(
+            lambda: (interface, 44892, fingerprint),
+            multicast_group=group,
+            multicast_port=port,
+            multicast_interface=interface,
+        )
+
+        def receive_response():
+            deadline = service.time.monotonic() + 2
+            while service.time.monotonic() < deadline:
+                packet, _source = receiver.recvfrom(4096)
+                if len(packet) >= 4 and service.struct.unpack_from("!H", packet, 2)[0] & 0x8000:
+                    return packet
+            self.fail("Timed out waiting for an mDNS response.")
+
+        def record_ttls(packet):
+            answers = service.struct.unpack_from("!H", packet, 6)[0]
+            offset = 12
+            records = []
+            for _ in range(answers):
+                name, offset = service._dns_read_name(packet, offset)
+                record_type, _record_class, ttl, length = service.struct.unpack_from(
+                    "!HHIH", packet, offset
+                )
+                offset += 10
+                value = packet[offset:offset + length]
+                offset += length
+                records.append((name, record_type, ttl, value))
+            return records
+
+        try:
+            advertiser.start()
+            announcement = receive_response()
+            records = record_ttls(announcement)
+            self.assertEqual([record[1] for record in records], [12, 33, 16, 1])
+            self.assertEqual([record[2] for record in records], [120] * 4)
+            self.assertIn(b"fingerprint=" + fingerprint.encode("ascii"), announcement)
+            self.assertNotIn(b"token", announcement)
+            self.assertNotIn(b"pairSecret", announcement)
+
+            question = (
+                service.struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
+                + service._dns_name_wire(service.MDNS_SERVICE_TYPE)
+                + service.struct.pack("!HH", 12, 1)
+            )
+            query_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+            try:
+                query_socket.setsockopt(
+                    socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(interface)
+                )
+                query_socket.sendto(question, (group, port))
+            finally:
+                query_socket.close()
+
+            response = receive_response()
+            self.assertEqual([record[1] for record in record_ttls(response)], [12, 33, 16, 1])
+            advertiser.stop()
+            goodbye = receive_response()
+            self.assertEqual([record[2] for record in record_ttls(goodbye)], [0] * 4)
+            advertiser = None
+        finally:
+            if advertiser is not None:
+                advertiser.stop()
+            receiver.close()
 
     def test_mdns_goodbye_expires_records_and_rejects_non_ipv4_targets(self):
         fingerprint = "b" * 64

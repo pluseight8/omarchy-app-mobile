@@ -828,8 +828,18 @@ def _mdns_announcement(instance_name: str, target_name: str, address: str,
 class MdnsAdvertiser:
     """Small DNS-SD responder for the pinned OmaApp service; it advertises no credentials."""
 
-    def __init__(self, data_provider):
+    def __init__(self, data_provider, *, multicast_group: str = MDNS_GROUP,
+                 multicast_port: int = MDNS_PORT,
+                 multicast_interface: str = "0.0.0.0"):
+        group = ipaddress.ip_address(multicast_group)
+        interface = ipaddress.ip_address(multicast_interface)
+        if (group.version != 4 or not group.is_multicast or not 1 <= multicast_port <= 65535
+                or interface.version != 4):
+            raise ValueError("invalid OmaApp multicast destination")
         self.data_provider = data_provider
+        self.multicast_group = str(group)
+        self.multicast_port = multicast_port
+        self.multicast_interface = str(interface)
         self.stop_event = threading.Event()
         self.socket: socket.socket | None = None
         self.thread: threading.Thread | None = None
@@ -849,8 +859,9 @@ class MdnsAdvertiser:
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         try:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            listener.bind(("", MDNS_PORT))
-            membership = socket.inet_aton(MDNS_GROUP) + socket.inet_aton("0.0.0.0")
+            listener.bind(("", self.multicast_port))
+            membership = (socket.inet_aton(self.multicast_group)
+                          + socket.inet_aton(self.multicast_interface))
             listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
             listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
             listener.settimeout(1.0)
@@ -876,7 +887,7 @@ class MdnsAdvertiser:
                     self.last_packet = packet
                 listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
                                     socket.inet_aton(address))
-                listener.sendto(packet, (MDNS_GROUP, MDNS_PORT))
+                listener.sendto(packet, (self.multicast_group, self.multicast_port))
             except (OSError, ValueError):
                 return
 

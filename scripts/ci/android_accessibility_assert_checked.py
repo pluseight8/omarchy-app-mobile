@@ -13,14 +13,10 @@ def is_checked(xml_path: Path, target: str) -> bool:
     for node in root.iter("node"):
         if node.attrib.get("package") != "app.omaapp" or node.attrib.get("checked") != "true":
             continue
-        labels = set()
         for attribute in ("content-desc", "text"):
             value = node.attrib.get(attribute, "").strip()
-            if value:
-                labels.add(value)
-                labels.update(label.strip() for label in value.split(","))
-        if target in labels:
-            return True
+            if value == target:
+                return True
     return False
 
 
