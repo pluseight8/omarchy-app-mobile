@@ -42,6 +42,10 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("waitForActivityWithTimeout(15_000L)", instrumentation)
         self.assertNotIn("startActivitySync(", instrumentation)
         self.assertIn("node.getContentDescription()", instrumentation)
+        self.assertIn("nodeText != null && label.contentEquals(nodeText)", instrumentation)
+        self.assertIn(
+            "nodeDescription != null && label.contentEquals(nodeDescription)", instrumentation
+        )
         self.assertIn("label.contentEquals(nodeDescription)", instrumentation)
         self.assertIn(
             'awaitAccessibleControlClick(automation, "Home", 8_000L)', instrumentation

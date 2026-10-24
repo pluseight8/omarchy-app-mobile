@@ -380,8 +380,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 AccessibilityNodeInfo node = pending.get(index);
                 CharSequence nodeText = node.getText();
                 CharSequence nodeDescription = node.getContentDescription();
-                boolean matches = label.contentEquals(nodeText)
-                        || label.contentEquals(nodeDescription);
+                boolean matches = (nodeText != null && label.contentEquals(nodeText))
+                        || (nodeDescription != null && label.contentEquals(nodeDescription));
                 if (matches && node.isVisibleToUser() && node.isClickable()
                         && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     clicked = true;
