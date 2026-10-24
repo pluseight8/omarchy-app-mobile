@@ -83,10 +83,6 @@
             <translation>Сетка приложений</translation>
         </message>
         <message>
-            <source>App language</source>
-            <translation>Язык приложения</translation>
-        </message>
-        <message>
             <source>Appearance</source>
             <translation>Внешний вид</translation>
         </message>

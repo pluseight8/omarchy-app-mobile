@@ -18,7 +18,7 @@ tap_label() {
   adb shell input tap "$x" "$y"
 }
 
-tap_language_control() {
+tap_scrolling_label() {
   local label="$1"
   local target x y
   for attempt in {1..12}; do
@@ -32,7 +32,7 @@ tap_language_control() {
     adb shell input swipe 205 720 205 300 450
     sleep 0.3
   done
-  printf 'Could not find language control %s in Settings.\n' "$label" >&2
+  printf 'Could not find visible Settings control %s.\n' "$label" >&2
   return 1
 }
 
@@ -41,10 +41,7 @@ python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Apps'
 tap_label 'Settings'
 sleep 1
-tap_language_control 'App language'
-sleep 0.5
-dump_ui
-tap_label 'Russian'
+tap_scrolling_label 'Russian'
 sleep 2
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
@@ -65,10 +62,7 @@ sleep 5
 dump_ui
 tap_label 'Настройки'
 sleep 1
-tap_language_control 'Язык приложения'
-sleep 0.5
-dump_ui
-tap_label 'Английский'
+tap_scrolling_label 'Английский'
 sleep 2
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
