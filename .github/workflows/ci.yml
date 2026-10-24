@@ -380,6 +380,10 @@ jobs:
           bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"
           bash scripts/ci/android_app_discovery_smoke.sh \
             build/android-launcher-fixture/launcher-fixture.apk "$smoke_artifacts/app-discovery"
+          # The translation smoke force-stops and relaunches OmaApp. Refresh
+          # the PID before collecting renderer diagnostics for that process.
+          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          test -n "$app_pid"
           # Retain logs from after the style screen has exercised the surface shader.
           adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
           grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"

@@ -6,6 +6,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppDiscoveryTests(unittest.TestCase):
+    def test_renderer_log_uses_the_pid_after_translation_smoke_restart(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        translation_smoke = workflow.index(
+            'bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"'
+        )
+        refresh_pid = workflow.index(
+            'app_pid="$(adb shell pidof app.omaapp | tr -d', translation_smoke
+        )
+        renderer_log = workflow.index(
+            'adb logcat -d -v threadtime --pid="$app_pid" -t 10000 '
+            '> "$smoke_artifacts/renderer-logcat.txt"', translation_smoke
+        )
+        self.assertLess(refresh_pid, renderer_log)
+
     def test_package_lifecycle_refresh_is_scoped_and_coalesced(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
             encoding="utf-8"
