@@ -520,7 +520,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
         for (String label : new String[] {
-                "Allow", "Add", "Add widget", "Разрешить", "Добавить"}) {
+                "Allow", "Add", "Add widget", "Create", "Create widget",
+                "Разрешить", "Добавить", "Создать", "Создать виджет"}) {
             if (clickAccessibleControl(automation, label)) {
                 return true;
             }

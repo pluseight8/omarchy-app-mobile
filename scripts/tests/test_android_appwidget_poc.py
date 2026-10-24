@@ -63,9 +63,19 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
             instrumentation.index("private static boolean clickAccessibleControl") :
             instrumentation.index("private static boolean awaitAccessibleControlClick")
         ]
-        self.assertIn(
-            '"Allow", "Add", "Add widget", "Разрешить", "Добавить"', confirmation
-        )
+        for label in (
+            '"Allow"',
+            '"Add"',
+            '"Add widget"',
+            '"Create"',
+            '"Create widget"',
+            '"Разрешить"',
+            '"Добавить"',
+            '"Создать"',
+            '"Создать виджет"',
+        ):
+            self.assertIn(label, confirmation)
+        self.assertNotIn("Always allow", confirmation)
         self.assertIn("clickAccessibleControl(automation, label)", confirmation)
         self.assertIn(
             "nodeDescription != null && label.contentEquals(nodeDescription)",
