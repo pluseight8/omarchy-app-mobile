@@ -10,6 +10,15 @@ class TranslationCatalogTests(unittest.TestCase):
     def test_all_qml_strings_are_translated_without_placeholder_drift(self):
         self.assertEqual(check_translations.validate(), [])
 
+    def test_language_heading_and_description_have_accessible_names(self):
+        qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
+            encoding="utf-8"
+        )
+        start = qml.index('text: qsTr("Language")')
+        end = qml.index("RowLayout {", start)
+        language_controls = qml[start:end]
+        self.assertEqual(language_controls.count("Accessible.name: text"), 2)
+
     def test_rejects_unfinished_catalog_entries(self):
         with TemporaryDirectory() as directory:
             catalog = Path(directory) / "unfinished.ts"

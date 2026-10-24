@@ -2990,6 +2990,7 @@ ApplicationWindow {
 
                         Text {
                             text: qsTr("Language")
+                            Accessible.name: text
                             color: Theme.foreground
                             font.pixelSize: Theme.fontSize(17)
                             font.weight: Font.DemiBold
@@ -2998,6 +2999,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("Choose the app language. System default follows the phone language; English and Russian are available offline.")
+                            Accessible.name: text
                             color: Theme.muted
                             font.pixelSize: Theme.fontSize(12)
                             wrapMode: Text.WordWrap
