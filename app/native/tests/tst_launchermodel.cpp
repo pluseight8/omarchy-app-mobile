@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -142,6 +143,34 @@ private slots:
         QCOMPARE(restored.gestures().value(QStringLiteral("longPressEdit")).toBool(), true);
     }
 
+    void hapticFeedbackIsOptInPersistentAndIncludedInLayoutBackups()
+    {
+        QString backup;
+        {
+            LauncherModel model;
+            QVERIFY(!model.hapticFeedbackEnabled());
+            QVERIFY(model.setHapticFeedbackEnabled(true));
+            QVERIFY(model.hapticFeedbackEnabled());
+            backup = model.exportLayout();
+            QCOMPARE(QJsonDocument::fromJson(backup.toUtf8()).object()
+                         .value(QStringLiteral("hapticFeedbackEnabled")).toBool(), true);
+        }
+
+        LauncherModel restoredFromSettings;
+        QVERIFY(restoredFromSettings.hapticFeedbackEnabled());
+        QVERIFY(restoredFromSettings.setHapticFeedbackEnabled(false));
+        QVERIFY(restoredFromSettings.importLayout(backup));
+        QVERIFY(restoredFromSettings.hapticFeedbackEnabled());
+
+        const QString validBackup = restoredFromSettings.exportLayout();
+        QJsonObject malformed = QJsonDocument::fromJson(validBackup.toUtf8()).object();
+        malformed.insert(QStringLiteral("hapticFeedbackEnabled"), QStringLiteral("enabled"));
+        QVERIFY(!restoredFromSettings.importLayout(
+            QString::fromUtf8(QJsonDocument(malformed).toJson(QJsonDocument::Compact))));
+        QVERIFY(restoredFromSettings.hapticFeedbackEnabled());
+        QCOMPARE(restoredFromSettings.exportLayout(), validBackup);
+    }
+
     void layoutBackupRoundTripsOfflinePreferencesAndValidatesBeforeApplying()
     {
         LauncherModel model;
@@ -166,6 +195,7 @@ private slots:
                           "longPressPin": false, "longPressEdit": true}
         })json";
         QVERIFY(model.importLayout(QString::fromUtf8(source)));
+        QVERIFY(!model.hapticFeedbackEnabled());
         QCOMPARE(model.gridColumns(), 5);
         QCOMPARE(model.homePageCount(), 2);
         QCOMPARE(model.homeWidgets().value(QStringLiteral("computer")).toBool(), false);

@@ -86,6 +86,8 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
         if (saved != savedGestures.cend() && saved.value().metaType().id() == QMetaType::Bool)
             m_gestures.insert(gestureId, saved.value().toBool());
     }
+    m_hapticFeedbackEnabled = settings.value(QStringLiteral("launcher/hapticFeedbackEnabled"),
+                                             false).toBool();
     loadFolders();
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
@@ -205,6 +207,11 @@ QVariantMap LauncherModel::homeWidgets() const
 QVariantMap LauncherModel::gestures() const
 {
     return m_gestures;
+}
+
+bool LauncherModel::hapticFeedbackEnabled() const
+{
+    return m_hapticFeedbackEnabled;
 }
 
 void LauncherModel::setGridColumns(int columns)
@@ -354,6 +361,50 @@ bool LauncherModel::setGestureEnabled(const QString &gestureId, bool enabled)
     return true;
 }
 
+bool LauncherModel::setHapticFeedbackEnabled(bool enabled)
+{
+    if (m_hapticFeedbackEnabled == enabled)
+        return true;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/hapticFeedbackEnabled"), enabled);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        qWarning() << "OmaApp: failed to save haptic feedback preference" << settings.status();
+        return false;
+    }
+    m_hapticFeedbackEnabled = enabled;
+    emit hapticFeedbackEnabledChanged();
+    return true;
+}
+
+void LauncherModel::performHapticFeedback()
+{
+    if (!m_hapticFeedbackEnabled)
+        return;
+#ifdef Q_OS_ANDROID
+    if (!QNativeInterface::QAndroidApplication::isActivityContext())
+        return;
+    QNativeInterface::QAndroidApplication::runOnAndroidMainThread([] {
+        const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+        if (!activity.isValid())
+            return QVariant();
+        const QJniObject window = activity.callObjectMethod("getWindow",
+                                                            "()Landroid/view/Window;");
+        if (!window.isValid())
+            return QVariant();
+        const QJniObject decorView = window.callObjectMethod("getDecorView",
+                                                             "()Landroid/view/View;");
+        if (!decorView.isValid())
+            return QVariant();
+        const jint keyboardTap = QJniObject::getStaticField<jint>(
+            "android/view/HapticFeedbackConstants", "KEYBOARD_TAP");
+        decorView.callMethod<jboolean>("performHapticFeedback", "(I)Z", keyboardTap);
+        qInfo() << "OmaApp: Android haptic feedback request dispatched";
+        return QVariant();
+    });
+#endif
+}
+
 QString LauncherModel::exportLayout() const
 {
     QJsonArray favorites;
@@ -394,6 +445,7 @@ QString LauncherModel::exportLayout() const
         {QStringLiteral("folders"), folders},
         {QStringLiteral("homeWidgets"), QJsonObject::fromVariantMap(m_homeWidgets)},
         {QStringLiteral("gestures"), QJsonObject::fromVariantMap(m_gestures)},
+        {QStringLiteral("hapticFeedbackEnabled"), m_hapticFeedbackEnabled},
     };
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
@@ -416,9 +468,11 @@ bool LauncherModel::importLayout(const QString &json)
     const QJsonValue foldersValue = object.value(QStringLiteral("folders"));
     const QJsonValue widgetsValue = object.value(QStringLiteral("homeWidgets"));
     const QJsonValue gesturesValue = object.value(QStringLiteral("gestures"));
+    const QJsonValue hapticFeedbackValue = object.value(QStringLiteral("hapticFeedbackEnabled"));
     if (!schema.isDouble() || schema.toInt(-1) != 1 || !gridValue.isDouble() ||
         !pagesValue.isDouble() || !favoritesValue.isArray() || !foldersValue.isArray() ||
-        !widgetsValue.isObject() || !gesturesValue.isObject()) {
+        !widgetsValue.isObject() || !gesturesValue.isObject() ||
+        (!hapticFeedbackValue.isUndefined() && !hapticFeedbackValue.isBool())) {
         return false;
     }
 
@@ -502,6 +556,9 @@ bool LauncherModel::importLayout(const QString &json)
             return false;
         gestures.insert(gestureId, enabled.isUndefined() ? true : enabled.toBool());
     }
+    const bool hapticFeedbackEnabled = hapticFeedbackValue.isUndefined()
+                                          ? false
+                                          : hapticFeedbackValue.toBool();
 
     QSettings settings;
     settings.setValue(QStringLiteral("launcher/gridColumns"), grid);
@@ -529,6 +586,7 @@ bool LauncherModel::importLayout(const QString &json)
     }()).toJson(QJsonDocument::Compact));
     settings.setValue(QStringLiteral("launcher/homeWidgets"), widgets);
     settings.setValue(QStringLiteral("launcher/gestures"), gestures);
+    settings.setValue(QStringLiteral("launcher/hapticFeedbackEnabled"), hapticFeedbackEnabled);
     settings.sync();
     if (settings.status() != QSettings::NoError) {
         qWarning() << "OmaApp: failed to restore launcher layout" << settings.status();
@@ -542,12 +600,14 @@ bool LauncherModel::importLayout(const QString &json)
     m_folders = std::move(folders);
     m_homeWidgets = std::move(widgets);
     m_gestures = std::move(gestures);
+    m_hapticFeedbackEnabled = hapticFeedbackEnabled;
     emit gridColumnsChanged();
     emit homePagesChanged();
     emit favoritesChanged();
     emit foldersChanged();
     emit homeWidgetsChanged();
     emit gesturesChanged();
+    emit hapticFeedbackEnabledChanged();
     notifyFavoriteRowsChanged();
 #ifdef Q_OS_ANDROID
     syncDynamicShortcuts();

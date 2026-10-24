@@ -541,7 +541,10 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: modelData.name
                         Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                        onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                        onClicked: {
+                            launcher.performHapticFeedback()
+                            launcher.launchActivity(modelData.packageName, modelData.activityName)
+                        }
                     }
                     ToolButton {
                         text: "−"
@@ -678,7 +681,7 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: qsTr("Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, and gesture preferences.")
+                text: qsTr("Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, gesture preferences and haptic feedback.")
                 color: Theme.muted
                 wrapMode: Text.WordWrap
             }
@@ -1226,10 +1229,14 @@ ApplicationWindow {
                                     width: homeAppsGrid.cellWidth - 8
                                     height: homeAppsGrid.cellHeight - 8
                                     Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                                    onClicked: launcher.launchActivity(modelData.packageName,
-                                                                       modelData.activityName)
+                                    onClicked: {
+                                        launcher.performHapticFeedback()
+                                        launcher.launchActivity(modelData.packageName,
+                                                                modelData.activityName)
+                                    }
                                     onPressAndHold: {
                                         if (launcher.gestures.longPressEdit) {
+                                            launcher.performHapticFeedback()
                                             window.editingHomeApp = modelData
                                             homeAppDialog.open()
                                         }
@@ -1363,10 +1370,14 @@ ApplicationWindow {
                                                 height: 78
                                                 Accessible.name: qsTr("Dock shortcut: launch %1")
                                                                    .arg(modelData.name)
-                                                onClicked: launcher.launchActivity(modelData.packageName,
-                                                                                   modelData.activityName)
+                                                onClicked: {
+                                                    launcher.performHapticFeedback()
+                                                    launcher.launchActivity(modelData.packageName,
+                                                                            modelData.activityName)
+                                                }
                                                 onPressAndHold: {
                                                     if (launcher.gestures.longPressEdit) {
+                                                        launcher.performHapticFeedback()
                                                         window.editingHomeApp = modelData
                                                         homeAppDialog.open()
                                                     }
@@ -1573,7 +1584,11 @@ ApplicationWindow {
                                     width: 72
                                     height: 82
                                     Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                                    onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                                    onClicked: {
+                                        launcher.performHapticFeedback()
+                                        launcher.launchActivity(modelData.packageName,
+                                                                modelData.activityName)
+                                    }
                                     onPressAndHold: {
                                         if (launcher.gestures.longPressEdit)
                                             launcher.removeFavorite(modelData.packageName,
@@ -1787,10 +1802,15 @@ ApplicationWindow {
                             Accessible.name: qsTr("Launch %1").arg(name)
                             display: AbstractButton.TextUnderIcon
                             spacing: Theme.space(7)
-                            onClicked: launcher.launch(index)
+                            onClicked: {
+                                launcher.performHapticFeedback()
+                                launcher.launch(index)
+                            }
                             onPressAndHold: {
-                                if (launcher.gestures.longPressPin)
+                                if (launcher.gestures.longPressPin) {
+                                    launcher.performHapticFeedback()
                                     launcher.toggleFavorite(index, window.selectedHomePage)
+                                }
                             }
 
                             Drag.active: appDragHandler.active
@@ -2792,6 +2812,46 @@ ApplicationWindow {
                                 Accessible.name: modelData.label
                                 checked: launcher.gestures[modelData.id] !== false
                                 onToggled: launcher.setGestureEnabled(modelData.id, checked)
+                            }
+                        }
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: hapticSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: hapticSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: Theme.space(8)
+                        Text {
+                            text: qsTr("Haptic feedback")
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(17)
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Use Android touch feedback when opening apps and editing Home. System settings can still disable haptics.")
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+                        CheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Enable haptic feedback")
+                            Accessible.name: qsTr("Enable haptic feedback")
+                            checked: launcher.hapticFeedbackEnabled
+                            onToggled: {
+                                if (launcher.setHapticFeedbackEnabled(checked) && checked)
+                                    launcher.performHapticFeedback()
                             }
                         }
                     }

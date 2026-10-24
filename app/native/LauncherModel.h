@@ -20,6 +20,8 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
     Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
+    Q_PROPERTY(bool hapticFeedbackEnabled READ hapticFeedbackEnabled
+               NOTIFY hapticFeedbackEnabledChanged)
 
 public:
     enum Role {
@@ -46,6 +48,7 @@ public:
     int homePageCount() const;
     QVariantMap homeWidgets() const;
     QVariantMap gestures() const;
+    bool hapticFeedbackEnabled() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
@@ -58,6 +61,8 @@ public:
                                    int page, int index);
     Q_INVOKABLE void setHomeWidgetEnabled(const QString &widgetId, bool enabled);
     Q_INVOKABLE bool setGestureEnabled(const QString &gestureId, bool enabled);
+    Q_INVOKABLE bool setHapticFeedbackEnabled(bool enabled);
+    Q_INVOKABLE void performHapticFeedback();
     Q_INVOKABLE QString exportLayout() const;
     Q_INVOKABLE bool importLayout(const QString &json);
     Q_INVOKABLE bool copyLayoutBackup(const QString &owlWidgetBackup = QString()) const;
@@ -84,6 +89,7 @@ signals:
     void homePagesChanged();
     void homeWidgetsChanged();
     void gesturesChanged();
+    void hapticFeedbackEnabledChanged();
 
 private:
     struct Entry {
@@ -108,6 +114,7 @@ private:
     int m_homePageCount = 1;
     QVariantMap m_homeWidgets;
     QVariantMap m_gestures;
+    bool m_hapticFeedbackEnabled = false;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;
 

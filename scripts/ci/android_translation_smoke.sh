@@ -77,6 +77,29 @@ python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-english-after-switch.png" "$artifacts/translation-ui-english.xml" \
   Home Apps Devices Style Settings
 
+# Haptics are explicitly opt-in, use Android's View API, and remain enabled
+# after Activity recreation. The emulator may not have a vibration motor, so
+# assert the native request reached the Android API instead of asserting a buzz.
+tap_scrolling_label 'Enable haptic feedback'
+sleep 1
+dump_ui
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'Enable haptic feedback'
+adb logcat -d -v threadtime -t 3000 > "$artifacts/haptic-feedback.log"
+grep -F 'OmaApp: Android haptic feedback request dispatched' \
+  "$artifacts/haptic-feedback.log"
+adb shell am force-stop app.omaapp
+adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
+sleep 5
+dump_ui
+tap_label 'Settings'
+sleep 1
+tap_scrolling_label 'Enable haptic feedback'
+sleep 1
+dump_ui
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'Enable haptic feedback'
+
 # Returning from Android Settings invokes the Activity lifecycle callback and
 # refreshes the real PackageManager launcher list without a timer poll.
 adb logcat -c

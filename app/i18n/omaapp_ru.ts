@@ -263,6 +263,10 @@
             <translation>Изменить виджет OWL</translation>
         </message>
         <message>
+            <source>Enable haptic feedback</source>
+            <translation>Включить виброотклик</translation>
+        </message>
+        <message>
             <source>Enable media permission in the Omarchy plugin to use these controls.</source>
             <translation>Чтобы управлять воспроизведением, разрешите доступ к мультимедиа в плагине Omarchy.</translation>
         </message>
@@ -301,6 +305,10 @@
         <message>
             <source>Go to home page %1</source>
             <translation>Перейти на страницу главного экрана %1</translation>
+        </message>
+        <message>
+            <source>Haptic feedback</source>
+            <translation>Виброотклик</translation>
         </message>
         <message>
             <source>Hold an app below to pin it</source>
@@ -599,8 +607,8 @@
             <translation>Сопрягите телефон с компьютером Omarchy, чтобы синхронизировать тему и обои.</translation>
         </message>
         <message>
-            <source>Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, and gesture preferences.</source>
-            <translation>Вставьте JSON-копию из OmaApp. Восстановление заменит страницы, закреплённые приложения, папки, встроенные виджеты и OWL, их порядок и код, сетку и настройки жестов.</translation>
+            <source>Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, gesture preferences and haptic feedback.</source>
+            <translation>Вставьте JSON-копию из OmaApp. Восстановление заменит страницы, закреплённые приложения, папки, встроенные виджеты и OWL, их порядок и код, сетку, настройки жестов и виброотклика.</translation>
         </message>
         <message>
             <source>Paste from clipboard</source>
@@ -889,6 +897,10 @@
         <message>
             <source>Use %1 app columns</source>
             <translation>Число столбцов приложений: %1</translation>
+        </message>
+        <message>
+            <source>Use Android touch feedback when opening apps and editing Home. System settings can still disable haptics.</source>
+            <translation>Использовать тактильный отклик Android при запуске приложений и изменении главного экрана. Его также можно отключить в системных настройках.</translation>
         </message>
         <message>
             <source>Widget added to Home.</source>
