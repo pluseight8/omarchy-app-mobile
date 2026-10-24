@@ -100,7 +100,6 @@ def main() -> int:
                                    updated_theme: str = "", revoke: bool = False,
                                    feature_smoke: bool = False,
                                    clipboard_stress: bool = False,
-                                   assert_reconnect_theme: str = "",
                                    dns_sd_port: int = 0,
                                    dns_sd_fingerprint: str = "") -> str:
         command = [
@@ -110,9 +109,8 @@ def main() -> int:
             command.extend([
                 "-e", "dnsSdPort", str(dns_sd_port),
                 "-e", "dnsSdFingerprint", dns_sd_fingerprint,
+                "-e", "expectedTheme", expected_theme,
             ])
-        elif assert_reconnect_theme:
-            command.extend(["-e", "assertReconnect", assert_reconnect_theme])
         else:
             encoded_qr = base64.b64encode(qr.encode("utf-8")).decode("ascii")
             command.extend(["-e", "qr64", encoded_qr, "-e", "expectedTheme", expected_theme])
@@ -281,8 +279,6 @@ def main() -> int:
                 raise RuntimeError(f"Android NSD did not rediscover its pinned endpoint:\n{combined}")
             return combined
         if f"INSTRUMENTATION_STATUS: stage=paired" not in combined:
-            if assert_reconnect_theme and "INSTRUMENTATION_STATUS: stage=plugin_restart_reconnected" in combined:
-                return combined
             raise RuntimeError(f"Android client did not report a paired theme:\n{combined}")
         if updated_theme and "INSTRUMENTATION_STATUS: stage=theme_updated" not in combined:
             raise RuntimeError(f"Android client did not receive a live theme update:\n{combined}")
@@ -552,10 +548,6 @@ else:
                 run_android_instrumentation(
                     state, "", expected_theme="CI_AfterRestart",
                     dns_sd_port=state.port, dns_sd_fingerprint=state.fingerprint,
-                )
-                run_android_instrumentation(
-                    state, "", expected_theme="CI_AfterRestart",
-                    assert_reconnect_theme="CI_AfterRestart",
                 )
 
                 second_qr = qr_payload(state)

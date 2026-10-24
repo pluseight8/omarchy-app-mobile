@@ -207,6 +207,11 @@ esac
         self.assertIn("stopService(new Intent(this, NsdFixtureService.class))", nsd_activity)
         self.assertIn('"app.omaapp", "app.omaapp.OmaAppActivity"', nsd_activity)
         self.assertIn("DeviceDiscovery.start(context)", instrumentation)
+        self.assertIn("JSONObject reconnected = runDnsSdReconnectSmoke(context", instrumentation)
+        self.assertIn('testArguments.getString("expectedTheme", "")', instrumentation)
+        self.assertIn("PairingBridge.refresh(context);", instrumentation)
+        self.assertIn("return awaitTheme(context, expectedTheme, 30_000L, false);", instrumentation)
+        self.assertNotIn("awaitPluginRestartReconnect", instrumentation)
         self.assertIn('"0".repeat(64)', instrumentation)
         self.assertIn("An untrusted DNS-SD fingerprint changed the saved endpoint.", instrumentation)
         self.assertIn("Android NSD did not reconnect to the TLS-pinned endpoint.", instrumentation)
@@ -234,6 +239,7 @@ esac
         self.assertIn("dns_sd_port=state.port", pairing_smoke)
         self.assertIn('patch.object(service.MdnsAdvertiser, "start"', pairing_smoke)
         self.assertIn("restarted_state.port == old_port", pairing_smoke)
+        self.assertIn('expected_theme="CI_AfterRestart",\n                    dns_sd_port=state.port', pairing_smoke)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,19 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("nodeData === null", loader_qml)
         self.assertIn("widgetRoot === null", loader_qml)
 
+    def test_owl_node_bindings_tolerate_loader_initialization(self):
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn('typeof renderer.scalar === "function"', node_qml)
+        self.assertIn('typeof renderer.colorValue === "function"', node_qml)
+        self.assertIn('typeof renderer.imageSource === "function"', node_qml)
+        self.assertIn('typeof renderer.paintValue === "function"', node_qml)
+        self.assertIn('nodeData && typeof nodeData === "object"', node_qml)
+        self.assertNotIn("widgetRoot.scalar(", node_qml)
+        self.assertNotIn("widgetRoot.colorValue(", node_qml)
+        self.assertNotIn("widgetRoot.imageSource(", node_qml)
+        self.assertNotIn("widgetRoot.paintValue(", node_qml)
+
     def test_android_smoke_fails_on_owl_null_binding_errors(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 

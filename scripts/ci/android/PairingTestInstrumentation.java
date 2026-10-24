@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20295)
+Total output lines: 1620
+
 package app.omaapp;
 
 import android.app.Activity;
@@ -130,17 +133,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
             String dnsSdPort = testArguments.getString("dnsSdPort", "");
             if (!dnsSdPort.isEmpty()) {
-                runDnsSdReconnectSmoke(context, Integer.parseInt(dnsSdPort),
-                        testArguments.getString("dnsSdFingerprint", ""));
+                JSONObject reconnected = runDnsSdReconnectSmoke(context,
+                        Integer.parseInt(dnsSdPort), testArguments.getString("dnsSdFingerprint", ""),
+                        testArguments.getString("expectedTheme", ""));
+                report("dns_sd_reconnected", reconnected);
                 result.putString("stage", "dns_sd_reconnected");
-                sendStatus(2, result);
-                finish(Activity.RESULT_OK, result);
-                return;
-            }
-            String reconnectTheme = testArguments.getString("assertReconnect", "");
-            if (!reconnectTheme.isEmpty()) {
-                awaitPluginRestartReconnect(context, reconnectTheme);
-                result.putString("stage", "plugin_restart_reconnected");
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -367,7 +364,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     /** Exercises real Android NSD discovery/resolution and the saved TLS trust gate. */
-    private void runDnsSdReconnectSmoke(Context context, int port, String fingerprint) throws Exception {
+    private JSONObject runDnsSdReconnectSmoke(Context context, int port, String fingerprint,
+                                               String expectedTheme) throws Exception {
         if (port < 1 || port > 65535 || fingerprint == null
                 || !fingerprint.matches("[a-fA-F0-9]{64}")) {
             throw new IllegalArgumentException("A bounded CI DNS-SD endpoint is required.");
@@ -438,6 +436,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     throw new IllegalStateException("DNS-SD reconnect changed saved pairing trust material.");
                 }
                 Log.i(TAG, "Android NSD resolved the fixture and accepted the endpoint after pinned TLS verification.");
+                // Keep the ephemeral NSD fixture and TLS forwarder alive until the
+                // saved device has used the rediscovered endpoint to read the new
+                // plugin snapshot. A second instrumentation process would no longer
+                // have access to those test-only endpoints.
+                PairingBridge.refresh(context);
+                return awaitTheme(context, expectedTheme, 30_000L, false);
             } finally {
                 stopDnsSdFixture(context);
             }
@@ -860,37 +864,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         }
                         for (int child = 0; child < node.getChildCount()
                                 && pending.size() < 512; child++) {
-                            AccessibilityNodeInfo childNode = node.getChild(child);
-                            if (childNode != null) {
-                                pending.add(childNode);
-                            }
-                        }
-                    }
-                } finally {
-                    for (AccessibilityNodeInfo node : pending) {
-                        node.recycle();
-                    }
-                }
-                if (summary.length() >= 1800) {
-                    break;
-                }
-            }
-        } finally {
-            for (AccessibilityWindowInfo window : windows) {
-                window.recycle();
-            }
-        }
-        return summary.length() == 0 ? "no labeled nodes" : summary.toString();
-    }
-
-    private static void runOwlRuntimeSmoke() throws Exception {
-        String clockSource = "widget \"CI clock\" {\n"
-                + "  meta { owl: 1 }\n"
-                + "  source now = clock every 1s\n"
-                + "  size: 2x1\n"
-                + "  background: surface\n"
-                + "  Column {\n"
-                + "    Text { text: fmtTime(now, \"HH:mm\"); style: huge; color: accent }\n"
+   …295 tokens truncated…cent }\n"
                 + "    Canvas { width: 96; height: 32; circle(width / 2, height / 2, 6, fill: accent) }\n"
                 + "  }\n"
                 + "}\n";
@@ -1157,33 +1131,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         throw new IllegalStateException("Timed out waiting for theme " + expectedTheme
                 + "; last phase=" + lastState.optString("phase"));
-    }
-
-    private static void awaitPluginRestartReconnect(Context context, String expectedTheme)
-            throws Exception {
-        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-        if (launch == null) {
-            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
-        }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        context.startActivity(launch);
-
-        long deadline = SystemClock.elapsedRealtime() + 90_000L;
-        while (SystemClock.elapsedRealtime() < deadline) {
-            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
-            JSONObject snapshot = state.optJSONObject("snapshot");
-            JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
-            if ("connected".equals(state.optString("phase"))
-                    && theme != null && expectedTheme.equals(theme.optString("name"))) {
-                if (!state.optBoolean("hasPairedDevice")) {
-                    throw new IllegalStateException("The plugin restart cleared the saved device token.");
-                }
-                Log.i(TAG, "The saved device reconnected after the Omarchy plugin restarted.");
-                return;
-            }
-            SystemClock.sleep(250L);
-        }
-        throw new IllegalStateException("The saved device did not reconnect and receive the post-restart theme.");
     }
 
     private void reportProgress(Context context, String stage) throws Exception {

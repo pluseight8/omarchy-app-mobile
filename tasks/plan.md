@@ -21,14 +21,17 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 - The plugin syncs Omarchy colors, `shell.toml`, wallpaper, Hyprland geometry and animations. Theme/workspace updates use file/socket events with a slower foreground refresh for missed events and metrics; cached theme remains local and usable offline.
 - Clipboard, file transfer, MPRIS, metrics, workspace, and configured command operations retain separate per-device grants and bounded input validation.
 - A cancelled TLS client response is treated as a disconnected peer. A regression test covers response writes, and the event long-poll integration test checks that a client RST does not log a traceback.
+- OWL renderer roots and descendants both wait for non-null model bindings before QML instantiation. Android smoke fails on `OwlNode.qml` null-binding errors and retains a failure screenshot/logcat if Home is inaccessible.
+- OWL nodes now guard renderer method calls during QML Loader initialization and use local fallbacks until the owning widget renderer is available. The Android error-log gate remains enabled to catch any remaining binding errors.
+- Locale and haptic persistence checks move OmaApp to Android Settings before force-stopping it, verify the process exits, and then verify saved state after relaunch. CI emits cold-start, PSS, and idle CPU data only when the cold launch and PSS samples parse successfully.
 
 ## Current verification
 
-- Local suite: 105 Python tests pass. The Russian catalog checker validates 291 source strings; shell/Python syntax checks, Android version-code regression, and `git diff --check` pass.
-- GitHub Actions [run #201](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40113154650) passed desktop, arm64 APK build, OpenGL emulator smoke, and Vulkan emulator smoke, including the response-disconnect regression test.
-- CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Both renderer jobs produced screenshots; Russian Settings and Home snapshots are checked in under `docs/screenshots/`.
+- Local suite: 112 Python tests pass. The Russian catalog checker validates 291 source strings; changed OWL components pass `qmllint`; shell syntax checks and `git diff --check` pass.
+- CI run #218 checked the prior revision: desktop and arm64 succeeded; both emulators failed during a post-restart theme read after the test-only NSD/TLS endpoint had been stopped. The Android smoke now waits for the post-restart TLS theme read while that fixture is still alive. Earlier logs also showed transient null renderer references in `OwlNode.qml`, now guarded in the renderer. See the [current workflow](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml) for verification on the patched revision.
+- Earlier CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Its renderer screenshots remain checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
-- The workspace lacks JDK, Android SDK/NDK, and Qt ShaderTools development files. Full local Android/desktop builds and rendering are therefore not claimed. No Pixel 10 / GrapheneOS device is attached.
+- This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. Full local Android/desktop builds and rendering are therefore not claimed. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 
