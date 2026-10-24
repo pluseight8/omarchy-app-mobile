@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAccessibilityWorkflowTests(unittest.TestCase):
+    def test_android_home_readiness_failure_saves_screen_and_pid_logcat(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn('"${output_xml%.xml}-failed.png"', workflow)
+        self.assertIn('"$smoke_artifacts/home-readiness-logcat.txt"', workflow)
+        self.assertIn('timeout 10s adb logcat -d -v threadtime --pid="$readiness_pid"', workflow)
+
     def test_emulator_enables_qt_accessibility_before_launching_home(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         service_discovery = workflow.index(

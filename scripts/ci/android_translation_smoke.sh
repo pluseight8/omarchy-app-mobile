@@ -49,30 +49,38 @@ tap_scrolling_label() {
   adb shell input tap "$x" "$y"
 }
 
-ensure_settings_page() {
-  local page_marker="$1"
-  local tab_label="$2"
-  if python3 scripts/ci/android_accessibility_assert_visible.py \
-    "$artifacts/translation-ui.xml" "$page_marker" >/dev/null 2>&1; then
-    return
-  fi
+ensure_settings_tab() {
+  local tab_label="$1"
+  dump_ui
   if ! python3 scripts/ci/android_accessibility_assert_checked.py \
     "$artifacts/translation-ui.xml" "$tab_label" >/dev/null 2>&1; then
     tap_label "$tab_label"
     sleep 1
-  fi
-  for attempt in {1..12}; do
     dump_ui
-    if python3 scripts/ci/android_accessibility_assert_visible.py \
-      "$artifacts/translation-ui.xml" "$page_marker" >/dev/null 2>&1; then
-      return
+  fi
+  python3 scripts/ci/android_accessibility_assert_checked.py \
+    "$artifacts/translation-ui.xml" "$tab_label"
+}
+
+restart_app_for_persistence() {
+  # Leave the HOME activity before force-stop so Android can terminate the
+  # launcher process instead of delivering the next start to its live task.
+  adb shell am start -a android.settings.SETTINGS >/dev/null
+  sleep 1
+  adb shell am force-stop app.omaapp
+  for attempt in {1..15}; do
+    if [[ -z "$(adb shell pidof app.omaapp | tr -d '\r')" ]]; then
+      break
     fi
-    # The Language setting can be above the saved scroll position after restart.
-    adb shell input swipe 205 300 205 720 450
-    sleep 0.3
+    sleep 0.5
   done
-  printf 'Could not find Settings page content %s.\n' "$page_marker" >&2
-  return 1
+  if [[ -n "$(adb shell pidof app.omaapp | tr -d '\r')" ]]; then
+    printf 'OmaApp process survived force-stop; persistence check would be invalid.\n' >&2
+    return 1
+  fi
+  adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
+  sleep 5
+  dump_ui
 }
 
 dump_ui
@@ -113,15 +121,14 @@ printf '%s\n' "$native_translation_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
   <<< "$native_translation_output"
 
-# Language choice is app-local and survives process death, then can be changed
-# back without clearing launcher data.
-adb shell am force-stop app.omaapp
-adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-sleep 5
-dump_ui
-ensure_settings_page 'Язык' 'Настройки'
+# Language choice is app-local and survives a confirmed process death, then
+# can be changed back without clearing launcher data.
+restart_app_for_persistence
+ensure_settings_tab 'Настройки'
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'Русский'
 sleep 1
-tap_scrolling_label 'Английский'
+tap_scrolling_label 'Английский' up
 sleep 2
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
@@ -131,6 +138,8 @@ cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-english.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-english-after-switch.png" "$artifacts/translation-ui-english.xml" \
   Home Apps Devices Style Settings
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'English'
 
 # Haptics are explicitly opt-in, use Android's View API, and remain enabled
 # after Activity recreation. The emulator may not have a vibration motor, so
@@ -144,11 +153,10 @@ adb exec-out screencap -p > "$artifacts/settings-haptics-enabled.png"
 adb logcat -d -v threadtime -t 3000 > "$artifacts/haptic-feedback.log"
 grep -F 'OmaApp: Android haptic feedback request dispatched' \
   "$artifacts/haptic-feedback.log"
-adb shell am force-stop app.omaapp
-adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-sleep 5
-dump_ui
-ensure_settings_page 'Language' 'Settings'
+restart_app_for_persistence
+ensure_settings_tab 'Settings'
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'English'
 sleep 1
 find_scrolling_label 'Enable haptic feedback' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_checked.py \

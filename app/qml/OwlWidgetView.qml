@@ -123,7 +123,7 @@ Item {
 
                 Repeater {
                     model: root.document.nodes || []
-                    delegate: OwlNode {
+                    delegate: OwlNodeLoader {
                         required property var modelData
                         nodeData: modelData
                         widgetRoot: root
