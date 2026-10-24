@@ -230,8 +230,24 @@ jobs:
           accessibility_service='app.omaapp/app.omaapp.CiAccessibilityService'
           adb shell settings put secure enabled_accessibility_services "$accessibility_service"
           adb shell settings put secure accessibility_enabled 1
-          test "$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')" = "$accessibility_service"
-          test "$(adb shell settings get secure accessibility_enabled | tr -d '\r')" = "1"
+          enabled_accessibility_services=''
+          accessibility_enabled=''
+          for attempt in {1..20}; do
+            enabled_accessibility_services="$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')"
+            accessibility_enabled="$(adb shell settings get secure accessibility_enabled | tr -d '\r')"
+            if [[ ":${enabled_accessibility_services}:" == *":${accessibility_service}:"* \
+              && "$accessibility_enabled" == "1" ]]; then
+              break
+            fi
+            sleep 0.5
+          done
+          printf 'Enabled accessibility services: %s\n' "$enabled_accessibility_services"
+          printf 'Accessibility enabled: %s\n' "$accessibility_enabled"
+          if [[ ":${enabled_accessibility_services}:" != *":${accessibility_service}:"* ]]; then
+            adb shell dumpsys accessibility
+            exit 1
+          fi
+          test "$accessibility_enabled" = "1"
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt

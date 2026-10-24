@@ -18,13 +18,17 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
             'adb shell settings put secure enabled_accessibility_services "$accessibility_service"'
         )
         verify_service = workflow.index(
-            'test "$(adb shell settings get secure enabled_accessibility_services | tr -d',
+            'enabled_accessibility_services="$(adb shell settings get secure enabled_accessibility_services',
             enable_service,
         )
         enable = workflow.index("adb shell settings put secure accessibility_enabled 1")
         verify = workflow.index(
-            'test "$(adb shell settings get secure accessibility_enabled | tr -d',
+            'accessibility_enabled="$(adb shell settings get secure accessibility_enabled',
             enable,
+        )
+        membership_check = workflow.index(
+            '[[ ":${enabled_accessibility_services}:" == *":${accessibility_service}:"*',
+            verify_service,
         )
         launch = workflow.index(
             "adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME",
@@ -33,8 +37,16 @@ class AndroidAccessibilityWorkflowTests(unittest.TestCase):
 
         self.assertLess(enable_service, enable)
         self.assertLess(enable, verify_service)
-        self.assertLess(enable, verify)
+        self.assertLess(verify_service, membership_check)
+        self.assertLess(membership_check, launch)
+        self.assertLess(verify, membership_check)
         self.assertLess(verify, launch)
+        self.assertIn("for attempt in {1..20}; do", workflow[enable_service:membership_check])
+        self.assertIn("adb shell dumpsys accessibility", workflow[membership_check:launch])
+        self.assertNotIn(
+            'test "$(adb shell settings get secure enabled_accessibility_services',
+            workflow,
+        )
 
     def test_accessibility_service_is_injected_only_into_debug_smoke_manifest(self):
         product_manifest = (ROOT / "app/android/AndroidManifest.xml").read_text(encoding="utf-8")
