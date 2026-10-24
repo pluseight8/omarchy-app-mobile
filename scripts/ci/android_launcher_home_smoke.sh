@@ -190,6 +190,8 @@ adb shell input swipe 205 280 205 720 500
 sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml"
+select_apps_when_needed "$smoke_artifacts/window-after-restart.xml" \
+  /sdcard/omaapp-after-restart.xml
 tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
 printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
 read -r tap_x tap_y <<< "$tap_target"

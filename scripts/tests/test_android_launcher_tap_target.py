@@ -4,6 +4,8 @@ import unittest
 
 from scripts.ci.android_launcher_tap_target import find_target
 
+ROOT = Path(__file__).resolve().parents[2]
+
 
 class AndroidLauncherTapTargetTests(unittest.TestCase):
     def find(self, xml: str) -> tuple[int, int]:
@@ -33,6 +35,19 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
             path.write_text(xml, encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Apps drawer is not selected"):
                 find_target(path)
+
+    def test_launcher_smoke_reselects_apps_after_home_folder_restart(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        reselect = smoke.index(
+            'select_apps_when_needed "$smoke_artifacts/window-after-restart.xml"'
+        )
+        launch_target = smoke.index(
+            'tap_target="$(python3 scripts/ci/android_launcher_tap_target.py '
+            '"$smoke_artifacts/window-after-restart.xml")"'
+        )
+        self.assertLess(reselect, launch_target)
 
 
 if __name__ == "__main__":
