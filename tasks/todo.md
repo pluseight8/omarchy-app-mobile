@@ -15,14 +15,13 @@
 
 ## Remaining work
 
-- [ ] Finish CI after correcting the haptics-settings scroll direction found in #193; inspect screenshots and the AppWidgetHost artifact before calling emulator checks complete.
+- [ ] Finish CI after fixing the OpenGL smoke's first-run app choice and the Vulkan translation helper's captured tap coordinates; inspect screenshots and the AppWidgetHost artifact before calling emulator checks complete.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported Qt-to-native placement/lifecycle bridge is designed and tested. Current status is an overlay proof of concept, not a product feature.
 - [ ] Test installation, language switching, app discovery, QR pairing, theme sync, DNS-SD reconnect, clipboard/files, and idle behavior on a physical Pixel 10 with GrapheneOS.
 - [ ] Review the current PR, address CI/review feedback, and keep the APK signing key owner-managed. Do not publish a signed release until the existing release workflow succeeds with the permanent secrets.
 
 ## Local verification limits
 
-- `python3 -m unittest discover -s scripts/tests -v`: 100 passing tests.
-- Russian catalog check: 280 source strings validated; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass.
+- `python3 -m unittest discover -s scripts/tests -q`: 101 tests pass. Russian catalog check validates 280 source strings; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass. CI #194 passed desktop and arm64 builds; OpenGL and Vulkan emulator smokes exposed the two harness issues listed above.
 - The workspace lacks JDK/Android SDK/NDK and the Qt ShaderTools development package, so no local Android APK, emulator, full desktop CMake build, or screenshot run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior are unverified.

@@ -46,6 +46,10 @@ class HapticFeedbackTests(unittest.TestCase):
         self.assertIn("OmaApp: Android haptic feedback request dispatched", smoke)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
 
+        scrolling_helper = smoke.split("find_scrolling_label() {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("dump_ui > /dev/null", scrolling_helper)
+        self.assertIn('printf \'%s\\n\' "$target"', scrolling_helper)
+
         haptics = smoke.split("# Haptics are explicitly opt-in", 1)[1]
         after_restart = haptics.split("grep -F 'OmaApp: Android haptic feedback request dispatched'", 1)[1]
         after_restart = after_restart.split("# Returning from Android Settings", 1)[0]

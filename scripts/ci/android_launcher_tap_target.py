@@ -25,6 +25,7 @@ def find_target(xml_path: Path) -> tuple[int, int]:
     if not apps_selected:
         raise ValueError("Apps drawer is not selected")
 
+    fallback_target = None
     for node in nodes:
         accessible_name = node.attrib.get("content-desc", "")
         if (node.attrib.get("package") != "app.omaapp"
@@ -40,7 +41,17 @@ def find_target(xml_path: Path) -> tuple[int, int]:
         if right <= left or bottom <= top:
             continue
 
-        return (left + right) // 2, (top + bottom) // 2
+        target = ((left + right) // 2, (top + bottom) // 2)
+        # Prefer the Android Settings app in emulator smoke. Other preloaded
+        # apps such as Drive can launch account-setup UI on a fresh AVD, which
+        # makes a Home return test depend on Google sign-in state.
+        if accessible_name == "Launch Settings":
+            return target
+        if fallback_target is None:
+            fallback_target = target
+
+    if fallback_target is not None:
+        return fallback_target
 
     raise ValueError("no clickable app-launch node found in Android UI dump")
 

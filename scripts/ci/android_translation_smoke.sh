@@ -23,7 +23,9 @@ find_scrolling_label() {
   local direction="${2:-down}"
   local target
   for attempt in {1..12}; do
-    dump_ui
+    # This function's stdout is captured by tap_scrolling_label; keep the
+    # diagnostic artifact path out of the coordinate pair it returns.
+    dump_ui > /dev/null
     if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
       "$artifacts/translation-ui.xml" "$label" 2>/dev/null)"; then
       printf '%s\n' "$target"

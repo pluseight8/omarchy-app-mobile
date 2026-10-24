@@ -23,6 +23,16 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
         </hierarchy>"""
         self.assertEqual(self.find(xml), (63, 536))
 
+    def test_prefers_system_settings_over_apps_that_require_first_run_sign_in(self):
+        xml = """<hierarchy>
+            <node package="app.omaapp" checked="true" content-desc="Apps" />
+            <node package="app.omaapp" clickable="true" enabled="true"
+                content-desc="Launch Drive" bounds="[22,489][105,584]" />
+            <node package="app.omaapp" clickable="true" enabled="true"
+                content-desc="Launch Settings" bounds="[114,489][197,584]" />
+        </hierarchy>"""
+        self.assertEqual(self.find(xml), (155, 536))
+
     def test_rejects_hidden_apps_drawer_items_when_home_is_selected(self):
         xml = """<hierarchy>
             <node package="app.omaapp" checked="true" content-desc="Home" />
