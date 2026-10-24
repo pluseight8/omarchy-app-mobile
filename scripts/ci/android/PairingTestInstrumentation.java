@@ -196,7 +196,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         reportAppWidgetStage("activity_started");
         UiAutomation automation = getUiAutomation();
-        clickAccessibleControl(automation, "Home");
+        if (!awaitAccessibleControlClick(automation, "Home", 8_000L)) {
+            throw new IllegalStateException("The Home navigation control did not become clickable.");
+        }
+        reportAppWidgetStage("home_control_clicked");
         if (!awaitAccessibilityText(automation, "Home page 1 of", 8_000L)) {
             throw new IllegalStateException("Could not select the existing Qt Quick Home page.");
         }
@@ -369,17 +372,58 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (root == null) {
             return false;
         }
-        for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(label)) {
-            CharSequence nodeText = node.getText();
-            if (label.contentEquals(nodeText) && node.isClickable()
-                    && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
+        pending.add(root);
+        boolean clicked = false;
+        try {
+            for (int index = 0; index < pending.size() && index < 512; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = label.contentEquals(nodeText)
+                        || label.contentEquals(nodeDescription);
+                if (matches && node.isVisibleToUser() && node.isClickable()
+                        && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    clicked = true;
+                    break;
+                }
+                if (matches) {
+                    AccessibilityNodeInfo parent = node.getParent();
+                    if (parent != null) {
+                        try {
+                            if (parent.isVisibleToUser() && parent.isClickable()
+                                    && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                                clicked = true;
+                                break;
+                            }
+                        } finally {
+                            parent.recycle();
+                        }
+                    }
+                }
+                for (int child = 0; child < node.getChildCount() && pending.size() < 512; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return clicked;
+    }
+
+    private static boolean awaitAccessibleControlClick(UiAutomation automation, String label,
+            long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (clickAccessibleControl(automation, label)) {
                 return true;
             }
-            AccessibilityNodeInfo parent = node.getParent();
-            if (label.contentEquals(nodeText) && parent != null && parent.isClickable()
-                    && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                return true;
-            }
+            SystemClock.sleep(250L);
         }
         return false;
     }
