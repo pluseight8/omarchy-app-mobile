@@ -162,6 +162,7 @@ esac
         self.assertIn("for (int index = 0; index < addresses.size(); index++)", bridge)
         self.assertIn('"DNS-SD address " + (index + 1) + " of "', bridge)
         self.assertIn("uniqueAddresses.size() >= 4", bridge)
+        self.assertIn("if (uniqueAddresses.isEmpty())", bridge)
         self.assertIn("if (!startNetwork)", bridge)
         self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE", bridge)
         self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE", discovery)

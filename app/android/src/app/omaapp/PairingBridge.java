@@ -444,7 +444,7 @@ public final class PairingBridge {
                 uniqueAddresses.add(address);
             }
         }
-        if (addresses.isEmpty()) {
+        if (uniqueAddresses.isEmpty()) {
             return;
         }
         final Context appContext = context.getApplicationContext();
