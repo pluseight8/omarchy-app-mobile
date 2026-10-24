@@ -100,11 +100,18 @@ def main() -> int:
                                    updated_theme: str = "", revoke: bool = False,
                                    feature_smoke: bool = False,
                                    clipboard_stress: bool = False,
-                                   assert_reconnect_theme: str = "") -> str:
+                                   assert_reconnect_theme: str = "",
+                                   dns_sd_port: int = 0,
+                                   dns_sd_fingerprint: str = "") -> str:
         command = [
             "adb", "shell", "am", "instrument", "-w",
         ]
-        if assert_reconnect_theme:
+        if dns_sd_port:
+            command.extend([
+                "-e", "dnsSdPort", str(dns_sd_port),
+                "-e", "dnsSdFingerprint", dns_sd_fingerprint,
+            ])
+        elif assert_reconnect_theme:
             command.extend(["-e", "assertReconnect", assert_reconnect_theme])
         else:
             encoded_qr = base64.b64encode(qr.encode("utf-8")).decode("ascii")
@@ -269,6 +276,10 @@ def main() -> int:
             raise RuntimeError(f"Android pairing instrumentation exited {return_code}:\n{combined}")
         if "INSTRUMENTATION_STATUS: stage=failed" in combined:
             raise RuntimeError(f"Android pairing instrumentation reported failure:\n{combined}")
+        if dns_sd_port:
+            if "INSTRUMENTATION_STATUS: stage=dns_sd_reconnected" not in combined:
+                raise RuntimeError(f"Android NSD did not rediscover its pinned endpoint:\n{combined}")
+            return combined
         if f"INSTRUMENTATION_STATUS: stage=paired" not in combined:
             if assert_reconnect_theme and "INSTRUMENTATION_STATUS: stage=plugin_restart_reconnected" in combined:
                 return combined
@@ -517,14 +528,31 @@ else:
                 old_port = state.port
                 state.stop_server()
                 theme["name"] = "CI_AfterRestart"
-                restarted_state = service.ServiceState(Path(temporary), "0.0.0.0", old_port)
-                restarted_state.start_server()
+                # A new port exercises endpoint rediscovery, while the persisted certificate and
+                # device token remain the same. The Android instrumentation advertises a local
+                # DNS-SD record and forwards its TLS bytes to this restarted plugin endpoint.
+                restarted_state = service.ServiceState(Path(temporary), "0.0.0.0", 0)
+                # Keep this phase deterministic: Python's mDNS packet encoding is covered by the
+                # plugin tests, while this emulator phase tests Android NSD against its own real API.
+                with patch.object(service.MdnsAdvertiser, "start", lambda _self: None):
+                    restarted_state.start_server()
+                if restarted_state.port == old_port:
+                    restarted_state.stop_server()
+                    restarted_state = service.ServiceState(Path(temporary), "0.0.0.0", 0)
+                    with patch.object(service.MdnsAdvertiser, "start", lambda _self: None):
+                        restarted_state.start_server()
+                if restarted_state.port == old_port:
+                    raise RuntimeError("The plugin restart did not produce a changed endpoint for DNS-SD.")
                 if len(restarted_state.devices) != 1:
                     raise RuntimeError("The plugin restart did not reload the saved Android trust token.")
                 if restarted_state.fingerprint.lower() != old_fingerprint.lower():
                     raise RuntimeError("The plugin restart changed its persisted TLS certificate fingerprint.")
                 state = restarted_state
                 state.event_hub.publish("theme")
+                run_android_instrumentation(
+                    state, "", expected_theme="CI_AfterRestart",
+                    dns_sd_port=state.port, dns_sd_fingerprint=state.fingerprint,
+                )
                 run_android_instrumentation(
                     state, "", expected_theme="CI_AfterRestart",
                     assert_reconnect_theme="CI_AfterRestart",
@@ -540,7 +568,8 @@ else:
                     raise RuntimeError("The client did not fetch an updated theme snapshot.")
         finally:
             state.stop_server()
-    print("Android pairing, live theme update, clipboard, file transfer, MPRIS, system status, "
+    print("Android pairing, live theme update, DNS-SD rediscovery with pinned TLS, clipboard, "
+          "file transfer, MPRIS, system status, "
           "Hyprland workspace control, safe commands, independent permissions, reconnect, "
           "and revocation passed.")
     return 0

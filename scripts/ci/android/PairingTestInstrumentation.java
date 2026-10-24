@@ -15,9 +15,12 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.net.nsd.NsdManager;
+import android.net.nsd.NsdServiceInfo;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -40,9 +43,19 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.Inet4Address;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.HashSet;
@@ -113,6 +126,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (Boolean.parseBoolean(testArguments.getString("launcherShortcuts"))) {
                 runLauncherShortcutSmoke(context);
                 result.putString("stage", "launcher_shortcuts_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            String dnsSdPort = testArguments.getString("dnsSdPort", "");
+            if (!dnsSdPort.isEmpty()) {
+                runDnsSdReconnectSmoke(context, Integer.parseInt(dnsSdPort),
+                        testArguments.getString("dnsSdFingerprint", ""));
+                result.putString("stage", "dns_sd_reconnected");
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -344,6 +366,311 @@ public final class PairingTestInstrumentation extends Instrumentation {
         Bundle status = new Bundle();
         status.putString("stage", "app_widget_" + stage);
         sendStatus(2, status);
+    }
+
+    /** Exercises real Android NSD discovery/resolution and the saved TLS trust gate. */
+    private void runDnsSdReconnectSmoke(Context context, int port, String fingerprint) throws Exception {
+        if (port < 1 || port > 65535 || fingerprint == null
+                || !fingerprint.matches("[a-fA-F0-9]{64}")) {
+            throw new IllegalArgumentException("A bounded CI DNS-SD endpoint is required.");
+        }
+        JSONObject saved = PairingStore.readCredential(context);
+        if (saved == null || !saved.has("token") || !saved.has("fingerprint")) {
+            throw new IllegalStateException("DNS-SD reconnect requires an existing QR-trusted device.");
+        }
+        String originalUrl = saved.optString("serverUrl", "");
+        String pinnedFingerprint = saved.optString("fingerprint", "");
+        String token = saved.optString("token", "");
+        if (!fingerprint.equalsIgnoreCase(pinnedFingerprint)) {
+            throw new IllegalStateException("The DNS-SD fixture does not represent a changed endpoint for the pinned host.");
+        }
+
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(launch);
+        SystemClock.sleep(2_000L);
+        DeviceDiscovery.start(context);
+
+        NsdManager manager = (NsdManager) context.getSystemService(Context.NSD_SERVICE);
+        if (manager == null) {
+            throw new IllegalStateException("Android NSD is unavailable in the emulator.");
+        }
+        TestTlsProxy proxy = new TestTlsProxy(port);
+        try {
+            proxy.start();
+            InetAddress host = proxy.getLocalAddress();
+            int discoveryPort = proxy.getPort();
+            String expectedUrl = "https://" + host.getHostAddress() + ":" + discoveryPort;
+            if (expectedUrl.equals(originalUrl)) {
+                throw new IllegalStateException("The DNS-SD fixture did not change the saved endpoint.");
+            }
+            TestDnsRegistration untrusted = registerDnsSdFixture(
+                    manager, "OmaApp-ci-rogue-" + Long.toHexString(SystemClock.elapsedRealtime()),
+                    host, discoveryPort, "0".repeat(64));
+            try {
+                SystemClock.sleep(3_000L);
+                JSONObject stillSaved = PairingStore.readCredential(context);
+                if (stillSaved == null || !originalUrl.equals(stillSaved.optString("serverUrl", ""))) {
+                    throw new IllegalStateException("An untrusted DNS-SD fingerprint changed the saved endpoint.");
+                }
+            } finally {
+                unregisterDnsSdFixture(manager, untrusted);
+            }
+
+            TestDnsRegistration trusted = registerDnsSdFixture(
+                    manager, "OmaApp-" + fingerprint.substring(0, 12) + "-ci-" + discoveryPort,
+                    host, discoveryPort, fingerprint);
+            try {
+                long deadline = SystemClock.uptimeMillis() + 25_000L;
+                JSONObject updated = PairingStore.readCredential(context);
+                while (SystemClock.uptimeMillis() < deadline
+                        && (updated == null || !expectedUrl.equals(updated.optString("serverUrl", "")))) {
+                    SystemClock.sleep(200L);
+                    updated = PairingStore.readCredential(context);
+                }
+                if (updated == null || !expectedUrl.equals(updated.optString("serverUrl", ""))) {
+                    throw new IllegalStateException("Android NSD did not reconnect to the TLS-pinned endpoint.");
+                }
+                if (!token.equals(updated.optString("token", ""))
+                        || !pinnedFingerprint.equalsIgnoreCase(updated.optString("fingerprint", ""))) {
+                    throw new IllegalStateException("DNS-SD reconnect changed saved pairing trust material.");
+                }
+                Log.i(TAG, "Android NSD resolved the fixture and accepted the endpoint after pinned TLS verification.");
+            } finally {
+                unregisterDnsSdFixture(manager, trusted);
+            }
+        } finally {
+            proxy.close();
+        }
+    }
+
+    private static final class TestDnsRegistration {
+        final NsdManager.RegistrationListener listener;
+        final CountDownLatch unregistered;
+
+        TestDnsRegistration(NsdManager.RegistrationListener listener, CountDownLatch unregistered) {
+            this.listener = listener;
+            this.unregistered = unregistered;
+        }
+    }
+
+    private static TestDnsRegistration registerDnsSdFixture(NsdManager manager, String name,
+                                                              InetAddress host, int port,
+                                                              String fingerprint) throws Exception {
+        NsdServiceInfo service = new NsdServiceInfo();
+        service.setServiceName(name);
+        service.setServiceType("_omaapp._tcp.");
+        service.setPort(port);
+        if (Build.VERSION.SDK_INT >= 34) {
+            service.setHostAddresses(Collections.singletonList(host));
+        } else {
+            service.setHost(host);
+        }
+        service.setAttribute("fingerprint", fingerprint);
+        CountDownLatch registered = new CountDownLatch(1);
+        CountDownLatch unregistered = new CountDownLatch(1);
+        AtomicReference<String> error = new AtomicReference<>("");
+        NsdManager.RegistrationListener listener = new NsdManager.RegistrationListener() {
+            @Override
+            public void onServiceRegistered(NsdServiceInfo registeredService) {
+                registered.countDown();
+            }
+
+            @Override
+            public void onRegistrationFailed(NsdServiceInfo failedService, int errorCode) {
+                error.set("Android NSD registration failed with code " + errorCode);
+                registered.countDown();
+            }
+
+            @Override
+            public void onServiceUnregistered(NsdServiceInfo removedService) {
+                unregistered.countDown();
+            }
+
+            @Override
+            public void onUnregistrationFailed(NsdServiceInfo failedService, int errorCode) {
+                error.set("Android NSD unregistration failed with code " + errorCode);
+                unregistered.countDown();
+            }
+        };
+        manager.registerService(service, NsdManager.PROTOCOL_DNS_SD, listener);
+        if (!registered.await(10, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Android NSD service registration timed out.");
+        }
+        if (!error.get().isEmpty()) {
+            throw new IllegalStateException(error.get());
+        }
+        return new TestDnsRegistration(listener, unregistered);
+    }
+
+    private static void unregisterDnsSdFixture(NsdManager manager, TestDnsRegistration service) {
+        try {
+            manager.unregisterService(service.listener);
+            service.unregistered.await(5, TimeUnit.SECONDS);
+        } catch (IllegalArgumentException ignored) {
+            // Registration may already have been removed after the emulator network resets.
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** Transparent TLS tunnel from an emulator-local NSD endpoint to the CI plugin fixture. */
+    private static final class TestTlsProxy implements AutoCloseable {
+        private final InetAddress localAddress;
+        private final int targetPort;
+        private final ServerSocket server;
+        private volatile boolean closed;
+        private volatile Socket clientSocket;
+        private volatile Socket upstreamSocket;
+        private Thread acceptThread;
+
+        TestTlsProxy(int targetPort) throws Exception {
+            this.targetPort = targetPort;
+            localAddress = findLocalSiteIpv4();
+            server = new ServerSocket();
+            server.setReuseAddress(false);
+            server.bind(new InetSocketAddress(localAddress, 0), 2);
+            server.setSoTimeout(1_000);
+        }
+
+        InetAddress getLocalAddress() {
+            return localAddress;
+        }
+
+        int getPort() {
+            return server.getLocalPort();
+        }
+
+        void start() {
+            acceptThread = new Thread(this::acceptConnections, "OmaApp CI TLS forwarder");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+        }
+
+        private void acceptConnections() {
+            while (!closed) {
+                try {
+                    Socket client = server.accept();
+                    clientSocket = client;
+                    Thread connection = new Thread(() -> forward(client),
+                            "OmaApp CI TLS forwarder connection");
+                    connection.setDaemon(true);
+                    connection.start();
+                } catch (java.net.SocketTimeoutException ignored) {
+                    // Recheck the close flag while the listener remains idle.
+                } catch (IOException error) {
+                    if (!closed) {
+                        Log.w(TAG, "The DNS-SD TLS fixture listener stopped.", error);
+                    }
+                    return;
+                }
+            }
+        }
+
+        private void forward(Socket client) {
+            try (Socket accepted = client) {
+                Socket upstream = new Socket();
+                upstreamSocket = upstream;
+                upstream.connect(new InetSocketAddress("10.0.2.2", targetPort), 5_000);
+                upstream.setSoTimeout(30_000);
+                accepted.setSoTimeout(30_000);
+                Thread request = new Thread(() -> copyTls(accepted, upstream),
+                        "OmaApp CI TLS request tunnel");
+                Thread response = new Thread(() -> copyTls(upstream, accepted),
+                        "OmaApp CI TLS response tunnel");
+                request.setDaemon(true);
+                response.setDaemon(true);
+                request.start();
+                response.start();
+                request.join(30_000);
+                response.join(30_000);
+            } catch (IOException error) {
+                if (!closed) {
+                    Log.w(TAG, "The DNS-SD TLS fixture connection failed.", error);
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            } finally {
+                Socket upstream = upstreamSocket;
+                if (upstream != null) {
+                    try {
+                        upstream.close();
+                    } catch (IOException ignored) {
+                    }
+                    upstreamSocket = null;
+                }
+                clientSocket = null;
+            }
+        }
+
+        private static void copyTls(Socket source, Socket destination) {
+            try {
+                InputStream input = source.getInputStream();
+                OutputStream output = destination.getOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    output.flush();
+                }
+                destination.shutdownOutput();
+            } catch (IOException ignored) {
+                // Closing either side ends the transparent tunnel after the HTTPS response.
+            }
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            try {
+                server.close();
+            } catch (IOException ignored) {
+            }
+            Socket client = clientSocket;
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (IOException ignored) {
+                }
+            }
+            Socket upstream = upstreamSocket;
+            if (upstream != null) {
+                try {
+                    upstream.close();
+                } catch (IOException ignored) {
+                }
+            }
+            if (acceptThread != null) {
+                try {
+                    acceptThread.join(2_000L);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        private static InetAddress findLocalSiteIpv4() throws Exception {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces == null) {
+                throw new SocketException("Android returned no network interfaces for DNS-SD.");
+            }
+            for (NetworkInterface network : Collections.list(interfaces)) {
+                if (!network.isUp() || network.isLoopback()) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = network.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address instanceof Inet4Address && address.isSiteLocalAddress()) {
+                        return address;
+                    }
+                }
+            }
+            throw new SocketException("Android returned no site-local IPv4 interface for DNS-SD.");
+        }
     }
 
     private static int dp(Context context, int value) {

@@ -156,6 +156,27 @@ esac
             ROOT / "app/android/src/app/omaapp/OmaAppActivity.java"
         ).read_text(encoding="utf-8"))
 
+    def test_android_emulator_exercises_real_nsd_and_pinned_endpoint_change(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        pairing_smoke = (ROOT / "scripts/ci/android_pairing_smoke.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("NsdManager manager", instrumentation)
+        self.assertIn("manager.registerService(service, NsdManager.PROTOCOL_DNS_SD", instrumentation)
+        self.assertIn("DeviceDiscovery.start(context)", instrumentation)
+        self.assertIn('"0".repeat(64)', instrumentation)
+        self.assertIn("An untrusted DNS-SD fingerprint changed the saved endpoint.", instrumentation)
+        self.assertIn("Android NSD did not reconnect to the TLS-pinned endpoint.", instrumentation)
+        self.assertIn("class TestTlsProxy implements AutoCloseable", instrumentation)
+        self.assertIn('new InetSocketAddress("10.0.2.2", targetPort)', instrumentation)
+        self.assertIn("service.setHostAddresses(Collections.singletonList(host))", instrumentation)
+        self.assertIn('"dnsSdPort"', instrumentation)
+        self.assertIn("dns_sd_port=state.port", pairing_smoke)
+        self.assertIn('patch.object(service.MdnsAdvertiser, "start"', pairing_smoke)
+        self.assertIn("restarted_state.port == old_port", pairing_smoke)
+
 
 if __name__ == "__main__":
     unittest.main()
