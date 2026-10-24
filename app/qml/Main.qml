@@ -36,6 +36,7 @@ ApplicationWindow {
     property string editingWidgetId: ""
     property string widgetMessage: ""
     property string openSourceNoticesText: ""
+    property bool languageSaveFailed: false
 
     function widgetThemeColor(value) {
         const color = Qt.color(value)
@@ -110,6 +111,7 @@ ApplicationWindow {
 
     LauncherModel {
         id: launcher
+        objectName: "omaappLauncherModel"
     }
 
     PairingModel {
@@ -158,6 +160,66 @@ ApplicationWindow {
     function featureEnabled(permission) {
         const permissions = pairing.features.permissions || {}
         return permissions[permission] === true
+    }
+
+    function localizedFeatureMessage(message) {
+        const raw = String(message || "")
+        switch (raw) {
+        case "There is no text in the phone clipboard.":
+            return qsTr("There is no text in the phone clipboard.")
+        case "Clipboard text is empty or exceeds 64 KiB.":
+            return qsTr("Clipboard text is empty or exceeds 64 KiB.")
+        case "Could not read phone clipboard text.":
+            return qsTr("Could not read phone clipboard text.")
+        case "Pair OmaApp with a computer first.":
+            return qsTr("Pair OmaApp with a computer first.")
+        case "Reading computer clipboard…":
+            return qsTr("Reading computer clipboard…")
+        case "The computer clipboard exceeds 64 KiB.":
+            return qsTr("The computer clipboard exceeds 64 KiB.")
+        case "Android clipboard is unavailable.":
+            return qsTr("Android clipboard is unavailable.")
+        case "Computer text copied to the phone clipboard.":
+            return qsTr("Computer text copied to the phone clipboard.")
+        case "This media action is not allowed.":
+            return qsTr("This media action is not allowed.")
+        case "This computer command is not configured.":
+            return qsTr("This computer command is not configured.")
+        case "The selected file name or size is not supported.":
+            return qsTr("The selected file name or size is not supported.")
+        case "Android could not open this file.":
+            return qsTr("Android could not open this file.")
+        case "The selected file changed while sending.":
+            return qsTr("The selected file changed while sending.")
+        case "Enable this feature for this phone in the Omarchy plugin permissions.":
+            return qsTr("Enable this feature for this phone in the Omarchy plugin permissions.")
+        case "The computer clipboard is unavailable in this session.":
+            return qsTr("The computer clipboard is unavailable in this session.")
+        case "Computer feature request failed. Check the local network and plugin permissions.":
+            return qsTr("Computer feature request failed. Check the local network and plugin permissions.")
+        case "Sending command to the computer…":
+            return qsTr("Sending command to the computer…")
+        case "Phone clipboard sent to the computer.":
+            return qsTr("Phone clipboard sent to the computer.")
+        case "Computer action completed.":
+            return qsTr("Computer action completed.")
+        }
+
+        let match = raw.match(/^Sending (.+) to the computer…$/)
+        if (match)
+            return qsTr("Sending %1 to the computer…").arg(match[1])
+        match = raw.match(/^Sent (.+) to Downloads\/OmaApp\.$/)
+        if (match)
+            return qsTr("Sent %1 to Downloads/OmaApp.").arg(match[1])
+        match = raw.match(/^Computer rejected the file \(HTTP ([0-9]{3})\)\.$/)
+        if (match)
+            return qsTr("Computer rejected the file (HTTP %1).").arg(match[1])
+        match = raw.match(/^Computer feature request failed \(HTTP ([0-9]{3})\)\.$/)
+        if (match)
+            return qsTr("Computer feature request failed (HTTP %1).").arg(match[1])
+
+        return raw.length === 0 ? ""
+                                : qsTr("Computer feature request failed. Check the local network and plugin permissions.")
     }
 
     function applySyncedTheme() {
@@ -1986,6 +2048,11 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                             Button {
+                                text: qsTr("Retry")
+                                enabled: !pairing.connected
+                                onClicked: pairing.retry()
+                            }
+                            Button {
                                 text: qsTr("Scan")
                                 enabled: pairing.platformSupported
                                 onClicked: pairing.startScan()
@@ -2070,7 +2137,7 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         visible: pairing.featureMessage.length > 0
-                        text: pairing.featureMessage
+                        text: window.localizedFeatureMessage(pairing.featureMessage)
                         color: Theme.muted
                         font.pixelSize: Theme.fontSize(12)
                         wrapMode: Text.WordWrap
@@ -2906,6 +2973,87 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
 
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: languageSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: languageSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: Theme.space(12)
+
+                        Text {
+                            text: qsTr("Language")
+                            Accessible.name: text
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(17)
+                            font.weight: Font.DemiBold
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Choose the app language. System default follows the phone language; English and Russian are available offline.")
+                            Accessible.name: text
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.space(6)
+
+                            Repeater {
+                                model: [
+                                    { value: "system", label: qsTr("System default") },
+                                    { value: "en", label: qsTr("English") },
+                                    { value: "ru", label: qsTr("Russian") }
+                                ]
+
+                                delegate: Button {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    checkable: true
+                                    checked: appTranslations.languagePreference === modelData.value
+                                    text: modelData.label
+                                    font.pixelSize: Theme.fontSize(11)
+                                    Accessible.name: text
+
+                                    onClicked: {
+                                        if (!appTranslations.setLanguage(modelData.value))
+                                            window.languageSaveFailed = true
+                                        else
+                                            window.languageSaveFailed = false
+                                    }
+
+                                    background: HyprlandSurface {
+                                        fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
+                                        borderStart: parent.checked ? Theme.accent : Theme.outline
+                                        borderEnd: borderStart
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: window.languageSaveFailed
+                            text: qsTr("The language preference could not be saved.")
+                            color: Theme.urgent
+                            font.pixelSize: Theme.fontSize(11)
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
                 Button {
                     Layout.fillWidth: true
                     text: qsTr("Open-source notices and licenses")
@@ -2932,6 +3080,8 @@ ApplicationWindow {
                 delegate: Button {
                     required property var modelData
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
                     text: modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
@@ -2947,9 +3097,10 @@ ApplicationWindow {
                     contentItem: Text {
                         text: parent.text
                         color: parent.checked ? Theme.foreground : Theme.muted
-                        font.pixelSize: Theme.fontSize(13)
+                        font.pixelSize: Theme.fontSize(11)
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.Wrap
                     }
                 }
             }

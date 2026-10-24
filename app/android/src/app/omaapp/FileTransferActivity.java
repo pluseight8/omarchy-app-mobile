@@ -42,7 +42,7 @@ public final class FileTransferActivity extends Activity {
                 String message = getSharedPreferences(PairingBridge.PREFERENCES, MODE_PRIVATE)
                         .getString("feature_message", "");
                 if (!message.isEmpty()) {
-                    status.setText(message);
+                    status.setText(NativeStrings.featureMessage(message));
                 }
                 handler.postDelayed(this, 800L);
             }
@@ -63,14 +63,16 @@ public final class FileTransferActivity extends Activity {
         layout.setPadding(margin, margin, margin, margin);
 
         TextView heading = new TextView(this);
-        heading.setText("Files · " + getSharedPreferences(PairingBridge.PREFERENCES, MODE_PRIVATE)
-                .getString("host_name", "Omarchy computer"));
+        String hostName = getSharedPreferences(PairingBridge.PREFERENCES, MODE_PRIVATE)
+                .getString("host_name", "Omarchy computer");
+        heading.setText(NativeStrings.format("Files · %1", hostName));
         heading.setTextSize(22);
         layout.addView(heading, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         status = new TextView(this);
-        status.setText("Files move through your pinned local connection. The computer saves uploads in Downloads/OmaApp.");
+        status.setText(NativeStrings.get(
+                "Files move through your pinned local connection. The computer saves uploads in Downloads/OmaApp."));
         status.setTextSize(14);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -78,12 +80,12 @@ public final class FileTransferActivity extends Activity {
         layout.addView(status, statusParams);
 
         sendButton = new Button(this);
-        sendButton.setText("Send a file to computer");
+        sendButton.setText(NativeStrings.get("Send a file to computer"));
         sendButton.setOnClickListener(view -> pickUpload());
         layout.addView(sendButton, buttonParams(margin));
 
         receiveButton = new Button(this);
-        receiveButton.setText("Save a computer file to phone");
+        receiveButton.setText(NativeStrings.get("Save a computer file to phone"));
         receiveButton.setOnClickListener(view -> loadRemoteFiles());
         layout.addView(receiveButton, buttonParams(margin / 3));
 
@@ -98,11 +100,12 @@ public final class FileTransferActivity extends Activity {
         sendButton.setEnabled(permissions != null && permissions.optBoolean("files.receive", false));
         receiveButton.setEnabled(permissions != null && permissions.optBoolean("files.send", false));
         if (!sendButton.isEnabled() && !receiveButton.isEnabled()) {
-            status.setText("Enable Send files to phone or Receive files from phone in the Omarchy plugin.");
+            status.setText(NativeStrings.get(
+                    "Enable Send files to phone or Receive files from phone in the Omarchy plugin."));
         }
 
         Button close = new Button(this);
-        close.setText("Close");
+        close.setText(NativeStrings.get("Close"));
         close.setOnClickListener(view -> finish());
         layout.addView(close, buttonParams(margin / 3));
         setContentView(layout);
@@ -123,10 +126,10 @@ public final class FileTransferActivity extends Activity {
     }
 
     private void loadRemoteFiles() {
-        status.setText("Loading files shared from the computer…");
+        status.setText(NativeStrings.get("Loading files shared from the computer…"));
         JSONObject credentials = PairingStore.readCredential(this);
         if (credentials == null || !credentials.has("token")) {
-            status.setText("Pair OmaApp with a computer first.");
+            status.setText(NativeStrings.get("Pair OmaApp with a computer first."));
             return;
         }
         network.execute(() -> {
@@ -157,20 +160,21 @@ public final class FileTransferActivity extends Activity {
                 }
                 runOnUiThread(() -> showRemoteFileChooser(names, labels));
             } catch (Exception error) {
-                runOnUiThread(() -> status.setText(error.getMessage() == null
-                        ? "Could not list computer files." : error.getMessage()));
+                runOnUiThread(() -> status.setText(
+                        NativeStrings.fileTransferError(error.getMessage())));
             }
         });
     }
 
     private void showRemoteFileChooser(ArrayList<String> names, ArrayList<String> labels) {
         if (names.isEmpty()) {
-            status.setText("No files are shared from Downloads/OmaApp on this computer.");
+            status.setText(NativeStrings.get(
+                    "No files are shared from Downloads/OmaApp on this computer."));
             return;
         }
-        status.setText("Choose a file to save to the phone.");
+        status.setText(NativeStrings.get("Choose a file to save to the phone."));
         new AlertDialog.Builder(this)
-                .setTitle("Computer files")
+                .setTitle(NativeStrings.get("Computer files"))
                 .setItems(labels.toArray(new String[0]), (dialog, index) -> {
                     downloadName = names.get(index);
                     Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
@@ -179,7 +183,7 @@ public final class FileTransferActivity extends Activity {
                     intent.putExtra(Intent.EXTRA_TITLE, downloadName);
                     startActivityForResult(intent, PICK_DOWNLOAD);
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton(NativeStrings.get("Cancel"), null)
                 .show();
     }
 
@@ -238,7 +242,7 @@ public final class FileTransferActivity extends Activity {
             // Some document providers omit metadata; those files need a provider with a known size.
         }
         if (displayName == null || size < 1 || size > MAX_TRANSFER_BYTES) {
-            status.setText("Choose a named file between 1 byte and 100 MiB.");
+            status.setText(NativeStrings.get("Choose a named file between 1 byte and 100 MiB."));
             return;
         }
         try {
@@ -246,17 +250,17 @@ public final class FileTransferActivity extends Activity {
         } catch (SecurityException ignored) {
             // The temporary chooser grant remains available while the transfer runs.
         }
-        status.setText("Sending " + displayName + "…");
+        status.setText(NativeStrings.format("Sending %1…", displayName));
         PairingBridge.uploadFile(this, uri, displayName, size);
     }
 
     private void receiveFile(Uri destination, String name) {
         JSONObject credentials = PairingStore.readCredential(this);
         if (credentials == null || !credentials.has("token")) {
-            status.setText("Pair OmaApp with a computer first.");
+            status.setText(NativeStrings.get("Pair OmaApp with a computer first."));
             return;
         }
-        status.setText("Saving " + name + " to the selected location…");
+        status.setText(NativeStrings.format("Saving %1 to the selected location…", name));
         network.execute(() -> {
             HttpsURLConnection connection = null;
             try {
@@ -265,12 +269,14 @@ public final class FileTransferActivity extends Activity {
                         "GET", true);
                 int code = connection.getResponseCode();
                 if (code != 200) {
-                    throw new IllegalStateException("Computer rejected the file request (HTTP " + code + ").");
+                    throw new IllegalStateException(NativeStrings.format(
+                            "Computer rejected the file request (HTTP %1).", code));
                 }
                 try (InputStream input = connection.getInputStream();
                      OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
                     if (output == null) {
-                        throw new IllegalStateException("Android could not open the selected destination.");
+                        throw new IllegalStateException(
+                                NativeStrings.get("Android could not open the selected destination."));
                     }
                     byte[] buffer = new byte[16 * 1024];
                     long total = 0;
@@ -283,10 +289,11 @@ public final class FileTransferActivity extends Activity {
                         output.write(buffer, 0, count);
                     }
                 }
-                runOnUiThread(() -> status.setText("Saved " + name + " to the selected phone location."));
+                runOnUiThread(() -> status.setText(
+                        NativeStrings.format("Saved %1 to the selected phone location.", name)));
             } catch (Exception error) {
-                runOnUiThread(() -> status.setText(error.getMessage() == null
-                        ? "Could not save the computer file." : error.getMessage()));
+                runOnUiThread(() -> status.setText(
+                        NativeStrings.fileTransferError(error.getMessage())));
             } finally {
                 if (connection != null) {
                     connection.disconnect();

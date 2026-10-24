@@ -12,26 +12,18 @@ from pathlib import Path
 BOUNDS = re.compile(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]")
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: android_launcher_tap_target.py UI_DUMP.xml", file=sys.stderr)
-        return 2
-
-    try:
-        root = ET.parse(Path(sys.argv[1])).getroot()
-    except (OSError, ET.ParseError) as error:
-        print(f"cannot read Android UI dump: {error}", file=sys.stderr)
-        return 1
-
+def find_target(xml_path: Path) -> tuple[int, int]:
+    root = ET.parse(xml_path).getroot()
     nodes = list(root.iter("node"))
-    packages = {node.attrib.get("package", "") for node in nodes}
-    if "app.omaapp" not in packages:
-        visible_packages = ", ".join(sorted(package for package in packages if package)) or "none"
-        print(
-            f"OmaApp is not exposing its launcher UI; visible packages: {visible_packages}",
-            file=sys.stderr,
-        )
-        return 1
+    apps_selected = any(
+        node.attrib.get("package") == "app.omaapp"
+        and node.attrib.get("checked") == "true"
+        and "Apps" in {node.attrib.get("content-desc", "").strip(),
+                       node.attrib.get("text", "").strip()}
+        for node in nodes
+    )
+    if not apps_selected:
+        raise ValueError("Apps drawer is not selected")
 
     for node in nodes:
         accessible_name = node.attrib.get("content-desc", "")
@@ -48,11 +40,23 @@ def main() -> int:
         if right <= left or bottom <= top:
             continue
 
-        print((left + right) // 2, (top + bottom) // 2)
-        return 0
+        return (left + right) // 2, (top + bottom) // 2
 
-    print("no clickable app-launch node found in Android UI dump", file=sys.stderr)
-    return 1
+    raise ValueError("no clickable app-launch node found in Android UI dump")
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: android_launcher_tap_target.py UI_DUMP.xml", file=sys.stderr)
+        return 2
+
+    try:
+        x, y = find_target(Path(sys.argv[1]))
+    except (OSError, ET.ParseError, ValueError) as error:
+        print(f"cannot find Android launcher app target: {error}", file=sys.stderr)
+        return 1
+    print(x, y)
+    return 0
 
 
 if __name__ == "__main__":

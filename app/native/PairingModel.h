@@ -42,6 +42,7 @@ public:
     bool hasCandidate() const;
 
     Q_INVOKABLE void startScan();
+    Q_INVOKABLE void retry();
     Q_INVOKABLE void approveCandidate();
     Q_INVOKABLE void discardCandidate();
     Q_INVOKABLE void cancelPairing();

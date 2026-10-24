@@ -36,6 +36,8 @@ jobs:
       - name: Configure, build, and test
         run: |
           cmake -S . -B build/desktop -GNinja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/desktop --target update_translations
+          python3 scripts/ci/check_translations.py
           cmake --build build/desktop --parallel 2
           ctest --test-dir build/desktop --output-on-failure
 
@@ -50,7 +52,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
 
       - name: Check shell scripts
-        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh
+        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh scripts/ci/android_translation_smoke.sh scripts/ci/build_android_launcher_fixture.sh scripts/ci/android_app_discovery_smoke.sh
 
   android-arm64:
     name: Android arm64 build
@@ -174,6 +176,7 @@ jobs:
           python3 scripts/ci/prepare_android_pairing_smoke.py
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
+          bash scripts/ci/build_android_launcher_fixture.sh build/android-launcher-fixture/launcher-fixture.apk
 
       - name: Boot emulator, install OmaApp, and select it as HOME
         timeout-minutes: 20
@@ -221,6 +224,30 @@ jobs:
           test -n "$apk"
           adb install "$apk"
           adb logcat -c
+          # Qt's Android accessibility bridge attaches its virtual QML tree
+          # only while AccessibilityManager reports accessibility enabled.
+          # Keep it enabled for shell-driven UIAutomator snapshots below.
+          accessibility_service='app.omaapp/app.omaapp.CiAccessibilityService'
+          adb shell settings put secure enabled_accessibility_services "$accessibility_service"
+          adb shell settings put secure accessibility_enabled 1
+          enabled_accessibility_services=''
+          accessibility_enabled=''
+          for attempt in {1..20}; do
+            enabled_accessibility_services="$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')"
+            accessibility_enabled="$(adb shell settings get secure accessibility_enabled | tr -d '\r')"
+            if [[ ":${enabled_accessibility_services}:" == *":${accessibility_service}:"* \
+              && "$accessibility_enabled" == "1" ]]; then
+              break
+            fi
+            sleep 0.5
+          done
+          printf 'Enabled accessibility services: %s\n' "$enabled_accessibility_services"
+          printf 'Accessibility enabled: %s\n' "$accessibility_enabled"
+          if [[ ":${enabled_accessibility_services}:" != *":${accessibility_service}:"* ]]; then
+            adb shell dumpsys accessibility
+            exit 1
+          fi
+          test "$accessibility_enabled" = "1"
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
@@ -263,9 +290,11 @@ jobs:
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
-              # Keep startup diagnostics after QML is ready; the scenegraph
-              # assertion below verifies the renderer selected for this run.
+              # Capture the first Qt scenegraph initialization before later
+              # lifecycle smokes clear logcat and relaunch the activity.
               adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+              grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' \
+                "$smoke_artifacts/startup-logcat.txt"
               if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
                 exit 1
               fi
@@ -374,9 +403,15 @@ jobs:
             "$smoke_artifacts/window-returned-to-apps.xml" 'Apps'
           python3 scripts/ci/android_accessibility_tap_target.py \
             "$smoke_artifacts/window-returned-to-apps.xml" 'Create folder' >/dev/null
+          bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"
+          bash scripts/ci/android_app_discovery_smoke.sh \
+            build/android-launcher-fixture/launcher-fixture.apk "$smoke_artifacts/app-discovery"
+          # The translation smoke force-stops and relaunches OmaApp. Refresh
+          # the PID before collecting renderer diagnostics for that process.
+          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          test -n "$app_pid"
           # Retain logs from after the style screen has exercised the surface shader.
           adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
-          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
           fi
@@ -407,6 +442,12 @@ jobs:
             --baselines tests/visual_baselines/android-paired --screens style \
             --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
             --require-gradient --gradient-angle 37
+          widget_output="$(timeout 90s adb shell am instrument -w -e appWidgetHost true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+          printf '%s\n' "$widget_output"
+          grep -F 'INSTRUMENTATION_STATUS: stage=app_widget_host_overlay_and_touch_passed' <<< "$widget_output"
+          adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-host-poc.png \
+            "$smoke_artifacts/appwidget-host-poc.png"
+          test -s "$smoke_artifacts/appwidget-host-poc.png"
           trap - ERR
 
       - name: Upload Android smoke screenshots

@@ -42,6 +42,26 @@ scroll_to_home_folder() {
     --home-folder "$accessibility_xml" "$folder_label" >/dev/null
 }
 
+select_apps_when_needed() {
+  local accessibility_xml="$1"
+  local device_xml="$2"
+  for attempt in 1 2 3 4 5; do
+    if python3 scripts/ci/android_accessibility_assert_checked.py \
+      "$accessibility_xml" 'Apps' >/dev/null 2>&1; then
+      return 0
+    fi
+    local target
+    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" 'Apps')"
+    local x y
+    read -r x y <<< "$target"
+    adb shell input tap "$x" "$y"
+    sleep 1
+    python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
+  done
+  printf 'Apps drawer did not become selected before the launcher pin test.\n' >&2
+  python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Apps'
+}
+
 grep -F 'app.omaapp' role.txt
 grep -F 'app.omaapp' activities.txt
 grep -F 'app.omaapp' resolved-home.txt
@@ -113,11 +133,8 @@ scroll_to_home_folder "$smoke_artifacts/window-home-before-restart-navigation.xm
 cp "$smoke_artifacts/window-home-before-restart-navigation.xml" \
   "$smoke_artifacts/window-folder-on-home.xml"
 grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-folder-on-home.xml"
-apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-folder-on-home.xml" 'Apps')"
-read -r apps_x apps_y <<< "$apps_target"
-adb shell input tap "$apps_x" "$apps_y"
-sleep 1
+select_apps_when_needed "$smoke_artifacts/window-folder-on-home.xml" \
+  /sdcard/omaapp-before-pin.xml
 adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml"
@@ -173,6 +190,8 @@ adb shell input swipe 205 280 205 720 500
 sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml"
+select_apps_when_needed "$smoke_artifacts/window-after-restart.xml" \
+  /sdcard/omaapp-after-restart.xml
 tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
 printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
 read -r tap_x tap_y <<< "$tap_target"
