@@ -4,7 +4,22 @@ set -euo pipefail
 artifacts="${1:?usage: android_runtime_metrics.sh ARTIFACT_DIRECTORY}"
 mkdir -p "$artifacts"
 
+# Leave HOME before force-stop; Android may otherwise immediately keep or
+# relaunch the selected launcher and report a warm/unknown launch.
+adb shell am start -a android.settings.SETTINGS >/dev/null
+sleep 1
 adb shell am force-stop app.omaapp
+for attempt in {1..15}; do
+  if [[ -z "$(adb shell pidof app.omaapp | tr -d '\r')" ]]; then
+    break
+  fi
+  sleep 0.5
+done
+if [[ -n "$(adb shell pidof app.omaapp | tr -d '\r')" ]]; then
+  printf 'OmaApp process survived force-stop; cold-start measurement would be invalid.\n' >&2
+  exit 1
+fi
+
 launch_output="$(adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity | tr -d '\r')"
 printf '%s\n' "$launch_output" > "$artifacts/cold-start.txt"
 
@@ -64,6 +79,8 @@ missing = [key for key in (
     "coldStartTotalTimeMs",
     "idleProcessResidentSetPssKb",
 ) if report[key] is None]
+if launch_state != "COLD":
+    missing.append("cold LaunchState (reported " + repr(launch_state) + ")")
 if missing:
     raise SystemExit("Android runtime measurements are missing: " + ", ".join(missing))
 (directory / "runtime-metrics.json").write_text(

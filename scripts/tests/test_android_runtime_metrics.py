@@ -20,11 +20,15 @@ class AndroidRuntimeMetricsTests(unittest.TestCase):
                 """#!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
-  "shell am force-stop app.omaapp") exit 0 ;;
+  "shell am start -a android.settings.SETTINGS") exit 0 ;;
+  "shell am force-stop app.omaapp") : > "$FAKE_ADB_STOPPED" ;;
   "shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity")
+    : > "$FAKE_ADB_STARTED"
     printf 'Status: ok\\r\\nLaunchState: COLD\\r\\nThisTime: 812\\r\\nTotalTime: 812\\r\\nWaitTime: 824\\r\\n'
     ;;
-  "shell pidof app.omaapp") printf '4321\\r\\n' ;;
+  "shell pidof app.omaapp")
+    if [[ -f "$FAKE_ADB_STARTED" ]]; then printf '4321\\r\\n'; fi
+    ;;
   "shell dumpsys meminfo 4321") printf 'TOTAL PSS: 42,816 TOTAL RSS: 80,104\\n' ;;
   "shell dumpsys cpuinfo") printf '  0.2%% 4321/app.omaapp:remote\\n' ;;
   *) printf 'unexpected adb arguments: %s\\n' "$*" >&2; exit 2 ;;
@@ -38,6 +42,8 @@ esac
             fake_sleep.chmod(0o755)
             environment = os.environ.copy()
             environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+            environment["FAKE_ADB_STOPPED"] = str(temporary / "adb-stopped")
+            environment["FAKE_ADB_STARTED"] = str(temporary / "adb-started")
             artifacts = temporary / "artifacts"
 
             completed = subprocess.run(
@@ -70,6 +76,8 @@ esac
         self.assertIn('"coldStartTotalTimeMs"', script)
         self.assertIn('"idleProcessResidentSetPssKb"', script)
         self.assertIn('if missing:', script)
+        self.assertIn('"COLD"', script)
+        self.assertIn('android.settings.SETTINGS', script)
 
 
 if __name__ == "__main__":
