@@ -11,6 +11,7 @@ import android.util.Log;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -80,13 +81,14 @@ public final class DeviceDiscovery {
                                 return;
                             }
                             String fingerprint = advertisedFingerprint(resolved.getAttributes());
-                            InetAddress address = firstSiteLocalIpv4(resolved);
+                            List<String> candidateAddresses = siteLocalIpv4Addresses(resolved);
                             int addressCount = Build.VERSION.SDK_INT >= 34
-                                    ? resolved.getHostAddresses().size() : (address == null ? 0 : 1);
-                            if (fingerprint.isEmpty() || address == null
+                                    ? resolved.getHostAddresses().size() : candidateAddresses.size();
+                            if (fingerprint.isEmpty() || candidateAddresses.isEmpty()
                                     || resolved.getPort() < 1 || resolved.getPort() > 65535) {
                                 debugLog(discoveryContext, "DNS-SD candidate resolved but failed validation: "
                                         + "addresses=" + addressCount
+                                        + ", privateIpv4=" + candidateAddresses.size()
                                         + ", fingerprint=" + !fingerprint.isEmpty()
                                         + ", port=" + (resolved.getPort() >= 1 && resolved.getPort() <= 65535)
                                         + ".");
@@ -95,7 +97,7 @@ public final class DeviceDiscovery {
                             debugLog(discoveryContext, "DNS-SD candidate resolved with "
                                     + addressCount + " address(es) and a valid trust hint.");
                             PairingBridge.reconnectDiscovered(discoveryContext,
-                                    address.getHostAddress(), resolved.getPort(), fingerprint);
+                                    candidateAddresses, resolved.getPort(), fingerprint);
                         }
                     });
                 } catch (IllegalArgumentException error) {
@@ -170,18 +172,22 @@ public final class DeviceDiscovery {
         return fingerprint.matches("[a-f0-9]{64}") ? fingerprint : "";
     }
 
-    private static InetAddress firstSiteLocalIpv4(NsdServiceInfo service) {
+    private static List<String> siteLocalIpv4Addresses(NsdServiceInfo service) {
+        List<String> result = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= 34) {
-            List<InetAddress> addresses = service.getHostAddresses();
-            for (InetAddress address : addresses) {
-                if (address instanceof Inet4Address && address.isSiteLocalAddress()) {
-                    return address;
+            for (InetAddress address : service.getHostAddresses()) {
+                if (address instanceof Inet4Address && address.isSiteLocalAddress()
+                        && !result.contains(address.getHostAddress())) {
+                    result.add(address.getHostAddress());
                 }
             }
-            return null;
+            return result;
         }
         InetAddress address = service.getHost();
-        return address instanceof Inet4Address && address.isSiteLocalAddress() ? address : null;
+        if (address instanceof Inet4Address && address.isSiteLocalAddress()) {
+            result.add(address.getHostAddress());
+        }
+        return result;
     }
 
     private static void debugLog(Context context, String message) {

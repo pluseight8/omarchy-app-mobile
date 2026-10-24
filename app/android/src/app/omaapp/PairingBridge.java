@@ -28,6 +28,9 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +73,7 @@ public final class PairingBridge {
     private static long lastRefreshRequested;
     private static long lastDiscoveredRefresh;
     private static boolean discoveredRetryQueued;
-    private static String queuedDiscoveryAddress;
+    private static List<String> queuedDiscoveryAddresses;
     private static int queuedDiscoveryPort;
     private static String queuedDiscoveryFingerprint;
     private static volatile HttpsURLConnection eventConnection;
@@ -420,10 +423,28 @@ public final class PairingBridge {
     /** Updates a saved endpoint only after its TLS certificate matches the QR-pinned hash. */
     public static void reconnectDiscovered(Context context, String address, int port,
                                            String advertisedFingerprint) {
-        if (context == null || address == null || port < 1 || port > 65535
-                || !isPrivateIpv4(address)
+        reconnectDiscovered(context, address == null ? Collections.emptyList()
+                : Collections.singletonList(address), port, advertisedFingerprint);
+    }
+
+    /** Tries each resolved private IPv4 address; multi-homed hosts may expose one unreachable route. */
+    public static void reconnectDiscovered(Context context, List<String> candidateAddresses,
+                                           int port, String advertisedFingerprint) {
+        if (context == null || candidateAddresses == null || port < 1 || port > 65535
                 || advertisedFingerprint == null
                 || !advertisedFingerprint.matches("[a-fA-F0-9]{64}")) {
+            return;
+        }
+        List<String> uniqueAddresses = new ArrayList<>();
+        for (String address : candidateAddresses) {
+            if (uniqueAddresses.size() >= 4) {
+                break;
+            }
+            if (address != null && isPrivateIpv4(address) && !uniqueAddresses.contains(address)) {
+                uniqueAddresses.add(address);
+            }
+        }
+        if (addresses.isEmpty()) {
             return;
         }
         final Context appContext = context.getApplicationContext();
@@ -436,8 +457,15 @@ public final class PairingBridge {
             debugDiscoveryLog(appContext, "Ignored DNS-SD candidate because its certificate hint did not match.");
             return;
         }
-        final String serverUrl = "https://" + address + ":" + port;
-        if (serverUrl.equals(saved.optString("serverUrl", ""))) {
+        String savedUrl = saved.optString("serverUrl", "");
+        List<String> changedAddresses = new ArrayList<>();
+        for (String address : uniqueAddresses) {
+            if (!("https://" + address + ":" + port).equals(savedUrl)) {
+                changedAddresses.add(address);
+            }
+        }
+        final List<String> addresses = changedAddresses;
+        if (addresses.isEmpty()) {
             debugDiscoveryLog(appContext, "DNS-SD resolved the currently saved endpoint.");
             return;
         }
@@ -446,7 +474,7 @@ public final class PairingBridge {
         synchronized (OPERATION_LOCK) {
             long now = System.currentTimeMillis();
             if (operationRunning) {
-                queuedDiscoveryAddress = address;
+                queuedDiscoveryAddresses = new ArrayList<>(addresses);
                 queuedDiscoveryPort = port;
                 queuedDiscoveryFingerprint = advertisedFingerprint;
                 if (!discoveredRetryQueued) {
@@ -467,7 +495,7 @@ public final class PairingBridge {
             if (!MAIN.postDelayed(() -> retryQueuedDiscovery(appContext), 250L)) {
                 synchronized (OPERATION_LOCK) {
                     discoveredRetryQueued = false;
-                    queuedDiscoveryAddress = null;
+                    queuedDiscoveryAddresses = null;
                     queuedDiscoveryFingerprint = null;
                     queuedDiscoveryPort = 0;
                 }
@@ -481,33 +509,40 @@ public final class PairingBridge {
         debugDiscoveryLog(appContext, "Checking a discovered endpoint with pinned TLS and token auth.");
         NETWORK.execute(() -> {
             try {
-                JSONObject candidate = new JSONObject(saved.toString());
-                candidate.put("serverUrl", serverUrl);
-                HttpResult response = executeJson(candidate, "/v1/status", "GET", null, true);
-                if (response.status != 200
-                        || response.body.optInt("protocolVersion", 0) != 1) {
-                    throw new IllegalStateException("discovered computer is not a valid OmaApp service");
+                for (int index = 0; index < addresses.size(); index++) {
+                    String serverUrl = "https://" + addresses.get(index) + ":" + port;
+                    try {
+                        JSONObject candidate = new JSONObject(saved.toString());
+                        candidate.put("serverUrl", serverUrl);
+                        HttpResult response = executeJson(candidate, "/v1/status", "GET", null, true);
+                        if (response.status != 200
+                                || response.body.optInt("protocolVersion", 0) != 1) {
+                            throw new IllegalStateException("discovered computer is not a valid OmaApp service");
+                        }
+                        JSONObject current = PairingStore.readCredential(appContext);
+                        if (current == null
+                                || !saved.optString("deviceId", "").equals(current.optString("deviceId", ""))
+                                || !saved.optString("fingerprint", "").equalsIgnoreCase(
+                                        current.optString("fingerprint", ""))
+                                || !saved.optString("token", "").equals(current.optString("token", ""))) {
+                            return;
+                        }
+                        current.put("serverUrl", serverUrl);
+                        current.put("hostName", saved.optString("hostName", "Omarchy computer"));
+                        current.put("fingerprint", saved.optString("fingerprint", ""));
+                        PairingStore.writeCredential(appContext, current);
+                        debugDiscoveryLog(appContext, "Updated the trusted endpoint after TLS and token verification.");
+                        setUiState(appContext, "connecting", current.optString("hostName"), "");
+                        applyStatus(appContext, current, response.body);
+                        return;
+                    } catch (Exception error) {
+                        // A DNS-SD address is only a hint. Try the other resolved private IPv4
+                        // routes, but never save one until the pinned TLS identity and token pass.
+                        debugDiscoveryLog(appContext, "DNS-SD address " + (index + 1) + " of "
+                                + addresses.size() + " failed validation ("
+                                + error.getClass().getSimpleName() + ").");
+                    }
                 }
-                JSONObject current = PairingStore.readCredential(appContext);
-                if (current == null
-                        || !saved.optString("deviceId", "").equals(current.optString("deviceId", ""))
-                        || !saved.optString("fingerprint", "").equalsIgnoreCase(
-                                current.optString("fingerprint", ""))
-                        || !saved.optString("token", "").equals(current.optString("token", ""))) {
-                    return;
-                }
-                current.put("serverUrl", serverUrl);
-                current.put("hostName", saved.optString("hostName", "Omarchy computer"));
-                current.put("fingerprint", saved.optString("fingerprint", ""));
-                PairingStore.writeCredential(appContext, current);
-                debugDiscoveryLog(appContext, "Updated the trusted endpoint after TLS and token verification.");
-                setUiState(appContext, "connecting", current.optString("hostName"), "");
-                applyStatus(appContext, current, response.body);
-            } catch (Exception error) {
-                // An mDNS record is only a hint. Keep the saved endpoint and theme unless
-                // the TLS-pinned service proves that it is the already trusted computer.
-                debugDiscoveryLog(appContext, "Discovered endpoint validation failed ("
-                        + error.getClass().getSimpleName() + ").");
             } finally {
                 synchronized (OPERATION_LOCK) {
                     operationRunning = false;
@@ -517,20 +552,21 @@ public final class PairingBridge {
     }
 
     private static void retryQueuedDiscovery(Context context) {
-        String address;
+        List<String> addresses;
         String fingerprint;
         int port;
         synchronized (OPERATION_LOCK) {
-            address = queuedDiscoveryAddress;
+            addresses = queuedDiscoveryAddresses == null
+                    ? Collections.emptyList() : new ArrayList<>(queuedDiscoveryAddresses);
             port = queuedDiscoveryPort;
             fingerprint = queuedDiscoveryFingerprint;
-            queuedDiscoveryAddress = null;
+            queuedDiscoveryAddresses = null;
             queuedDiscoveryPort = 0;
             queuedDiscoveryFingerprint = null;
             discoveredRetryQueued = false;
         }
-        if (address != null && fingerprint != null) {
-            reconnectDiscovered(context, address, port, fingerprint);
+        if (!addresses.isEmpty() && fingerprint != null) {
+            reconnectDiscovered(context, addresses, port, fingerprint);
         }
     }
 
