@@ -7,6 +7,7 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 ## Implemented launcher and localization
 
 - Offline Home with multiple pages, drag and drop, dock, Android app icons/search, folders, dynamic shortcuts, configurable grid and gestures, OWL store/editor, and local backup/restore.
+- Optional Android haptic feedback for Home app launches and editing actions is off by default, follows system touch-feedback settings, and is included in launcher settings and layout backups.
 - Launcher app enumeration refreshes after package lifecycle broadcasts and Activity resume. Emulator CI installs and removes a real launcher fixture to exercise package discovery.
 - English and Russian use a Qt Linguist `.ts`/`.qm` catalog. Android locale selects the default; Settings can persist `system`, `en`, or `ru`. CI verifies the source catalog and emulator smoke checks Russian UI, Android-native dialogs/messages, process restart persistence, and switching back to English.
 - Ordinary Android App Widgets are not yet integrated into Home. CI's test-only `AppWidgetHost` proof binds a real widget provider, shows its live `RemoteViews` in an `AppWidgetHostView` above the Qt activity, taps it, and frees the allocated ID. The proof documents that this overlay does not participate in the Qt/QML layout tree.
@@ -21,14 +22,14 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 
 ## Current verification
 
-- Local repository suite: 82 Python tests passed. The 278-entry Russian catalog check, shell/Python syntax checks, Android version-code regression test, and whitespace validation also pass.
-- Android package list refresh and Russian UI / AppWidgetHost checks are in the current emulator CI workflow. Do not describe them as passed until the current branch run finishes successfully.
+- Local repository suite: 100 Python tests passed. The 280-entry Russian catalog check, shell/Python syntax checks, Android version-code regression test, and whitespace validation also pass.
+- CI #193 passed desktop and arm64 builds. Both emulators enabled the test-only accessibility service and reached the UI smoke, which found the haptics setting was off-screen above the current scroll position. The next revision reverses the scroll direction for the first haptics check.
 - The plugin has previously been installed/restarted in Omarchy 4.0.4 / Quickshell 0.3.1. That does not substitute for a fresh test of this branch's mDNS change.
 - This workspace has no JDK or Android SDK/NDK and lacks Qt ShaderTools development files, so the full build and emulator render cannot be verified locally. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 
-1. Check current desktop, arm64, OpenGL, and Vulkan CI runs, including Russian/English screenshots, app install/uninstall counts, and the live AppWidgetHost artifact. Fix failures before merge.
+1. Confirm the new CI's desktop, arm64, OpenGL, and Vulkan results; inspect Russian/English and haptics screenshots, app install/uninstall counts, haptics persistence, and the live AppWidgetHost artifact. Fix failures before merge.
 2. Add runtime Android DNS-SD discovery/reconnect coverage with a controlled plugin fixture if the emulator network can carry multicast reliably. Exercise IP changes and wrong-fingerprint rejection with real TLS test traffic.
 3. Design a supported native-to-QML widget placement bridge before exposing ordinary AppWidgets to users; persist IDs/positions, resize/configure, restore, drag and teardown all require lifecycle coverage.
 4. Run the physical Pixel 10 GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, theme sync, battery, and performance observations only after the device is available.

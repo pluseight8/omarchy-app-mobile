@@ -39,16 +39,17 @@ class HapticFeedbackTests(unittest.TestCase):
 
     def test_android_translation_smoke_dispatches_and_restores_feedback_preference(self):
         smoke = (ROOT / "scripts/ci/android_translation_smoke.sh").read_text(encoding="utf-8")
-        self.assertIn("tap_scrolling_label 'Enable haptic feedback'", smoke)
-        self.assertIn("find_scrolling_label 'Enable haptic feedback'", smoke)
+        self.assertIn("tap_scrolling_label 'Enable haptic feedback' up", smoke)
+        self.assertIn("find_scrolling_label 'Enable haptic feedback' down", smoke)
         self.assertIn("android_accessibility_assert_checked.py", smoke)
+        self.assertIn('settings-haptics-enabled.png', smoke)
         self.assertIn("OmaApp: Android haptic feedback request dispatched", smoke)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
 
         haptics = smoke.split("# Haptics are explicitly opt-in", 1)[1]
         after_restart = haptics.split("grep -F 'OmaApp: Android haptic feedback request dispatched'", 1)[1]
         after_restart = after_restart.split("# Returning from Android Settings", 1)[0]
-        self.assertIn("find_scrolling_label 'Enable haptic feedback'", after_restart)
+        self.assertIn("find_scrolling_label 'Enable haptic feedback' down", after_restart)
         self.assertNotIn("tap_scrolling_label 'Enable haptic feedback'", after_restart)
 
 

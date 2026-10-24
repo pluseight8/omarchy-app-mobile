@@ -20,6 +20,7 @@ tap_label() {
 
 find_scrolling_label() {
   local label="$1"
+  local direction="${2:-down}"
   local target
   for attempt in {1..12}; do
     dump_ui
@@ -28,7 +29,11 @@ find_scrolling_label() {
       printf '%s\n' "$target"
       return 0
     fi
-    adb shell input swipe 205 720 205 300 450
+    if [[ "$direction" == "up" ]]; then
+      adb shell input swipe 205 300 205 720 450
+    else
+      adb shell input swipe 205 720 205 300 450
+    fi
     sleep 0.3
   done
   printf 'Could not find visible Settings control %s.\n' "$label" >&2
@@ -37,7 +42,7 @@ find_scrolling_label() {
 
 tap_scrolling_label() {
   local target x y
-  target="$(find_scrolling_label "$1")"
+  target="$(find_scrolling_label "$1" "${2:-down}")"
   read -r x y <<< "$target"
   adb shell input tap "$x" "$y"
 }
@@ -86,11 +91,12 @@ python3 scripts/ci/check_android_navigation_layout.py \
 # Haptics are explicitly opt-in, use Android's View API, and remain enabled
 # after Activity recreation. The emulator may not have a vibration motor, so
 # assert the native request reached the Android API instead of asserting a buzz.
-tap_scrolling_label 'Enable haptic feedback'
+tap_scrolling_label 'Enable haptic feedback' up
 sleep 1
 dump_ui
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Enable haptic feedback'
+adb exec-out screencap -p > "$artifacts/settings-haptics-enabled.png"
 adb logcat -d -v threadtime -t 3000 > "$artifacts/haptic-feedback.log"
 grep -F 'OmaApp: Android haptic feedback request dispatched' \
   "$artifacts/haptic-feedback.log"
@@ -100,7 +106,7 @@ sleep 5
 dump_ui
 tap_label 'Settings'
 sleep 1
-find_scrolling_label 'Enable haptic feedback' > /dev/null
+find_scrolling_label 'Enable haptic feedback' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Enable haptic feedback'
 
