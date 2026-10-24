@@ -33,7 +33,7 @@ class ReleaseArtifactTests(unittest.TestCase):
         ):
             self.assertTrue((ROOT / required_path).is_file(), required_path)
             self.assertIn(required_path, cmake)
-        self.assertIn('setProperty(\n            "openSourceNoticesText"', main_cpp)
+        self.assertIn('root->setProperty("openSourceNoticesText"', main_cpp)
         self.assertIn("text: window.openSourceNoticesText", main_qml)
         self.assertIn("Open-source notices and licenses", main_qml)
 

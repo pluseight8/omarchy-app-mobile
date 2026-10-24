@@ -18,6 +18,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -64,6 +65,7 @@ public final class PairingBridge {
     private static boolean operationRunning;
     private static volatile boolean cancelRequested;
     private static long lastRefreshRequested;
+    private static long lastDiscoveredRefresh;
     private static volatile HttpsURLConnection eventConnection;
 
     private PairingBridge() {}
@@ -363,6 +365,112 @@ public final class PairingBridge {
         });
     }
 
+    public static void retry(Context context) {
+        if (context == null) {
+            return;
+        }
+        Context appContext = context.getApplicationContext();
+        JSONObject credentials = PairingStore.readCredential(appContext);
+        if (credentials == null || !credentials.has("token")) {
+            return;
+        }
+        synchronized (OPERATION_LOCK) {
+            if (operationRunning) {
+                return;
+            }
+            operationRunning = true;
+            lastRefreshRequested = System.currentTimeMillis();
+        }
+        setUiState(appContext, "connecting", credentials.optString("hostName"), "");
+        NETWORK.execute(() -> {
+            try {
+                if (credentials.has("requestId")) {
+                    pollPairingOnce(appContext, credentials);
+                } else if (credentials.has("token")) {
+                    acknowledgePairing(appContext, credentials);
+                    fetchStatus(appContext, credentials);
+                }
+            } catch (Exception error) {
+                setUiState(appContext, "offline", credentials.optString("hostName"),
+                        "The paired computer is not reachable. Showing the last saved theme.");
+            } finally {
+                synchronized (OPERATION_LOCK) {
+                    operationRunning = false;
+                }
+            }
+        });
+    }
+
+    public static boolean hasTrustedDevice(Context context) {
+        if (context == null) {
+            return false;
+        }
+        JSONObject credentials = PairingStore.readCredential(context.getApplicationContext());
+        return credentials != null && credentials.has("token")
+                && !credentials.optString("token", "").isEmpty();
+    }
+
+    /** Updates a saved endpoint only after its TLS certificate matches the QR-pinned hash. */
+    public static void reconnectDiscovered(Context context, String address, int port,
+                                           String advertisedFingerprint) {
+        if (context == null || address == null || port < 1 || port > 65535
+                || !isPrivateIpv4(address)
+                || advertisedFingerprint == null
+                || !advertisedFingerprint.matches("[a-fA-F0-9]{64}")) {
+            return;
+        }
+        final Context appContext = context.getApplicationContext();
+        final JSONObject saved = PairingStore.readCredential(appContext);
+        if (saved == null || !saved.has("token")
+                || !advertisedFingerprint.equalsIgnoreCase(saved.optString("fingerprint", ""))) {
+            return;
+        }
+        final String serverUrl = "https://" + address + ":" + port;
+        if (serverUrl.equals(saved.optString("serverUrl", ""))) {
+            return;
+        }
+        synchronized (OPERATION_LOCK) {
+            long now = System.currentTimeMillis();
+            if (operationRunning || now - lastDiscoveredRefresh < 10_000L) {
+                return;
+            }
+            operationRunning = true;
+            lastDiscoveredRefresh = now;
+        }
+        NETWORK.execute(() -> {
+            try {
+                JSONObject candidate = new JSONObject(saved.toString());
+                candidate.put("serverUrl", serverUrl);
+                HttpResult response = executeJson(candidate, "/v1/status", "GET", null, true);
+                if (response.status != 200
+                        || response.body.optInt("protocolVersion", 0) != 1) {
+                    throw new IllegalStateException("discovered computer is not a valid OmaApp service");
+                }
+                JSONObject current = PairingStore.readCredential(appContext);
+                if (current == null
+                        || !saved.optString("deviceId", "").equals(current.optString("deviceId", ""))
+                        || !saved.optString("fingerprint", "").equalsIgnoreCase(
+                                current.optString("fingerprint", ""))
+                        || !saved.optString("token", "").equals(current.optString("token", ""))) {
+                    return;
+                }
+                current.put("serverUrl", serverUrl);
+                current.put("hostName", saved.optString("hostName", "Omarchy computer"));
+                current.put("fingerprint", saved.optString("fingerprint", ""));
+                PairingStore.writeCredential(appContext, current);
+                setUiState(appContext, "connecting", current.optString("hostName"), "");
+                applyStatus(appContext, current, response.body);
+            } catch (Exception ignored) {
+                // An mDNS record is only a hint. Keep the saved endpoint and theme unless
+                // the TLS-pinned service proves that it is the already trusted computer.
+            } finally {
+                synchronized (OPERATION_LOCK) {
+                    operationRunning = false;
+                }
+            }
+        });
+    }
+
     public static void setRealtimeSync(Context context, boolean enabled) {
         if (enabled) {
             REALTIME_SYNC_ENABLED.set(true);
@@ -376,6 +484,19 @@ public final class PairingBridge {
         HttpsURLConnection connection = eventConnection;
         if (connection != null) {
             connection.disconnect();
+        }
+    }
+
+    private static boolean isPrivateIpv4(String address) {
+        if (!address.matches("[0-9]{1,3}(?:\\.[0-9]{1,3}){3}")) {
+            return false;
+        }
+        try {
+            InetAddress parsed = InetAddress.getByName(address);
+            return parsed instanceof Inet4Address && parsed.isSiteLocalAddress()
+                    && parsed.getHostAddress().equals(address);
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
@@ -504,6 +625,9 @@ public final class PairingBridge {
         final Context appContext = context.getApplicationContext();
         synchronized (OPERATION_LOCK) {
             if (operationRunning) {
+                // Do not drop the user's Forget action during a bounded reconnect request.
+                // The single-thread executor runs it after the active operation releases the lock.
+                NETWORK.execute(() -> forget(appContext));
                 return;
             }
             operationRunning = true;
@@ -738,7 +862,11 @@ public final class PairingBridge {
 
     private static void fetchStatus(Context context, JSONObject credentials) throws Exception {
         HttpResult result = executeJson(credentials, "/v1/status", "GET", null, true);
-        JSONObject snapshot = result.body;
+        applyStatus(context, credentials, result.body);
+    }
+
+    private static void applyStatus(Context context, JSONObject credentials,
+                                    JSONObject snapshot) throws Exception {
         if (snapshot.optInt("protocolVersion", 0) != 1) {
             throw new IllegalStateException("unsupported status protocol");
         }

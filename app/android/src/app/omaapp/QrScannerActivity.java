@@ -64,7 +64,7 @@ public final class QrScannerActivity extends Activity implements LifecycleOwner 
                 ViewGroup.LayoutParams.MATCH_PARENT));
 
         message = new TextView(this);
-        message.setText("Scan the temporary OmaApp pairing QR code");
+        message.setText(NativeStrings.get("Scan the temporary OmaApp pairing QR code"));
         message.setTextColor(Color.WHITE);
         message.setTextSize(16);
         message.setGravity(Gravity.CENTER);
@@ -77,7 +77,7 @@ public final class QrScannerActivity extends Activity implements LifecycleOwner 
         frame.addView(message, messageParams);
 
         Button cancel = new Button(this);
-        cancel.setText("Cancel");
+        cancel.setText(NativeStrings.get("Cancel"));
         cancel.setOnClickListener(view -> finish());
         FrameLayout.LayoutParams buttonParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -131,13 +131,14 @@ public final class QrScannerActivity extends Activity implements LifecycleOwner 
                                 && resultAccepted.compareAndSet(false, true)) {
                             if (PairingStore.writePendingScan(this, raw)) {
                                 runOnUiThread(() -> {
-                                    message.setText("QR scanned. Return to OmaApp to review the computer.");
+                                    message.setText(NativeStrings.get(
+                                            "QR scanned. Return to OmaApp to review the computer."));
                                     finish();
                                 });
                             } else {
                                 resultAccepted.set(false);
-                                runOnUiThread(() -> message.setText(
-                                        "Could not securely store the pairing code. Please scan again."));
+                                runOnUiThread(() -> message.setText(NativeStrings.get(
+                                        "Could not securely store the pairing code. Please scan again.")));
                             }
                             break;
                         }
@@ -178,7 +179,8 @@ public final class QrScannerActivity extends Activity implements LifecycleOwner 
                 finish();
             }
         } else if (requestCode == CAMERA_PERMISSION_REQUEST) {
-            message.setText("Camera permission is needed to scan the pairing QR code.");
+            message.setText(NativeStrings.get(
+                    "Camera permission is needed to scan the pairing QR code."));
         }
     }
 

@@ -1,41 +1,27 @@
-# OmaApp task list
+# OmaApp task status
 
-## Android launcher
+## Completed in this development iteration
 
-- [x] Expose Android launcher activities and launch the selected app through `PackageManager`.
-- [x] Register OmaApp as a selectable Android HOME app.
-- [x] Add the in-app QR scanner and runtime-only camera permission.
-- [x] Keep the desktop preview honest: it does not invent an installed-app list.
-- [x] Build an arm64 debug APK in GitHub Actions (`2630521`; artifact `OmaApp-ci-debug-arm64`).
-- [x] Add an x86_64 emulator smoke check for APK install, app enumeration, launching an app, and selecting OmaApp as HOME.
-- [x] Build the pairing/theme-sync implementation for arm64 and desktop in GitHub Actions (`2630521`).
-- [x] Add lazy-loaded Android app icons, persistent pinned launcher activities, and refresh control; local C++ compile, QML lint/format, and plugin tests pass.
-- [x] Review emulator run `39490160786`: APK installation, HOME selection, 8-app enumeration, icon caching, pin persistence across process restart, app launch, and return to HOME all passed before pairing smoke.
-- [x] Add persisted app folders with create, rename, add/remove installed apps, and delete actions; local Qt model tests and QML lint pass.
-- [x] Verify folder creation, app membership, and persistence after restart in the [Android emulator smoke job](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [x] Verify CI TLS pairing, theme/geometry/wallpaper sync, live update, reconnect, and revocation in [emulator run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
+- [x] Add offline English/Russian Qt Linguist translations, Android system-language detection, a persistent Settings selector, Java-native UI translation, and CI checks for missing or unfinished catalog entries.
+- [x] Refresh the launcher after protected Android package add/change/replace/remove broadcasts, coalesce broadcast bursts, and refresh on Activity resume.
+- [x] Verify launcher discovery on emulator with a real CI-only Android launcher fixture that is installed and removed while OmaApp remains Home.
+- [x] Add an emulator proof of concept using Android `AppWidgetHost`, the system binding flow, a live `AppWidgetHostView`, and a real click sent to its provider. Keep the provider test-only and document the current Qt/QML boundary.
+- [x] Add plugin DNS-SD advertisement with the current private IPv4, service port, protocol, and public TLS fingerprint; do not advertise pairing secrets or device tokens.
+- [x] Add foreground Android DNS-SD discovery that starts only after QR pairing, rejects untrusted fingerprints, checks the pinned TLS certificate and token before changing the saved address, and releases discovery resources on pause.
+- [x] Add Retry and update pairing/install docs for local-network discovery and fallback QR reconnect.
+- [x] Add regression tests for DNS-SD contents/query filtering/goodbye records, Android trust gates, launcher package events, translation completeness, and test-only widget wiring.
+- [x] Update English and Russian READMEs, the changelog, task status, pairing guide, and AppWidgetHost findings.
 
-## Secure Omarchy pairing and live theme sync
+## Remaining work
 
-- [x] Keep the HTTPS helper and QR encoder inside the one Omarchy plugin package.
-- [x] Add short-lived QR pairing, certificate pinning, two-sided approval, per-device tokens, encrypted Android storage, and revocation.
-- [x] Add token-authenticated re-pairing after the computer's local address changes.
-- [x] Read current Omarchy theme files and Hyprland values through `hyprctl -j getoption`.
-- [x] Sync supported colors, active border gradient, wallpaper, border width, rounding, rounding power, and spacing; retain the last snapshot offline.
-- [x] Add HTTPS protocol tests for approval, rejection, expiry, reconnect, limits, theme parsing, authentication, and revocation.
-- [x] Run all available local repository checks after this change; Python tests, plugin validation, shell syntax, QML lint, Python compilation, and whitespace checks pass.
-- [x] Verify desktop, arm64 build, and x86_64 Android emulator jobs in [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [ ] Test real phone ↔ Omarchy exchange and observe theme refresh after changing a theme.
+- [ ] Run the current branch through desktop, arm64, Android OpenGL, and Android Vulkan GitHub Actions; inspect screenshots and the AppWidgetHost artifact before calling the emulator checks complete.
+- [ ] Integrate ordinary Android widgets into saved Home layout only after a supported Qt-to-native placement/lifecycle bridge is designed and tested. Current status is an overlay proof of concept, not a product feature.
+- [ ] Test installation, language switching, app discovery, QR pairing, theme sync, DNS-SD reconnect, clipboard/files, and idle behavior on a physical Pixel 10 with GrapheneOS.
+- [ ] Review the current PR, address CI/review feedback, and keep the APK signing key owner-managed. Do not publish a signed release until the existing release workflow succeeds with the permanent secrets.
 
-## Remaining product work
+## Local verification limits
 
-- [ ] Port Omalauncher home pages, configurable gestures, OWL widgets, editor, shortcuts, and settings, keeping required notices.
-- [ ] Add visual comparisons for the Hyprland shader's gradients, transforms, and color handling.
-- [ ] Add permissioned clipboard, file, media, notification, workspace, terminal, desktop, and command features in reviewed slices.
-- [ ] Configure the owner's release-signing secrets; publish and verify the first signed Pre-release and update-over-install.
-
-## Environment limits at this checkpoint
-
-- This workspace has no CMake, JDK, Android SDK, emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed. GitHub Actions run 44 passed the emulator smoke test.
-- Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.
+- `python3 -m unittest discover -s scripts/tests -v`: 82 passing tests.
+- Russian catalog check: 278 source strings validated; shell syntax, Python bytecode compilation, Android version-code regression test, and `git diff --check` pass.
+- The workspace lacks JDK/Android SDK/NDK and the Qt ShaderTools development package, so no local Android APK, emulator, full desktop CMake build, or screenshot run is claimed.
+- No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior are unverified.

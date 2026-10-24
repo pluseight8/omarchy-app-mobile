@@ -78,6 +78,7 @@ class PairingServiceTests(unittest.TestCase):
         self.assertTrue(event["qrData"].startswith("data:image/svg+xml;base64,"))
         self.assertEqual(len(self.state.fingerprint), 64)
         self.assertEqual(self.state.key_path.stat().st_mode & 0o777, 0o600)
+        self.assertIsNone(self.state.mdns_advertiser)
 
         status, health = self.get("/v1/health")
         self.assertEqual(status, 200)
@@ -138,6 +139,70 @@ class PairingServiceTests(unittest.TestCase):
         connection.close()
         self.assertEqual(response.status, 200)
         self.assertEqual(self.get("/v1/status", auth)[0], 401)
+
+    def test_mdns_advertisement_contains_pinned_identity_without_secrets(self):
+        fingerprint = "a" * 64
+        instance = f"OmaApp-{fingerprint[:12]}.{service.MDNS_SERVICE_TYPE}"
+        target = "omaapp-aaaaaaaaaaaa.local."
+        packet = service._mdns_announcement(instance, target, "192.168.1.30", 44892,
+                                            fingerprint)
+        transaction, flags, questions, answers, authorities, additionals = \
+            service.struct.unpack_from("!HHHHHH", packet)
+        self.assertEqual((transaction, flags, questions, answers, authorities, additionals),
+                         (0, 0x8400, 0, 4, 0, 0))
+
+        offset = 12
+        records = []
+        for _ in range(answers):
+            name, offset = service._dns_read_name(packet, offset)
+            record_type, _record_class, ttl, size = service.struct.unpack_from("!HHIH", packet, offset)
+            offset += 10
+            value = packet[offset:offset + size]
+            offset += size
+            records.append((name, record_type, ttl, value))
+        self.assertEqual([record[1] for record in records], [12, 33, 16, 1])
+        self.assertEqual([record[2] for record in records], [120, 120, 120, 120])
+        ptr_name, _ = service._dns_read_name(records[0][3], 0)
+        self.assertEqual(ptr_name, instance.lower())
+        txt = records[2][3]
+        self.assertIn(b"fingerprint=" + fingerprint.encode("ascii"), txt)
+        self.assertIn(b"protocol=1", txt)
+        self.assertNotIn(b"pairSecret", packet)
+        self.assertNotIn(b"token", packet)
+
+    def test_mdns_listener_matches_only_omaapp_service_questions(self):
+        instance = "OmaApp-aabbccddeeff._omaapp._tcp.local."
+        target = "omaapp-aabbccddeeff.local."
+
+        def question(name):
+            return (service.struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
+                    + service._dns_name_wire(name)
+                    + service.struct.pack("!HH", 12, 1))
+
+        self.assertTrue(service._mdns_questions_match(
+            question(service.MDNS_SERVICE_TYPE), instance, target))
+        self.assertFalse(service._mdns_questions_match(
+            question("_printer._tcp.local."), instance, target))
+        self.assertFalse(service._mdns_questions_match(b"malformed", instance, target))
+
+    def test_mdns_goodbye_expires_records_and_rejects_non_ipv4_targets(self):
+        fingerprint = "b" * 64
+        instance = f"OmaApp-{fingerprint[:12]}.{service.MDNS_SERVICE_TYPE}"
+        packet = service._mdns_announcement(instance, "omaapp-bbbbbbbbbbbb.local.",
+                                            "192.168.1.40", 44892, fingerprint, ttl=0)
+        offset = 12
+        ttl_values = []
+        for _ in range(4):
+            _, offset = service._dns_read_name(packet, offset)
+            _record_type, _record_class, ttl, data_length = service.struct.unpack_from(
+                "!HHIH", packet, offset
+            )
+            ttl_values.append(ttl)
+            offset += 10 + data_length
+        self.assertEqual(ttl_values, [0, 0, 0, 0])
+        with self.assertRaises(ValueError):
+            service._mdns_announcement(instance, "omaapp-bbbbbbbbbbbb.local.",
+                                       "fd00::40", 44892, fingerprint)
 
     def test_rejected_pairing_never_returns_a_device_token(self):
         self.state.begin_pairing()

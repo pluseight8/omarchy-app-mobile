@@ -2,14 +2,21 @@ package app.omaapp;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.appwidget.AppWidgetHost;
+import android.appwidget.AppWidgetHostView;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProviderInfo;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,15 +24,25 @@ import android.os.SystemClock;
 import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.app.UiAutomation;
+import android.widget.FrameLayout;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -61,6 +78,32 @@ public final class PairingTestInstrumentation extends Instrumentation {
             Log.i(TAG, "Target application context is ready.");
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
+            }
+            if (Boolean.parseBoolean(testArguments.getString("nativeQtTranslations"))) {
+                Intent launch = context.getPackageManager().getLaunchIntentForPackage(
+                        context.getPackageName());
+                if (launch == null) {
+                    throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                context.startActivity(launch);
+                SystemClock.sleep(2_000L);
+                String translated = NativeStrings.get("Computer files");
+                if (!"Файлы компьютера".equals(translated)) {
+                    throw new IllegalStateException("Native Android UI did not use the Russian Qt catalog: "
+                            + translated);
+                }
+                result.putString("stage", "native_qt_translations_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if (Boolean.parseBoolean(testArguments.getString("appWidgetHost"))) {
+                runAppWidgetHostPoc(context);
+                result.putString("stage", "app_widget_host_overlay_and_touch_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
             }
             runEventRefreshQueueSmoke(context);
             runFileTransferStateSmoke();
@@ -128,6 +171,237 @@ public final class PairingTestInstrumentation extends Instrumentation {
             sendStatus(2, result);
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+
+    /** Exercises Android's real widget binding, RemoteViews, host view, and QtActivity overlay. */
+    private void runAppWidgetHostPoc(Context context) throws Exception {
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Activity activity = startActivitySync(launch);
+        if (activity == null || activity.isFinishing()) {
+            throw new IllegalStateException("Could not open Qt Quick Home for the Android widget overlay test.");
+        }
+        UiAutomation automation = getUiAutomation();
+        clickAccessibleControl(automation, "Home");
+        if (!awaitAccessibilityText(automation, "Home page 1 of", 8_000L)) {
+            throw new IllegalStateException("Could not select the existing Qt Quick Home page.");
+        }
+
+        AppWidgetManager manager = AppWidgetManager.getInstance(activity);
+        AppWidgetProviderInfo provider = null;
+        for (AppWidgetProviderInfo candidate : manager.getInstalledProviders()) {
+            if (candidate.provider != null
+                    && "app.omaapp".equals(candidate.provider.getPackageName())
+                    && candidate.provider.getClassName().endsWith("CiAppWidgetProvider")) {
+                provider = candidate;
+                break;
+            }
+        }
+        if (provider == null) {
+            throw new IllegalStateException("The debug AppWidgetProvider fixture was not installed.");
+        }
+
+        AppWidgetHost host = new AppWidgetHost(activity, 0x4f4d41);
+        host.startListening();
+        int widgetId = host.allocateAppWidgetId();
+        FrameLayout content = activity.findViewById(android.R.id.content);
+        AtomicReference<AppWidgetHostView> hostViewResult = new AtomicReference<>();
+        AtomicReference<String> viewError = new AtomicReference<>("");
+        try {
+            if (!manager.bindAppWidgetIdIfAllowed(widgetId, provider.provider)) {
+                Intent bind = new Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider);
+                activity.runOnUiThread(() -> activity.startActivityForResult(bind, 0x4f4d42));
+                long deadline = SystemClock.uptimeMillis() + 20_000L;
+                while (SystemClock.uptimeMillis() < deadline
+                        && manager.getAppWidgetInfo(widgetId) == null) {
+                    clickWidgetBindConfirmation(automation);
+                    SystemClock.sleep(250L);
+                }
+            }
+            if (manager.getAppWidgetInfo(widgetId) == null) {
+                throw new IllegalStateException("Android did not confirm AppWidget binding.");
+            }
+
+            activity.runOnUiThread(() -> {
+                try {
+                    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                            Math.min(dp(activity, 340), Math.max(dp(activity, 220), content.getWidth() - dp(activity, 24))),
+                            dp(activity, 132), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                    params.topMargin = dp(activity, 300);
+                    AppWidgetHostView widgetView = host.createView(
+                            activity, widgetId, manager.getAppWidgetInfo(widgetId));
+                    widgetView.setContentDescription("OmaApp live AppWidgetHostView proof of concept");
+                    content.addView(widgetView, params);
+                    widgetView.bringToFront();
+                    hostViewResult.set(widgetView);
+                } catch (RuntimeException error) {
+                    viewError.set(error.getClass().getSimpleName() + ": " + error.getMessage());
+                }
+            });
+            if (!awaitLatchlessView(hostViewResult, viewError, 10_000L)) {
+                throw new IllegalStateException("Could not attach AppWidgetHostView above Qt Quick: "
+                        + viewError.get());
+            }
+
+            if (!awaitAccessibilityText(automation, "CI live Android widget", 10_000L)) {
+                throw new IllegalStateException("The real RemoteViews content was not visible over Qt Quick Home.");
+            }
+            saveAppWidgetScreenshot(activity, automation);
+
+            AppWidgetHostView widgetView = hostViewResult.get();
+            Rect buttonBounds = new Rect();
+            boolean buttonFound = false;
+            long buttonDeadline = SystemClock.uptimeMillis() + 10_000L;
+            while (!buttonFound && SystemClock.uptimeMillis() < buttonDeadline) {
+                AtomicReference<Boolean> found = new AtomicReference<>(false);
+                runOnMainSync(() -> {
+                    ArrayList<View> matches = new ArrayList<>();
+                    widgetView.findViewsWithText(matches, "Tap widget", View.FIND_VIEWS_WITH_TEXT);
+                    if (!matches.isEmpty()) {
+                        found.set(matches.get(0).getGlobalVisibleRect(buttonBounds));
+                    }
+                });
+                buttonFound = found.get();
+                if (!buttonFound) {
+                    SystemClock.sleep(200L);
+                }
+            }
+            if (!buttonFound || buttonBounds.isEmpty()) {
+                throw new IllegalStateException("The host view did not expose the widget's clickable RemoteViews button.");
+            }
+
+            float x = buttonBounds.centerX();
+            float y = buttonBounds.centerY();
+            long downTime = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(
+                    downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
+            try {
+                sendPointerSync(down);
+            } finally {
+                down.recycle();
+            }
+            MotionEvent up = MotionEvent.obtain(
+                    downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+            try {
+                sendPointerSync(up);
+            } finally {
+                up.recycle();
+            }
+            if (!awaitAccessibilityText(automation, "Widget tap received by Android provider", 10_000L)) {
+                throw new IllegalStateException("A touch on AppWidgetHostView did not reach its real provider.");
+            }
+            Log.i(TAG, "Real AppWidgetHostView RemoteViews overlay and provider click passed.");
+        } finally {
+            AppWidgetHostView widgetView = hostViewResult.get();
+            if (widgetView != null) {
+                activity.runOnUiThread(() -> {
+                    ViewGroup parent = (ViewGroup) widgetView.getParent();
+                    if (parent != null) {
+                        parent.removeView(widgetView);
+                    }
+                });
+            }
+            host.stopListening();
+            host.deleteAppWidgetId(widgetId);
+        }
+    }
+
+    private static int dp(Context context, int value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
+    }
+
+    private static void saveAppWidgetScreenshot(Activity activity, UiAutomation automation)
+            throws Exception {
+        Bitmap bitmap = automation.takeScreenshot();
+        if (bitmap == null) {
+            throw new IllegalStateException("Android could not capture the live AppWidgetHostView.");
+        }
+        File directory = activity.getExternalFilesDir(null);
+        if (directory == null) {
+            directory = activity.getFilesDir();
+        }
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            throw new IllegalStateException("Android could not create the AppWidgetHostView screenshot directory.");
+        }
+        File output = new File(directory, "omaapp-appwidget-host-poc.png");
+        try (FileOutputStream stream = new FileOutputStream(output, false)) {
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                throw new IllegalStateException("Android could not save the AppWidgetHostView screenshot.");
+            }
+            stream.getFD().sync();
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private static boolean clickAccessibleControl(UiAutomation automation, String label) {
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root == null) {
+            return false;
+        }
+        for (AccessibilityNodeInfo node : root.findAccessibilityNodeInfosByText(label)) {
+            CharSequence nodeText = node.getText();
+            if (label.contentEquals(nodeText) && node.isClickable()
+                    && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true;
+            }
+            AccessibilityNodeInfo parent = node.getParent();
+            if (label.contentEquals(nodeText) && parent != null && parent.isClickable()
+                    && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean awaitLatchlessView(AtomicReference<AppWidgetHostView> view,
+            AtomicReference<String> error, long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (view.get() != null || !error.get().isEmpty()) {
+                return view.get() != null;
+            }
+            SystemClock.sleep(50L);
+        }
+        return false;
+    }
+
+    private boolean awaitAccessibilityText(UiAutomation automation, String text, long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+            if (root != null && !root.findAccessibilityNodeInfosByText(text).isEmpty()) {
+                return true;
+            }
+            SystemClock.sleep(250L);
+        }
+        return false;
+    }
+
+    private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root == null) {
+            return false;
+        }
+        for (String label : new String[] {"Allow", "Add", "Add widget"}) {
+            List<AccessibilityNodeInfo> nodes = root.findAccessibilityNodeInfosByText(label);
+            for (AccessibilityNodeInfo node : nodes) {
+                if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+                AccessibilityNodeInfo parent = node.getParent();
+                if (parent != null && parent.isClickable()
+                        && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void runOwlRuntimeSmoke() throws Exception {

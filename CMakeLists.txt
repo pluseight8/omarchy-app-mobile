@@ -13,8 +13,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools)
-qt_standard_project_setup(REQUIRES 6.10)
+find_package(Qt6 6.10 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 ShaderTools LinguistTools)
+qt_standard_project_setup(
+    REQUIRES 6.10
+    I18N_SOURCE_LANGUAGE en
+    I18N_TRANSLATED_LANGUAGES ru
+)
 
 set(OMAAPP_TEST_RHI_BACKEND "" CACHE STRING
     "Force an Android graphics API for backend-specific CI renders (OpenGL or Vulkan)")
@@ -27,6 +31,8 @@ endif()
 
 qt_add_executable(omaapp
     app/native/main.cpp
+    app/native/TranslationManager.cpp
+    app/native/TranslationManager.h
     app/native/LauncherModel.cpp
     app/native/LauncherModel.h
     app/native/PairingModel.cpp
@@ -39,6 +45,9 @@ qt_add_executable(omaapp
     shared/geometry/HyprlandGeometry.h
 )
 
+set_source_files_properties(app/i18n/omaapp_ru.ts PROPERTIES
+    QT_I18N_TRANSLATED_LANGUAGES ru
+)
 set_source_files_properties(app/qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(omaapp
@@ -51,6 +60,17 @@ qt_add_qml_module(omaapp
         app/qml/OwlNodeLoader.qml
         app/qml/OwlNode.qml
         app/qml/OwlWidgetView.qml
+)
+
+qt_add_translations(omaapp
+    TS_FILES app/i18n/omaapp_ru.ts
+    NO_GENERATE_PLURALS_TS_FILE
+    QM_FILES_OUTPUT_VARIABLE OMAAPP_QM_FILES
+)
+qt_add_resources(omaapp omaapp_translations
+    PREFIX "/i18n"
+    BASE "${CMAKE_CURRENT_BINARY_DIR}"
+    FILES ${OMAAPP_QM_FILES}
 )
 
 qt_add_resources(omaapp omaapp_widget_store
@@ -153,4 +173,17 @@ if(BUILD_TESTING AND NOT ANDROID)
     )
     target_link_libraries(owl_model_tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME owl_model_tests COMMAND owl_model_tests)
+
+    qt_add_executable(translation_manager_tests
+        app/native/tests/tst_translationmanager.cpp
+        app/native/TranslationManager.cpp
+        app/native/TranslationManager.h
+    )
+    qt_add_resources(translation_manager_tests omaapp_translations_tests
+        PREFIX "/i18n"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES ${OMAAPP_QM_FILES}
+    )
+    target_link_libraries(translation_manager_tests PRIVATE Qt6::Core Qt6::Qml Qt6::Test)
+    add_test(NAME translation_manager_tests COMMAND translation_manager_tests)
 endif()
