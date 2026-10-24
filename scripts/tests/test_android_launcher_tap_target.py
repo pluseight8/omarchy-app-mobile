@@ -59,6 +59,20 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
         )
         self.assertLess(reselect, launch_target)
 
+    def test_home_reselection_retries_an_empty_accessibility_snapshot(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        reselect = smoke.split("select_home_when_needed() {", 1)[1].split("\n}", 1)[0]
+
+        self.assertIn("for attempt in 1 2 3 4 5", reselect)
+        self.assertIn("2>/dev/null)\"; then", reselect)
+        self.assertIn(
+            'scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"',
+            reselect,
+        )
+        self.assertIn("android_accessibility_assert_checked.py \"$accessibility_xml\" 'Home'", reselect)
+
 
 if __name__ == "__main__":
     unittest.main()

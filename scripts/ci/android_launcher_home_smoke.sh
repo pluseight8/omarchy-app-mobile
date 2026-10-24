@@ -15,11 +15,18 @@ select_home_when_needed() {
       return 0
     fi
     local target
-    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" 'Home')"
-    local x y
-    read -r x y <<< "$target"
-    adb shell input tap "$x" "$y"
-    sleep 1
+    # A newly resumed Qt Activity can briefly expose only Android's root view
+    # to UIAutomator. Refresh that empty hierarchy instead of treating it as
+    # proof that the Home tab is missing.
+    if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+      "$accessibility_xml" 'Home' 2>/dev/null)"; then
+      local x y
+      read -r x y <<< "$target"
+      adb shell input tap "$x" "$y"
+      sleep 1
+    else
+      sleep 1
+    fi
     python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
   done
   python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Home'
