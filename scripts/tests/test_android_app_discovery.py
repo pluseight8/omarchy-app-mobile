@@ -209,7 +209,6 @@ esac
         self.assertIn("DeviceDiscovery.start(context)", instrumentation)
         self.assertIn("JSONObject reconnected = runDnsSdReconnectSmoke(context", instrumentation)
         self.assertIn('testArguments.getString("expectedTheme", "")', instrumentation)
-        self.assertIn("PairingBridge.refresh(context);", instrumentation)
         self.assertIn("return awaitTheme(context, expectedTheme, 30_000L, false);", instrumentation)
         self.assertNotIn("awaitPluginRestartReconnect", instrumentation)
         self.assertIn('"0".repeat(64)', instrumentation)

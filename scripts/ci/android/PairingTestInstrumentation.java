@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20295)
-Total output lines: 1620
-
 package app.omaapp;
 
 import android.app.Activity;
@@ -437,10 +434,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 }
                 Log.i(TAG, "Android NSD resolved the fixture and accepted the endpoint after pinned TLS verification.");
                 // Keep the ephemeral NSD fixture and TLS forwarder alive until the
-                // saved device has used the rediscovered endpoint to read the new
-                // plugin snapshot. A second instrumentation process would no longer
-                // have access to those test-only endpoints.
-                PairingBridge.refresh(context);
+                // saved device has applied the post-restart theme snapshot.
                 return awaitTheme(context, expectedTheme, 30_000L, false);
             } finally {
                 stopDnsSdFixture(context);
@@ -864,7 +858,37 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         }
                         for (int child = 0; child < node.getChildCount()
                                 && pending.size() < 512; child++) {
-   …295 tokens truncated…cent }\n"
+                            AccessibilityNodeInfo childNode = node.getChild(child);
+                            if (childNode != null) {
+                                pending.add(childNode);
+                            }
+                        }
+                    }
+                } finally {
+                    for (AccessibilityNodeInfo node : pending) {
+                        node.recycle();
+                    }
+                }
+                if (summary.length() >= 1800) {
+                    break;
+                }
+            }
+        } finally {
+            for (AccessibilityWindowInfo window : windows) {
+                window.recycle();
+            }
+        }
+        return summary.length() == 0 ? "no labeled nodes" : summary.toString();
+    }
+
+    private static void runOwlRuntimeSmoke() throws Exception {
+        String clockSource = "widget \"CI clock\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  source now = clock every 1s\n"
+                + "  size: 2x1\n"
+                + "  background: surface\n"
+                + "  Column {\n"
+                + "    Text { text: fmtTime(now, \"HH:mm\"); style: huge; color: accent }\n"
                 + "    Canvas { width: 96; height: 32; circle(width / 2, height / 2, 6, fill: accent) }\n"
                 + "  }\n"
                 + "}\n";
