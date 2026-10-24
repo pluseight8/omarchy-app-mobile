@@ -482,7 +482,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             localAddress = findLocalSiteIpv4();
             server = new ServerSocket();
             server.setReuseAddress(false);
-            server.bind(new InetSocketAddress(localAddress, 0), 2);
+            // DNS-SD may resolve the emulator host through another local interface.
+            // Advertise the selected site-local address, but accept on every interface.
+            server.bind(new InetSocketAddress(0), 2);
             server.setSoTimeout(1_000);
         }
 

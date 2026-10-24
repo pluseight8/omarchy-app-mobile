@@ -211,6 +211,8 @@ esac
         self.assertIn("An untrusted DNS-SD fingerprint changed the saved endpoint.", instrumentation)
         self.assertIn("Android NSD did not reconnect to the TLS-pinned endpoint.", instrumentation)
         self.assertIn("class TestTlsProxy implements AutoCloseable", instrumentation)
+        self.assertIn("server.bind(new InetSocketAddress(0), 2)", instrumentation)
+        self.assertNotIn("server.bind(new InetSocketAddress(localAddress, 0), 2)", instrumentation)
         self.assertIn('new InetSocketAddress("10.0.2.2", targetPort)', instrumentation)
         self.assertIn("service.setHostAddresses(Collections.singletonList(host))", nsd_fixture)
         self.assertIn('android:name=".NsdFixtureService"', fixture_manifest)
