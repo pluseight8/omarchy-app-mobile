@@ -24,12 +24,14 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("nodeData === null", loader_qml)
         self.assertIn("widgetRoot === null", loader_qml)
 
-    def test_widget_refreshes_when_model_arrives_or_becomes_visible(self):
+    def test_widget_refreshes_when_model_arrives_or_home_page_becomes_active(self):
         widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        main_qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
 
         self.assertIn("onOwlModelChanged: refresh()", widget_qml)
-        self.assertIn("onVisibleChanged:", widget_qml)
-        self.assertIn("if (visible)\n            refresh()", widget_qml)
+        self.assertIn("onActiveChanged:", widget_qml)
+        self.assertIn("if (active)\n            refresh()", widget_qml)
+        self.assertIn("active: window.selectedPage === 0", main_qml)
 
     def test_owl_node_bindings_tolerate_loader_initialization(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")

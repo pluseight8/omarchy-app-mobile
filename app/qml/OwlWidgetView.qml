@@ -10,6 +10,7 @@ Item {
     required property string themeJson
     property int itemIndex: -1
     property bool useSourceText: false
+    property bool active: true
     property string sourceText: ""
     property var document: ({})
     property string renderError: ""
@@ -169,13 +170,13 @@ Item {
     onWidthChanged: refresh()
     onHeightChanged: refresh()
     onOwlModelChanged: refresh()
+    onActiveChanged: {
+        if (active)
+            refresh()
+    }
     onWidgetIdChanged: refresh()
     onThemeJsonChanged: refresh()
     onSourceTextChanged: refresh()
     onUseSourceTextChanged: refresh()
-    onVisibleChanged: {
-        if (visible)
-            refresh()
-    }
     Component.onCompleted: Qt.callLater(refresh)
 }

@@ -785,6 +785,7 @@ ApplicationWindow {
                 widgetId: ""
                 themeJson: window.owlThemeJson()
                 useSourceText: true
+                active: true
                 sourceText: owlEditor.text
             }
 
@@ -1201,6 +1202,7 @@ ApplicationWindow {
                                     owlModel: owl
                                     widgetId: modelData.id
                                     itemIndex: index
+                                    active: window.selectedPage === 0
                                     themeJson: window.owlThemeJson()
                                 }
                             }
