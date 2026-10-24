@@ -31,7 +31,16 @@ class TranslationCatalogTests(unittest.TestCase):
         widget_store = qml.split('model: owl.widgetStore', 1)[1].split(
             'HyprlandSurface {', 1
         )[0]
+        self.assertIn("delegate: ColumnLayout {", widget_store)
         self.assertEqual(widget_store.count("Accessible.name: text"), 2)
+        self.assertIn("wrapMode: Text.WordWrap", widget_store)
+        self.assertNotIn("elide: Text.ElideRight", widget_store)
+
+        backup = qml.split('text: qsTr("Layout backup")', 1)[1].split(
+            "visible: window.layoutMessage", 1
+        )[0]
+        self.assertIn("ColumnLayout {", backup)
+        self.assertNotIn("RowLayout {", backup)
 
         smoke = (Path(__file__).resolve().parents[2] / "scripts/ci/android_translation_smoke.sh").read_text(
             encoding="utf-8"
@@ -41,6 +50,8 @@ class TranslationCatalogTests(unittest.TestCase):
             "Локальные часы и дата на основе текстовых и компоновочных узлов OWL.",
             "Демонстрация Canvas",
             "Небольшой живой холст с фигурами OWL, выражениями и цветами Omarchy.",
+            "Скопировать резервную копию раскладки в буфер обмена",
+            "Восстановить раскладку главного экрана из JSON-копии",
         ):
             with self.subTest(label=label):
                 self.assertIn(label, smoke)

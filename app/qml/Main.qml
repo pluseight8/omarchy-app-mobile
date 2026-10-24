@@ -2907,10 +2907,10 @@ ApplicationWindow {
 
                         Repeater {
                             model: owl.widgetStore
-                            delegate: RowLayout {
+                            delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
-                                spacing: Theme.space(8)
+                                spacing: Theme.space(6)
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
@@ -2922,7 +2922,7 @@ ApplicationWindow {
                                         color: Theme.foreground
                                         font.pixelSize: Theme.fontSize(13)
                                         font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.WordWrap
                                     }
                                     Text {
                                         Layout.fillWidth: true
@@ -2934,34 +2934,41 @@ ApplicationWindow {
                                     }
                                 }
 
-                                Button {
-                                    text: modelData.installed ? qsTr("Remove") : qsTr("Add")
-                                    Accessible.name: modelData.installed
-                                                     ? qsTr("Remove %1 from Home").arg(modelData.name)
-                                                     : qsTr("Add %1 to Home").arg(modelData.name)
-                                    onClicked: {
-                                        const wasInstalled = modelData.installed
-                                        const widgetId = modelData.id
-                                        owl.setWidgetInstalled(widgetId, !wasInstalled)
-                                        window.widgetMessage = wasInstalled
-                                                ? qsTr("Widget removed from Home.")
-                                                : qsTr("Widget added to Home.")
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.space(6)
+                                    Button {
+                                        Layout.fillWidth: true
+                                        text: modelData.installed ? qsTr("Remove") : qsTr("Add")
+                                        Accessible.name: modelData.installed
+                                                         ? qsTr("Remove %1 from Home").arg(modelData.name)
+                                                         : qsTr("Add %1 to Home").arg(modelData.name)
+                                        onClicked: {
+                                            const wasInstalled = modelData.installed
+                                            const widgetId = modelData.id
+                                            owl.setWidgetInstalled(widgetId, !wasInstalled)
+                                            window.widgetMessage = wasInstalled
+                                                    ? qsTr("Widget removed from Home.")
+                                                    : qsTr("Widget added to Home.")
+                                        }
                                     }
-                                }
-                                Button {
-                                    text: modelData.editable ? qsTr("Edit") : qsTr("Copy")
-                                    Accessible.name: modelData.editable
-                                                     ? qsTr("Edit %1").arg(modelData.name)
-                                                     : qsTr("Make an editable copy of %1").arg(modelData.name)
-                                    onClicked: editOwlWidget(modelData.id, !modelData.editable)
-                                }
-                                Button {
-                                    visible: modelData.editable
-                                    text: qsTr("Delete")
-                                    Accessible.name: qsTr("Delete %1").arg(modelData.name)
-                                    onClicked: {
-                                        owl.removeWidget(modelData.id)
-                                        window.widgetMessage = qsTr("Custom widget deleted.")
+                                    Button {
+                                        Layout.fillWidth: true
+                                        text: modelData.editable ? qsTr("Edit") : qsTr("Copy")
+                                        Accessible.name: modelData.editable
+                                                         ? qsTr("Edit %1").arg(modelData.name)
+                                                         : qsTr("Make an editable copy of %1").arg(modelData.name)
+                                        onClicked: editOwlWidget(modelData.id, !modelData.editable)
+                                    }
+                                    Button {
+                                        Layout.fillWidth: true
+                                        visible: modelData.editable
+                                        text: qsTr("Delete")
+                                        Accessible.name: qsTr("Delete %1").arg(modelData.name)
+                                        onClicked: {
+                                            owl.removeWidget(modelData.id)
+                                            window.widgetMessage = qsTr("Custom widget deleted.")
+                                        }
                                     }
                                 }
                             }
@@ -3004,8 +3011,9 @@ ApplicationWindow {
                             font.pixelSize: Theme.fontSize(12)
                             wrapMode: Text.WordWrap
                         }
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: Theme.space(6)
                             Button {
                                 Layout.fillWidth: true
                                 text: qsTr("Copy backup")

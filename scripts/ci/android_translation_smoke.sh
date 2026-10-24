@@ -69,6 +69,10 @@ python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Демонстрация Canvas'
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Небольшой живой холст с фигурами OWL, выражениями и цветами Omarchy.'
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Скопировать резервную копию раскладки в буфер обмена'
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Восстановить раскладку главного экрана из JSON-копии'
 if grep -Fq 'Custom widget deleted.' "$artifacts/translation-ui.xml"; then
   printf 'A stale English widget status message survived changing the app language.\n' >&2
   exit 1

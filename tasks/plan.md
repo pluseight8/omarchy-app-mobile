@@ -24,13 +24,14 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 
 - Local repository suite: 102 Python tests passed. The 286-entry Russian catalog check, shell/Python syntax checks, Android version-code regression test, and whitespace validation also pass.
 - CI #195 passed desktop, arm64, OpenGL, and Vulkan. Both emulator artifacts show successful Android haptic API dispatch, the opt-in checkbox still enabled after Activity restart, Russian and English UI checks, launcher refresh, and the AppWidgetHost proof. The run also confirmed the deterministic Settings launch target and the fixed scrolling tap coordinates.
-- CI #196 passed desktop and arm64, but both emulator jobs stopped at the new OWL metadata visibility check. Its Vulkan artifact confirmed that Russian translations reached the OWL action labels; the title and description Text controls lacked accessibility names, so the exact text was not exposed to the smoke test (or accessibility services). The follow-up now exposes each Text value through `Accessible.name` and retains exact Russian UI assertions.
+- CI #196 passed desktop and arm64, but both emulator jobs stopped at the new OWL metadata visibility check. Its Vulkan artifact confirmed that Russian translations reached the OWL action labels; the title and description Text controls lacked accessibility names. CI #197 passed OpenGL with the exact Russian OWL titles/descriptions exposed to accessibility. Its first Vulkan attempt timed out before the UI smoke because the Home accessibility tree stayed empty after cold launch; only that failed job is being retried.
+- The #197 screenshot also exposed clipped OWL titles and layout-backup buttons on phone width. The current working revision wraps OWL titles, gives widget details the full card width, and stacks action and backup buttons; emulator screenshot coverage is queued in the next CI.
 - The plugin has previously been installed/restarted in Omarchy 4.0.4 / Quickshell 0.3.1. That does not substitute for a fresh test of this branch's mDNS change.
 - This workspace has no JDK or Android SDK/NDK and lacks Qt ShaderTools development files, so the full build and emulator render cannot be verified locally. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 
-1. Confirm CI for the OWL localization/accessibility follow-up; inspect the Russian OWL store screenshot and check that the prior English deletion message is cleared after switching languages.
+1. Finish the Vulkan retry and validate CI for the phone-width OWL/backup layout; inspect the Russian screenshot and verify the prior English deletion message is cleared after switching languages.
 2. Add runtime Android DNS-SD discovery/reconnect coverage with a controlled plugin fixture if the emulator network can carry multicast reliably. Exercise IP changes and wrong-fingerprint rejection with real TLS test traffic.
 3. Design a supported native-to-QML widget placement bridge before exposing ordinary AppWidgets to users; persist IDs/positions, resize/configure, restore, drag and teardown all require lifecycle coverage.
 4. Run the physical Pixel 10 GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, theme sync, battery, and performance observations only after the device is available.
