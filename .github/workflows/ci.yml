@@ -312,8 +312,12 @@ jobs:
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
               # Capture the first Qt scenegraph initialization before later
-              # lifecycle smokes clear logcat and relaunch the activity.
-              adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+              # lifecycle smokes clear logcat and relaunch the activity. Filter
+              # by OmaApp's PID so emulator system chatter cannot evict the RHI line.
+              startup_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+              test -n "$startup_pid"
+              adb logcat -d -v threadtime --pid="$startup_pid" -t 10000 \
+                > "$smoke_artifacts/startup-logcat.txt"
               grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' \
                 "$smoke_artifacts/startup-logcat.txt"
               if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
@@ -455,7 +459,9 @@ jobs:
             exit 1
           fi
           adb shell pm clear app.omaapp
+          adb install build/android-launcher-fixture/launcher-fixture.apk
           python3 scripts/ci/android_pairing_smoke.py
+          adb uninstall app.omaapp.launcherfixture
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
             --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
             --verify-style-surface --require-gradient --gradient-angle 37

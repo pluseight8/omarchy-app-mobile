@@ -3,8 +3,12 @@
     package="app.omaapp.launcherfixture"
     android:versionCode="1"
     android:versionName="1">
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" />
     <application android:label="OmaApp CI launcher fixture">
+        <service
+            android:name=".NsdFixtureService"
+            android:exported="true" />
         <activity
             android:name=".LauncherFixtureActivity"
             android:exported="true"

@@ -26,8 +26,11 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
     def test_rhi_backend_is_asserted_from_initial_startup_log(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         startup_log = workflow.index(
-            'adb logcat -d -v threadtime -t 10000 '
-            '> "$smoke_artifacts/startup-logcat.txt"'
+            'startup_pid="$(adb shell pidof app.omaapp | tr -d',
+        )
+        renderer_log = workflow.index(
+            'adb logcat -d -v threadtime --pid="$startup_pid" -t 10000 \\\n'
+            '                > "$smoke_artifacts/startup-logcat.txt"'
         )
         backend_assertion = workflow.index(
             "grep -F 'OmaApp initialized Qt Quick graphics API: "
@@ -36,7 +39,8 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
         translation_smoke = workflow.index(
             'bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"'
         )
-        self.assertLess(startup_log, backend_assertion)
+        self.assertLess(startup_log, renderer_log)
+        self.assertLess(renderer_log, backend_assertion)
         self.assertLess(backend_assertion, translation_smoke)
         self.assertIn(
             '"$smoke_artifacts/startup-logcat.txt"',
@@ -160,18 +164,41 @@ esac
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8")
+        nsd_fixture = (
+            ROOT / "scripts/ci/android/launcher_fixture/NsdFixtureService.java"
+        ).read_text(encoding="utf-8")
+        fixture_manifest = (
+            ROOT / "scripts/ci/android/launcher_fixture/AndroidManifest.xml"
+        ).read_text(encoding="utf-8")
+        fixture_build = (
+            ROOT / "scripts/ci/build_android_launcher_fixture.sh"
+        ).read_text(encoding="utf-8")
+        prepare = (ROOT / "scripts/ci/prepare_android_pairing_smoke.py").read_text(
+            encoding="utf-8"
+        )
         pairing_smoke = (ROOT / "scripts/ci/android_pairing_smoke.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("NsdManager manager", instrumentation)
-        self.assertIn("manager.registerService(service, NsdManager.PROTOCOL_DNS_SD", instrumentation)
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("startDnsSdFixture(context", instrumentation)
+        self.assertIn("NsdFixtureService", instrumentation)
+        self.assertIn("manager.registerService(service, NsdManager.PROTOCOL_DNS_SD", nsd_fixture)
         self.assertIn("DeviceDiscovery.start(context)", instrumentation)
         self.assertIn('"0".repeat(64)', instrumentation)
         self.assertIn("An untrusted DNS-SD fingerprint changed the saved endpoint.", instrumentation)
         self.assertIn("Android NSD did not reconnect to the TLS-pinned endpoint.", instrumentation)
         self.assertIn("class TestTlsProxy implements AutoCloseable", instrumentation)
         self.assertIn('new InetSocketAddress("10.0.2.2", targetPort)', instrumentation)
-        self.assertIn("service.setHostAddresses(Collections.singletonList(host))", instrumentation)
+        self.assertIn("service.setHostAddresses(Collections.singletonList(host))", nsd_fixture)
+        self.assertIn('android:name=".NsdFixtureService"', fixture_manifest)
+        self.assertIn('android:exported="true"', fixture_manifest)
+        self.assertIn('"$source_dir/NsdFixtureService.java"', fixture_build)
+        self.assertIn('FIXTURE_QUERY =', prepare)
+        install = workflow.index("adb install build/android-launcher-fixture/launcher-fixture.apk")
+        run_smoke = workflow.index("python3 scripts/ci/android_pairing_smoke.py")
+        uninstall = workflow.index("adb uninstall app.omaapp.launcherfixture", run_smoke)
+        self.assertLess(install, run_smoke)
+        self.assertLess(run_smoke, uninstall)
         self.assertIn('"dnsSdPort"', instrumentation)
         self.assertIn("dns_sd_port=state.port", pairing_smoke)
         self.assertIn('patch.object(service.MdnsAdvertiser, "start"', pairing_smoke)

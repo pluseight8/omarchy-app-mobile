@@ -15,9 +15,12 @@ done
 test -f "$android_jar"
 
 javac -source 8 -target 8 -bootclasspath "$android_jar" \
-  -d "$work_dir/classes" "$source_dir/LauncherFixtureActivity.java"
+  -d "$work_dir/classes" \
+  "$source_dir/LauncherFixtureActivity.java" "$source_dir/NsdFixtureService.java"
+mapfile -t fixture_classes < <(find "$work_dir/classes" -type f -name '*.class' -print)
+test "${#fixture_classes[@]}" -gt 0
 "$build_tools/d8" --min-api 23 --output "$work_dir/dex" \
-  "$work_dir/classes/app/omaapp/launcherfixture/LauncherFixtureActivity.class"
+  "${fixture_classes[@]}"
 "$build_tools/aapt" package -f -M "$source_dir/AndroidManifest.xml" \
   -I "$android_jar" -F "$work_dir/unsigned.apk"
 (cd "$work_dir/dex" && "$build_tools/aapt" add -f "$work_dir/unsigned.apk" classes.dex)

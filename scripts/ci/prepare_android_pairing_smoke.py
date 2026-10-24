@@ -23,6 +23,7 @@ INSTRUMENTATION = '''    <instrumentation
         android:label="OmaApp pairing smoke test" />
 
 '''
+FIXTURE_QUERY = '        <package android:name="app.omaapp.launcherfixture" />\n'
 WIDGET_PROVIDER = '''    <receiver
         android:name="app.omaapp.CiAppWidgetProvider"
         android:exported="true"
@@ -65,6 +66,8 @@ def main() -> None:
         raise SystemExit("Could not find the Android manifest insertion point.")
     if APPLICATION_MARKER not in manifest:
         raise SystemExit("Could not find the Android application component insertion point.")
+    if FIXTURE_QUERY not in manifest:
+        manifest = manifest.replace("    <queries>\n", "    <queries>\n" + FIXTURE_QUERY, 1)
     shutil.copyfile(SOURCE, DESTINATION)
     shutil.copyfile(WIDGET_PROVIDER_SOURCE, WIDGET_PROVIDER_DESTINATION)
     shutil.copyfile(ACCESSIBILITY_SERVICE_SOURCE, ACCESSIBILITY_SERVICE_DESTINATION)
