@@ -311,6 +311,16 @@ jobs:
               > "$smoke_artifacts/home-readiness-activities.txt" 2>&1 || true
             timeout 10s adb shell dumpsys window windows \
               > "$smoke_artifacts/home-readiness-windows.txt" 2>&1 || true
+            if [[ -n "$readiness_pid" ]]; then
+              timeout 10s adb shell ps -T -p "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-thread-list.txt" 2>&1 || true
+              # SIGQUIT asks ART for one bounded Java/native thread snapshot. It
+              # does not restart the process or hide a real startup failure.
+              adb shell kill -3 "$readiness_pid" >/dev/null 2>&1 || true
+              sleep 1
+              timeout 10s adb logcat -d -v threadtime --pid="$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-thread-dump.txt" 2>&1 || true
+            fi
             timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
               > "$smoke_artifacts/home-readiness-all-logcat.txt" 2>&1 || true
             python3 scripts/ci/classify_android_launch.py "$readiness_boot" "$readiness_pid" \

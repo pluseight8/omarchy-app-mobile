@@ -21,7 +21,30 @@ def classify(boot_completed: str, app_pid: str, logcat: str) -> str:
         re.IGNORECASE,
     ):
         return "qml_component_load_failure"
-    if "OmaApp initialized Qt Quick graphics API:" not in logcat:
+
+    qml_load_started = "OmaApp startup: loading QML module" in logcat
+    qml_load_returned = "OmaApp startup: QML module load returned" in logcat
+    event_loop_entered = "OmaApp startup: entering event loop" in logcat
+    graphics_marker = "OmaApp initialized Qt Quick graphics API:" in logcat
+    rhi_started = re.search(
+        r"Creating QRhi with backend|Created QRhi |Created OpenGL context",
+        logcat,
+    ) is not None
+
+    # The diagnostic signal is connected immediately after QML construction.
+    # A runner can hang while the component tree is still being instantiated,
+    # even though the renderer thread has already started creating its RHI.
+    if qml_load_started and not qml_load_returned:
+        return (
+            "qml_component_creation_stalled_after_qt_rhi_start"
+            if rhi_started
+            else "qml_component_creation_stalled_before_qt_rhi_start"
+        )
+    if qml_load_returned and not event_loop_entered:
+        return "qt_setup_stalled_before_event_loop"
+    if event_loop_entered and rhi_started and not graphics_marker:
+        return "qt_rhi_started_graphics_diagnostic_missing"
+    if not graphics_marker:
         return "qt_graphics_initialization_not_observed"
     return "qt_graphics_initialized_ui_readiness_failed"
 

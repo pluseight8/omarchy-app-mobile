@@ -30,6 +30,26 @@ class AndroidLaunchDiagnosticsTests(unittest.TestCase):
         )
         self.assertEqual(
             classify(
+                "1",
+                "123",
+                "OmaApp startup: loading QML module\n"
+                "Creating QRhi with backend OpenGL\n",
+            ),
+            "qml_component_creation_stalled_after_qt_rhi_start",
+        )
+        self.assertEqual(
+            classify(
+                "1",
+                "123",
+                "OmaApp startup: loading QML module\n"
+                "OmaApp startup: QML module load returned 1 root objects\n"
+                "OmaApp startup: entering event loop\n"
+                "Created QRhi 0x123 for window 0x456\n",
+            ),
+            "qt_rhi_started_graphics_diagnostic_missing",
+        )
+        self.assertEqual(
+            classify(
                 "1", "123", "OmaApp initialized Qt Quick graphics API: Vulkan"
             ),
             "qt_graphics_initialized_ui_readiness_failed",
@@ -42,6 +62,8 @@ class AndroidLaunchDiagnosticsTests(unittest.TestCase):
             "home-readiness-activities.txt",
             "home-readiness-windows.txt",
             "home-readiness-all-logcat.txt",
+            "home-readiness-thread-dump.txt",
+            "home-readiness-thread-list.txt",
             "home-readiness-classification.txt",
         ):
             with self.subTest(artifact=artifact):
