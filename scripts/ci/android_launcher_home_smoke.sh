@@ -298,6 +298,11 @@ settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
 read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1
+# Settings preserves its previous scroll offset; bring the editor action back
+# into the visible header before asking accessibility for a real tap target.
+adb shell input swipe 205 280 205 760 450
+adb shell input swipe 205 280 205 760 450
+sleep 1
 new_widget_target=""
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"

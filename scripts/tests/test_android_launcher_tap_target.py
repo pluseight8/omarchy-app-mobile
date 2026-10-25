@@ -86,6 +86,8 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
 
         self.assertIn('Accessible.name: qsTr("Create an OWL widget")', settings_header)
         self.assertIn("onClicked: createOwlWidget()", settings_header)
+        settings_navigation = smoke.split('window-home-before-widget-editor.xml', 1)[1]
+        self.assertIn('adb shell input swipe 205 280 205 760 450', settings_navigation)
         self.assertIn("'Create an OWL widget'", editor_store)
         self.assertIn("widget-editor-create-action-missing.png", editor_store)
         self.assertNotIn("input swipe", editor_store)
