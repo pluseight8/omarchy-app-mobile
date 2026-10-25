@@ -299,8 +299,8 @@ read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1
 new_widget_target=""
-# Settings keeps its scroll offset when the app returns from Home. The store's
-# New action is above the widget list, so move back toward the top while looking.
+# Re-entering Settings starts near the top; scroll down to reach the OWL store
+# action. Keep the gesture in the left gutter so it cannot activate a control.
 for attempt in {1..10}; do
   python3 scripts/ci/android_accessibility_dump.py \
     /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
@@ -308,7 +308,7 @@ for attempt in {1..10}; do
     "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
     break
   fi
-  adb shell input swipe 205 300 205 720 450
+  adb shell input swipe 32 720 32 300 650
   sleep 1
 done
 if [[ -z "$new_widget_target" ]]; then

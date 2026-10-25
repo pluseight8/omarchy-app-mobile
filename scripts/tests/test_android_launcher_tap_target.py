@@ -73,6 +73,17 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
         )
         self.assertIn("android_accessibility_assert_checked.py \"$accessibility_xml\" 'Home'", reselect)
 
+    def test_owl_editor_store_scrolls_down_from_settings_top_in_the_gutter(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        editor_store = smoke.split("# Re-entering Settings starts near the top", 1)[1]
+        editor_store = editor_store.split("if [[ -z \"$new_widget_target\" ]]", 1)[0]
+
+        self.assertIn("'Create an OWL widget'", editor_store)
+        self.assertIn("adb shell input swipe 32 720 32 300 650", editor_store)
+        self.assertNotIn("adb shell input swipe 205 300 205 720", editor_store)
+
 
 if __name__ == "__main__":
     unittest.main()
