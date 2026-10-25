@@ -1783,12 +1783,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void ensureSecondHomePage(UiAutomation automation, Context context) throws Exception {
-        if (!clickAccessibleText(automation, "Settings")) {
+        // "Settings" is also the label of the Android Settings app shortcut in the
+        // launcher's Home and Apps trees. A substring match can launch that app instead
+        // of selecting OmaApp's bottom navigation tab.
+        if (!clickAccessibleControl(automation, "Settings")) {
             throw new IllegalStateException("Could not open Settings to add a second Home page.");
         }
         awaitAccessibilityText(automation, "Add a home page", 15_000L, context);
-        if (!clickAccessibleText(automation, "Add a home page")
-                || !clickAccessibleText(automation, "Home")) {
+        if (!clickAccessibleControl(automation, "Add a home page")
+                || !clickAccessibleControl(automation, "Home")) {
             throw new IllegalStateException("Could not enable a second Home page in the launcher.");
         }
         awaitAccessibilityText(automation, "Home page 1 of 2", 15_000L, context);

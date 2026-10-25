@@ -99,10 +99,13 @@ class VisualRegressionTests(unittest.TestCase):
         self.assertTrue(
             (root / "tests/visual_baselines/android/opengl/home-compact-viewport.png").is_file()
         )
-        self.assertFalse(
-            (root / "tests/visual_baselines/android/home-compact-viewport.png").exists(),
-            "a shared compact screenshot can hide a renderer-specific Home regression",
+        vulkan_compact = root / "tests/visual_baselines/android/home-compact-viewport.png"
+        opengl_compact = root / "tests/visual_baselines/android/opengl/home-compact-viewport.png"
+        self.assertTrue(
+            vulkan_compact.is_file(),
+            "Vulkan's compact capture needs a baseline in its backend-specific directory",
         )
+        self.assertNotEqual(vulkan_compact.read_bytes(), opengl_compact.read_bytes())
 
     def test_decodes_rgba_png_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

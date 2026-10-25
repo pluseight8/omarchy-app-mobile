@@ -382,6 +382,15 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("dragResizeHandle(context, widgetId, 24, 24)", instrumentation)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
+        setup_start = instrumentation.index("private void ensureSecondHomePage")
+        setup_end = instrumentation.index(
+            "private static void verifyWidgetGridCollisionRules", setup_start
+        )
+        second_page_setup = instrumentation[setup_start:setup_end]
+        self.assertIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
+        self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
+        self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
+        self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
         self.assertIn("exportWidgetBackup(context)", instrumentation)
         self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
         self.assertIn('"needs_rebind"', instrumentation)
