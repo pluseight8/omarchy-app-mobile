@@ -858,6 +858,25 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void runAndroidWidgetHostRemove(Context context) throws Exception {
+        reportStage("android_widget_host_remove_started");
+        Intent launch = new Intent(context, OmaAppActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(launch);
+        UiAutomation automation = getUiAutomation();
+        Activity activity = null;
+        long activityDeadline = SystemClock.elapsedRealtime() + 15_000L;
+        while (SystemClock.elapsedRealtime() < activityDeadline) {
+            activity = AndroidWidgetHost.currentActivityForInstrumentation();
+            if (activity instanceof OmaAppActivity && !activity.isFinishing()) {
+                break;
+            }
+            SystemClock.sleep(100L);
+        }
+        if (!(activity instanceof OmaAppActivity) || activity.isFinishing()) {
+            throw new IllegalStateException("OmaApp Home did not attach before widget removal.");
+        }
+        awaitAccessibilityText(automation, "Add Android widget", 15_000L, context);
+
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
@@ -870,13 +889,26 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 break;
             }
         }
-        if (widgetId <= 0 || !AndroidWidgetHost.removeWidget(context, widgetId)) {
-            throw new IllegalStateException("OmaApp did not remove the selected widget and release its ID.");
+        if (widgetId <= 0) {
+            throw new IllegalStateException("No persisted CI widget ID was found before removal: "
+                    + widgets);
+        }
+        if (!AndroidWidgetHost.removeWidget(context, widgetId)) {
+            throw new IllegalStateException("OmaApp failed to remove selected widget ID " + widgetId
+                    + " from its active Home Activity.");
+        }
+        long removalDeadline = SystemClock.elapsedRealtime() + 5_000L;
+        while (SystemClock.elapsedRealtime() < removalDeadline
+                && (AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId) != null
+                || hasWidgetRecord(context, expectedProvider))) {
+            SystemClock.sleep(100L);
         }
         if (AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId) != null
                 || hasWidgetRecord(context, expectedProvider)) {
-            throw new IllegalStateException("The removed Android widget ID or saved placement remains.");
+            throw new IllegalStateException("Widget ID " + widgetId
+                    + " or its saved placement remains after removal.");
         }
+        reportStage("android_widget_host_id_release_passed");
     }
 
     private static boolean hasWidgetRecord(Context context, ComponentName expectedProvider) {
