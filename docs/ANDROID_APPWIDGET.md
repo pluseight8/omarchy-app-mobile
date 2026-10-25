@@ -38,11 +38,14 @@ user's explicit bind action. Persisted provider identity is checked against
 OmaApp's saved state are released during recovery. The bridge rejects invalid,
 non-finite, or oversized bounds before changing native views.
 
-This initial integration is emulator-verified only when the
-`android_widget_host_smoke.sh` setup, restart, and removal stages pass for both
-graphics backends. Physical device behavior, GrapheneOS policy, drag/resize,
-multi-page placement, widget backup, cross-page gesture arbitration, and
-screen-reader interaction remain to be verified before broader support.
+GitHub Actions [run #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660)
+passed the `android_widget_host_smoke.sh` setup, restart, and removal stages on
+both OpenGL and Vulkan. The fixture was selected through Android's picker,
+interacted with before and after cold process restoration, and its widget ID was
+released on removal. This is emulator verification only. Physical device
+behavior, GrapheneOS policy, drag/resize, multi-page placement, widget backup,
+cross-page gesture arbitration, and screen-reader interaction remain to be
+verified before broader support.
 Rotation, density changes, Android system gestures/insets, memory use, and
 frame performance have not been measured yet.
 

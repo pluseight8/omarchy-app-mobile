@@ -15,7 +15,7 @@ The Android launcher and arm64 debug packaging already exist. Direct QR pairing 
 - The service reads active Omarchy theme files and Hyprland options/animations. Android waits for authenticated inotify/socket2 events and falls back to a 30-second foreground refresh for missed events and system metrics.
 - Clipboard, file-transfer, MPRIS, system metrics, Hyprland workspaces, and user-configured commands have independent, disabled-by-default per-device grants.
 
-The pairing implementation is committed, and focused Python protocol tests pass locally. [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557) passed desktop checks, the arm64 build, and the x86_64 emulator smoke. It verified app install and HOME selection, app enumeration and launch, persisted pins and folders, TLS-pinned pairing, host approval, theme colors/spacing/geometry/wallpaper, live theme update, reconnect, and token revocation. This machine has `adb` but no CMake, Android SDK, emulator, or attached device, so a physical phone-to-Omarchy session and GrapheneOS compatibility remain unverified.
+The localization and safe rediscovery changes in [PR #16](https://github.com/pluseight8/omarchy-app-mobile/pull/16) are Ready for Review at `9cbd3588a5871002ac0fb0eb64f2c943da564e94`; [CI #266](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40210984247) passed all four jobs. The separate AppWidgetHost proof in draft [PR #17](https://github.com/pluseight8/omarchy-app-mobile/pull/17) is at `a785074ccf295074b3ddb47443c6c0f8342f9569`; [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed desktop, arm64, and OpenGL/Vulkan emulator checks, including real picker binding, widget interaction, cold process restoration, and ID removal. The PR #17 branch's Python suite passes 83 tests; PR #16's local suite passes 138. The plugin has been installed and restarted inside Omarchy 4.0.4 / Quickshell 0.3.1. This workspace has no CMake, JDK, Android SDK, emulator, or attached device, so physical Pixel/GrapheneOS behavior remains unverified.
 
 ## Work sequence
 
@@ -77,7 +77,7 @@ The pairing implementation is committed, and focused Python protocol tests pass 
 - [x] Launch Android's system picker and provider configuration flow; do not bind providers without the user's picker choice.
 - [x] Restore persisted provider IDs through one stable `AppWidgetHost` and release cancelled, stale, and deleted IDs.
 - [x] Align interactive `AppWidgetHostView` children with first-page Qt Quick Home slots, convert dp bounds, and clip them to the scroll/page viewport.
-- [ ] Verify the real test provider through picker selection, RemoteViews click, force-stop/relaunch, and ID release in OpenGL and Vulkan emulator jobs.
+- [x] Verify the real test provider through picker selection, RemoteViews click, force-stop/relaunch, and ID release in OpenGL and Vulkan emulator jobs ([CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660)).
 - [ ] Add drag/reorder, resize handles, per-page positions, and layout backup/restore as separately reviewable follow-up work.
 - [ ] Measure Home performance and check gestures, accessibility, orientation/insets, and GrapheneOS with a physical device.
 - [ ] Measure widget memory and frame cost across display densities, rotation, and the emulator's available refresh rates.

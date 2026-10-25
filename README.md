@@ -21,7 +21,7 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 - GitHub Actions builds desktop and arm64 APKs, then exercises the launcher, pairing, theme sync, Hyprland rendering, and paired-PC features in Android x86_64 emulators using OpenGL and Vulkan. The emulator also binds, interacts with, restores, and removes a real test-only Android widget provider through the native host view. CI APKs are debug artifacts; a signed release has not yet been published.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. The local Python suite has 78 passing tests; the Android version-code CMake regression test passes. This workspace lacks Qt ShaderTools (`qsb`) and the Android build SDK, so the full desktop/Android build is delegated to GitHub Actions. No Pixel device is attached; Pixel 10 / GrapheneOS behavior remains unverified.
+The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. Current-head [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed desktop and arm64 builds, Android OpenGL/Vulkan smoke, and native widget binding, interaction, process restoration, and removal. This workspace lacks Qt ShaderTools (`qsb`) and the Android build SDK, so full builds run in GitHub Actions. No Pixel device is attached; Pixel 10 / GrapheneOS behavior remains unverified.
 
 ## Build the desktop preview
 

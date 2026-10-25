@@ -42,7 +42,7 @@
 - [x] Bridge live Home slot coordinates and QML viewport clipping to interactive `AppWidgetHostView` instances.
 - [x] Persist provider IDs and ordered first-page placement in the app's private storage; restore IDs after Activity/process recreation and discard stale providers.
 - [x] Keep the existing offline OWL widget list available below native Android widgets.
-- [ ] Pass the CI integration that binds, clicks, process-restores, and removes a real test-only RemoteViews provider on OpenGL and Vulkan.
+- [x] Pass the CI integration that binds, clicks, process-restores, and removes a real test-only RemoteViews provider on OpenGL and Vulkan in [run #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660).
 - [ ] Add drag/reorder, resize handles, per-page placement, layout backup/restore, and lifecycle/performance measurements in follow-up slices.
 - [ ] Validate touch, accessibility, gestures, insets, and GrapheneOS behavior on a physical device.
 - [ ] Measure memory and frame performance across widget sizes, orientation changes, and available display refresh rates.

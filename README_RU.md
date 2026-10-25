@@ -21,7 +21,7 @@ OmaApp — Android-лаунчер и прямой компаньон Omarchy н�
 - GitHub Actions собирает desktop и arm64 APK, затем проверяет launcher, pairing, синхронизацию темы, рендеринг Hyprland и функции сопряжённого ПК в Android x86_64 под OpenGL и Vulkan. В эмуляторе также выбирается настоящий тестовый Android-виджет, проверяются его интерактивность, восстановление после перезапуска и удаление. CI APK — отладочная сборка; подписанный релиз пока не опубликован.
 - В Android-приложение не включён Quickshell: приложение использует Qt Quick, а плагин Omarchy исполняется внутри Quickshell.
 
-Плагин уже установлен и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. Локальный полный набор из 78 Python-тестов проходит. В рабочем окружении нет Android build SDK и подключённого Pixel. APK и Android smoke tests собираются и запускаются в GitHub Actions. Проверка на Pixel 10 / GrapheneOS ещё не выполнена.
+Плагин уже установлен и перезапускался в настоящей сессии Omarchy 4.0.4 / Quickshell 0.3.1. Текущий [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) успешно проверил desktop и arm64 сборки, Android smoke на OpenGL/Vulkan, привязку Android-виджета, взаимодействие, восстановление процесса и освобождение ID. В рабочем окружении нет Qt ShaderTools (`qsb`) и Android build SDK, поэтому полные сборки выполняются в GitHub Actions. Pixel не подключён; проверка Pixel 10 / GrapheneOS ещё не выполнена.
 
 ## Сборка настольного предпросмотра
 
