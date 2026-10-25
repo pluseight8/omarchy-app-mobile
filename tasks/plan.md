@@ -29,18 +29,18 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 
 ## Current verification
 
-- Local suite: 133 Python tests pass. The Russian catalog checker validates 292 source strings. Shell syntax checks, `git diff --check`, and visual comparisons of the CI #250 OpenGL/Vulkan captures against refreshed Settings baselines pass. Local Qt `qmllint`, Android, and desktop builds are unavailable in this environment.
-- CI #250 (https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40192392591) passed Desktop and arm64. Both emulator backends started Qt Quick and passed launcher, OWL editor/store, app-discovery, English/Russian native strings, locale persistence, and haptic checks. Each run then rejected the stale Settings visual baseline after the OWL creation action moved into the header; this update replaces those two images with reviewed current captures and keeps the 1.5% limit. The next run must verify the entire workflow, including the pairing and AppWidgetHost steps that follow visual comparison. CI #249's OpenGL failure was before native main/QML and showed no crash or ANR; both backends reached the UI in #250, but the cause of that earlier startup stall remains unknown. Failure artifacts preserve boot/PID, Activity/Window, screenshot, hierarchy, thread list, bounded backtraces, and logcat.
+- Local suite: 133 Python tests pass. The Russian catalog checker validates 292 source strings. Shell syntax checks, `git diff --check`, and visual comparisons of the CI #251 OpenGL/Vulkan captures against refreshed Settings baselines pass. Local Qt `qmllint`, Android, and desktop builds are unavailable in this environment.
+- CI [#251](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934) passed all four jobs: Desktop, Android arm64 APK, and Android x86_64 smoke on OpenGL and Vulkan. Artifacts include the [arm64 debug APK](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598838389), [Vulkan smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12599650182), and [OpenGL smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598844391). The APK is not a production-signed release. CI #249's OpenGL failure occurred before native main/QML with no crash or ANR; both backends reached the UI in #250, so the earlier startup cause remains unknown. Failure artifacts preserve boot/PID, Activity/Window, screenshot, hierarchy, thread list, bounded backtraces, and logcat.
 - Earlier CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Its renderer screenshots remain checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
-- PR #16 is already open and Ready for Review. Leave it unmerged until maintainers approve; finish the full CI run first, resolve the two addressed review threads, then open the separate draft PR for the AppWidgetHost production integration.
+- PR #16 is open and Ready for Review with both addressed review threads resolved and CI #251 green. It remains unmerged for maintainer review. Separate draft PR #17 tracks the AppWidgetHost proof; user-managed Android widget placement is still future work.
 
 ## Remaining work
 
 1. Exercise Android NSD reconnect, IP changes, and wrong-fingerprint rejection end to end against a live Omarchy host when a suitable network fixture is available.
 2. Design and test a supported Qt-to-native placement/lifecycle bridge before integrating ordinary Android App Widgets into persistent Home layouts.
 3. Run the physical Pixel 10 / GrapheneOS checklist in `docs/GRAPHENEOS.md`; report installation, HOME, camera, discovery, TLS, sync, battery, and performance only after device testing.
-4. Finish PR #16's review gate without merging it here; then open a separate draft PR for the production AppWidgetHost bridge. Publish a signed pre-release only through the existing workflow with the owner's permanent GitHub signing secrets.
+4. Wait for maintainer review of PR #16 and keep PR #17 separate. Publish a signed pre-release only through the existing workflow with the owner's permanent GitHub signing secrets.
 
 ## Release and safety constraints
 

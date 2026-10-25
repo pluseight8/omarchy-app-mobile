@@ -22,20 +22,20 @@
 
 ## Remaining work and validation limits
 
-- [ ] Pass a full CI run after the translation-order fix and refreshed Settings baselines, including pairing/reconnect, AppWidgetHost, and later smoke steps.
+- [x] Pass a full CI run after the translation-order fix and refreshed Settings baselines. CI #251 passed Desktop, Android arm64, and Android OpenGL/Vulkan smoke jobs.
 - [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
 - [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
-- [ ] Resolve the fixed review threads and leave PR #16 open and Ready for Review after the complete CI run; keep it unmerged here.
-- [ ] Open the separate draft PR for production Android AppWidgetHost work after PR #16's review gate is clean.
+- [x] Resolve both addressed PR #16 review threads and leave the PR open and Ready for Review after CI #251; maintainers still need to review it before merge.
+- [x] Open separate draft PR #17 for the AppWidgetHost proof. Production Android widget placement remains out of scope for this proof.
 - [ ] Publish an Alpha pre-release only with the owner's permanent signing secrets.
 
 ## Local verification
 
 - `python3 -m unittest discover -s scripts/tests -q`: 133 tests pass.
 - `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
-- Shell syntax checks, `git diff --check`, and visual comparison of CI #250 OpenGL/Vulkan captures against the refreshed baselines pass. Qt qmllint and a full Android/desktop build are unavailable locally.
-- CI #250 (https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40192392591) passed Desktop and arm64. Both emulator backends reached the Home UI and passed launcher, Russian/English native translation, persistence, app-discovery, and haptics checks; the run then failed only because its Settings screenshot still used the pre-relocation baseline. The current changes refresh that expected screenshot for each backend without relaxing the threshold; the follow-up CI is pending. CI #249's OpenGL readiness failure happened before native main/QML and had no crash/ANR evidence; both backends launched the UI in #250, so the earlier cause remains unconfirmed.
+- Shell syntax checks, `git diff --check`, and visual comparison of CI #251 OpenGL/Vulkan captures against the refreshed baselines pass. Qt qmllint and a full Android/desktop build are unavailable locally.
+- CI [#251](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934) passed all four jobs: Desktop, Android arm64, and Android x86_64 smoke on OpenGL and Vulkan. It published the [arm64 debug APK](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598838389), [Vulkan smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12599650182), and [OpenGL smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598844391). The APK is not production-signed. CI #249's OpenGL readiness failure happened before native main/QML and had no crash or ANR evidence; both backends launched in #250, so the earlier cause remains unconfirmed.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
 - Android DNS-SD remains verified with the Android NSD fixture and host-side Linux multicast packet tests only; it has not been exercised end to end over physical Wi-Fi with a live Omarchy host and phone.
