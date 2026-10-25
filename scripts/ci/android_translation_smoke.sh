@@ -64,6 +64,24 @@ find_scrolling_label() {
   return 1
 }
 
+ensure_visible_settings_label() {
+  local label="$1"
+  for attempt in {1..12}; do
+    dump_ui > /dev/null
+    if python3 scripts/ci/android_accessibility_assert_visible.py \
+      "$artifacts/translation-ui.xml" "$label" >/dev/null 2>&1; then
+      return 0
+    fi
+    # Language changes can reflow the Settings card while preserving its
+    # Flickable offset. Scroll the label into the viewport before asserting it.
+    adb shell input swipe 32 720 32 300 650
+    sleep 0.4
+  done
+  adb exec-out screencap -p > "$artifacts/visibility-failure.png" 2>/dev/null || true
+  printf 'Could not bring Settings label %s into view.\n' "$label" >&2
+  return 1
+}
+
 tap_scrolling_label() {
   local target x y
   target="$(find_scrolling_label "$1" "${2:-down}")"
@@ -121,6 +139,7 @@ tap_label 'Settings'
 sleep 1
 tap_scrolling_label 'Russian'
 sleep 2
+ensure_visible_settings_label 'Язык'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Язык'
@@ -165,6 +184,7 @@ python3 scripts/ci/android_accessibility_assert_checked.py \
 sleep 1
 tap_scrolling_label 'Английский' down
 sleep 2
+ensure_visible_settings_label 'Language'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Language'
@@ -194,6 +214,7 @@ test -n "$live_locale_process"
 # stale OWL labels and one-way translation bindings after several retranslate() calls.
 tap_scrolling_label 'Russian' down
 sleep 2
+ensure_visible_settings_label 'Язык'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Язык'

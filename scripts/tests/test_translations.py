@@ -71,6 +71,13 @@ class TranslationCatalogTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("tap_scrolling_label 'Russian' down", smoke)
         self.assertIn("tap_scrolling_label 'Английский' down", smoke)
+        visibility_helper = smoke.split("ensure_visible_settings_label() {", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("android_accessibility_assert_visible.py", visibility_helper)
+        self.assertIn("adb shell input swipe 32 720 32 300 650", visibility_helper)
+        self.assertEqual(smoke.count("ensure_visible_settings_label 'Язык'"), 2)
+        self.assertIn("ensure_visible_settings_label 'Language'", smoke)
         self.assertIn("adb logcat -c", smoke)
         self.assertIn("adb logcat -d -v threadtime -t 30000", smoke)
         self.assertIn("trap restore_android_font_scale EXIT", smoke)
