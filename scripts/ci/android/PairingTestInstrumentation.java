@@ -814,15 +814,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The bound provider disappeared after its click action.");
         }
 
-        Activity recreated = recreateOmaAppActivity((OmaAppActivity) activity);
-        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
-        if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
-            throw new IllegalStateException("The Android widget stopped receiving touch after Activity recreation.");
-        }
-        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE", 15_000L, context);
-        if (!(recreated instanceof OmaAppActivity)) {
-            throw new IllegalStateException("OmaApp did not recreate its Qt Activity for lifecycle coverage.");
-        }
+        // QtActivity owns a process-wide native Qt engine; forcing Activity.recreate() tears
+        // down that engine and is not a supported way to test Android lifecycle restoration.
+        // The next instrumentation stage force-stops this process and verifies a cold restore.
     }
 
     private void runAndroidWidgetHostRestore(Context context) throws Exception {
@@ -838,7 +832,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The Android widget ID/provider record did not survive process death.");
         }
-        awaitAccessibilityText(getUiAutomation(), "CI_WIDGET_UPDATED_TWICE", 30_000L, context);
+        UiAutomation automation = getUiAutomation();
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
+        if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
+            throw new IllegalStateException("The restored Android widget stopped receiving touch after process death.");
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE", 15_000L, context);
+        if (!hasWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("The restored widget provider disappeared after its click action.");
+        }
     }
 
     private void runAndroidWidgetHostRemove(Context context) throws Exception {
@@ -861,21 +863,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 || hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The removed Android widget ID or saved placement remains.");
         }
-    }
-
-    private Activity recreateOmaAppActivity(OmaAppActivity activity) throws Exception {
-        runOnMainSync(activity::recreate);
-        long deadline = SystemClock.elapsedRealtime() + 15_000L;
-        OmaAppActivity recreated = AndroidWidgetHost.currentActivityForInstrumentation();
-        while ((recreated == null || recreated == activity)
-                && SystemClock.elapsedRealtime() < deadline) {
-            SystemClock.sleep(50L);
-            recreated = AndroidWidgetHost.currentActivityForInstrumentation();
-        }
-        if (!(recreated instanceof OmaAppActivity)) {
-            throw new IllegalStateException("OmaApp Qt Activity did not reattach after recreation.");
-        }
-        return recreated;
     }
 
     private static boolean hasWidgetRecord(Context context, ComponentName expectedProvider) {
