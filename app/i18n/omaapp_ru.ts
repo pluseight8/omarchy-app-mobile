@@ -215,6 +215,10 @@
             <translation>Увеличить ширину виджета Android</translation>
         </message>
         <message>
+            <source>Current Android widget position: %1, %2 dp</source>
+            <translation>Текущая позиция виджета Android: %1, %2 dp</translation>
+        </message>
+        <message>
             <source>Move Android widget down</source>
             <translation>Переместить виджет Android ниже</translation>
         </message>

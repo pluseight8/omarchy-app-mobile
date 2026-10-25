@@ -1705,12 +1705,19 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + resizedWidget);
         }
         awaitWidgetOptions(context, widgetId, resizedWidth, resizedHeight, 10_000L);
+        // The direct host mutation above notifies Qt asynchronously. Wait until the Home
+        // accessibility bridge reports the durable position before clicking a control whose
+        // target is derived from the QML delegate's modelData.
+        awaitAccessibilityText(automation, "Current Android widget position: 48, 72 dp",
+                10_000L, context);
         awaitAccessibilityText(automation, "Move Android widget down", 20_000L, context);
         if (!clickAccessibleText(automation, "Move Android widget down")) {
             throw new IllegalStateException("The Android widget grid movement control was not accessible.");
         }
         if (!awaitWidgetPosition(context, expectedProvider, 0, 48, 96, 10_000L)) {
-            throw new IllegalStateException("The Home screen could not save an accessible grid move.");
+            throw new IllegalStateException("The Home screen could not save an accessible grid move. Saved widget: "
+                    + requireWidgetRecord(context, expectedProvider) + "; visible accessibility tree: "
+                    + accessibilityTree(automation));
         }
         awaitAccessibilityText(automation, "Undo Android widget layout change", 15_000L, context);
         if (!clickAccessibleText(automation, "Undo Android widget layout change")

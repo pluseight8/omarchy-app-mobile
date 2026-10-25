@@ -124,6 +124,21 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Resize Android widget")', native)
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Widget size was not changed.")', native)
 
+    def test_accessible_widget_move_waits_for_the_refreshed_grid_position(self):
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'Accessible.description: qsTr("Current Android widget position: %1, %2 dp")',
+            qml,
+        )
+        self.assertIn(
+            'awaitAccessibilityText(automation, "Current Android widget position: 48, 72 dp"',
+            instrumentation,
+        )
+        self.assertIn('"; visible accessibility tree: "', instrumentation)
+
     def test_schema_migration_instrumentation_reports_from_instance_context(self):
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"

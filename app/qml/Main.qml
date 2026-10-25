@@ -1591,6 +1591,8 @@ ApplicationWindow {
                                                 Button {
                                                     text: "↓"
                                                     Accessible.name: qsTr("Move Android widget down")
+                                                    Accessible.description: qsTr("Current Android widget position: %1, %2 dp")
+                                                                               .arg(modelData.xDp).arg(modelData.yDp)
                                                     onClicked: window.placeAndroidWidgetTo(modelData.recordId,
                                                         modelData.page, modelData.xDp,
                                                         modelData.yDp + window.androidWidgetGridStep,
