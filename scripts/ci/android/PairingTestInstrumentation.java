@@ -134,7 +134,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             String dnsSdPort = testArguments.getString("dnsSdPort", "");
             if (!dnsSdPort.isEmpty()) {
                 JSONObject reconnected = runDnsSdReconnectSmoke(context,
-                        Integer.parseInt(dnsSdPort), testArguments.getString("dnsSdFingerprint", ""),
+                        Integer.parseInt(dnsSdPort),
+                        Integer.parseInt(testArguments.getString("dnsSdWrongCertPort", "0")),
+                        testArguments.getString("dnsSdFingerprint", ""),
                         testArguments.getString("expectedTheme", ""));
                 report("dns_sd_reconnected", reconnected);
                 result.putString("stage", "dns_sd_reconnected");
@@ -364,16 +366,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     /** Exercises real Android NSD discovery/resolution and the saved TLS trust gate. */
-    private JSONObject runDnsSdReconnectSmoke(Context context, int port, String fingerprint,
-                                               String expectedTheme) throws Exception {
+    private JSONObject runDnsSdReconnectSmoke(Context context, int port, int wrongCertPort,
+                                               String fingerprint, String expectedTheme) throws Exception {
         if (!PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, false)
                 || PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, true)) {
             throw new IllegalStateException(
                     "A queued DNS-SD endpoint must bypass duplicate-announcement throttling.");
         }
-        if (port < 1 || port > 65535 || fingerprint == null
+        if (port < 1 || port > 65535 || wrongCertPort < 1 || wrongCertPort > 65535
+                || wrongCertPort == port || fingerprint == null
                 || !fingerprint.matches("[a-fA-F0-9]{64}")) {
-            throw new IllegalArgumentException("A bounded CI DNS-SD endpoint is required.");
+            throw new IllegalArgumentException("Bounded CI endpoints for the trusted and wrong TLS identities are required.");
         }
         JSONObject saved = PairingStore.readCredential(context);
         if (saved == null || !saved.has("token") || !saved.has("fingerprint")) {
@@ -417,6 +420,34 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 stopDnsSdFixture(context);
                 SystemClock.sleep(500L);
             }
+
+            // A spoof can copy both the saved service-name hint and TXT fingerprint. It still
+            // must not move the endpoint unless the actual TLS certificate is the QR-pinned one.
+            TestTlsProxy wrongCertificateProxy = new TestTlsProxy(wrongCertPort);
+            try {
+                wrongCertificateProxy.start();
+                startDnsSdFixture(context,
+                        "OmaApp-" + fingerprint.substring(0, 12),
+                        wrongCertificateProxy.getLocalAddress(), wrongCertificateProxy.getPort(),
+                        fingerprint);
+                long deadline = SystemClock.uptimeMillis() + 6_000L;
+                while (SystemClock.uptimeMillis() < deadline
+                        && wrongCertificateProxy.getForwardedConnectionCount() == 0) {
+                    SystemClock.sleep(200L);
+                }
+                if (wrongCertificateProxy.getForwardedConnectionCount() == 0) {
+                    throw new IllegalStateException("Android did not attempt TLS against the spoofed DNS-SD endpoint.");
+                }
+                JSONObject stillSaved = PairingStore.readCredential(context);
+                if (stillSaved == null || !originalUrl.equals(stillSaved.optString("serverUrl", ""))) {
+                    throw new IllegalStateException("A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.");
+                }
+            } finally {
+                stopDnsSdFixture(context);
+                wrongCertificateProxy.close();
+            }
+            // Keep the valid endpoint outside PairingBridge's 10-second duplicate reconnect window.
+            SystemClock.sleep(10_500L);
 
             startDnsSdFixture(context,
                     "OmaApp-" + fingerprint.substring(0, 12),
@@ -502,6 +533,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         private volatile boolean closed;
         private volatile Socket clientSocket;
         private volatile Socket upstreamSocket;
+        private final java.util.concurrent.atomic.AtomicInteger forwardedConnectionCount =
+                new java.util.concurrent.atomic.AtomicInteger();
         private Thread acceptThread;
 
         TestTlsProxy(int targetPort) throws Exception {
@@ -521,6 +554,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         int getPort() {
             return server.getLocalPort();
+        }
+
+        int getForwardedConnectionCount() {
+            return forwardedConnectionCount.get();
         }
 
         void start() {
@@ -554,6 +591,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 Socket upstream = new Socket();
                 upstreamSocket = upstream;
                 upstream.connect(new InetSocketAddress("10.0.2.2", targetPort), 5_000);
+                forwardedConnectionCount.incrementAndGet();
                 upstream.setSoTimeout(30_000);
                 accepted.setSoTimeout(30_000);
                 Thread request = new Thread(() -> copyTls(accepted, upstream),

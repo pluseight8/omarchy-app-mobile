@@ -101,6 +101,7 @@ def main() -> int:
                                    feature_smoke: bool = False,
                                    clipboard_stress: bool = False,
                                    dns_sd_port: int = 0,
+                                   dns_sd_wrong_cert_port: int = 0,
                                    dns_sd_fingerprint: str = "") -> str:
         command = [
             "adb", "shell", "am", "instrument", "-w",
@@ -108,6 +109,7 @@ def main() -> int:
         if dns_sd_port:
             command.extend([
                 "-e", "dnsSdPort", str(dns_sd_port),
+                "-e", "dnsSdWrongCertPort", str(dns_sd_wrong_cert_port),
                 "-e", "dnsSdFingerprint", dns_sd_fingerprint,
                 "-e", "expectedTheme", expected_theme,
             ])
@@ -545,10 +547,22 @@ else:
                     raise RuntimeError("The plugin restart changed its persisted TLS certificate fingerprint.")
                 state = restarted_state
                 state.event_hub.publish("theme")
-                run_android_instrumentation(
-                    state, "", expected_theme="CI_AfterRestart",
-                    dns_sd_port=state.port, dns_sd_fingerprint=state.fingerprint,
+                wrong_tls_state = service.ServiceState(
+                    Path(temporary) / "wrong-tls-identity", "0.0.0.0", 0,
                 )
+                try:
+                    # A second live TLS service has a different self-signed certificate but
+                    # advertises the paired host's trusted DNS-SD name and TXT fingerprint.
+                    with patch.object(service.MdnsAdvertiser, "start", lambda _self: None):
+                        wrong_tls_state.start_server()
+                    run_android_instrumentation(
+                        state, "", expected_theme="CI_AfterRestart",
+                        dns_sd_port=state.port,
+                        dns_sd_wrong_cert_port=wrong_tls_state.port,
+                        dns_sd_fingerprint=state.fingerprint,
+                    )
+                finally:
+                    wrong_tls_state.stop_server()
 
                 second_qr = qr_payload(state)
                 run_android_instrumentation(

@@ -218,6 +218,21 @@ esac
         self.assertIn("ApplicationInfo.FLAG_DEBUGGABLE", discovery)
         self.assertIn("final long discoveryGeneration = ++generation", discovery)
         self.assertIn("isCurrent(discoveryGeneration)", discovery)
+
+        smoke = (ROOT / "scripts/ci/android_pairing_smoke.py").read_text(encoding="utf-8")
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("dns_sd_wrong_cert_port: int = 0", smoke)
+        self.assertIn('"dnsSdWrongCertPort"', smoke)
+        self.assertIn('Path(temporary) / "wrong-tls-identity"', smoke)
+        self.assertIn("wrongCertPort < 1", instrumentation)
+        self.assertIn("wrongCertificateProxy.getForwardedConnectionCount()", instrumentation)
+        self.assertIn(
+            "A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.",
+            instrumentation,
+        )
+        self.assertIn("SystemClock.sleep(10_500L)", instrumentation)
         self.assertIn("stopAfterPlatformFailure(discoveryGeneration, discoveryContext", discovery)
         self.assertIn("stopInternal(false)", discovery)
         self.assertIn("SERVICE_CALLBACKS.clear()", discovery)
@@ -293,10 +308,18 @@ esac
         self.assertLess(install, run_smoke)
         self.assertLess(run_smoke, uninstall)
         self.assertIn('"dnsSdPort"', instrumentation)
+        self.assertIn('"dnsSdWrongCertPort"', instrumentation)
+        self.assertIn("wrongCertPort < 1", instrumentation)
+        self.assertIn("wrongCertificateProxy.getForwardedConnectionCount()", instrumentation)
+        self.assertIn(
+            "A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.",
+            instrumentation,
+        )
         self.assertIn("dns_sd_port=state.port", pairing_smoke)
+        self.assertIn("dns_sd_wrong_cert_port=wrong_tls_state.port", pairing_smoke)
         self.assertIn('patch.object(service.MdnsAdvertiser, "start"', pairing_smoke)
         self.assertIn("restarted_state.port == old_port", pairing_smoke)
-        self.assertIn('expected_theme="CI_AfterRestart",\n                    dns_sd_port=state.port', pairing_smoke)
+        self.assertIn('expected_theme="CI_AfterRestart",\n                        dns_sd_port=state.port', pairing_smoke)
 
 
 if __name__ == "__main__":
