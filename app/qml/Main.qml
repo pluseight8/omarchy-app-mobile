@@ -36,11 +36,29 @@ ApplicationWindow {
     property string editingWidgetId: ""
     property string widgetMessage: ""
     property string androidWidgetMessage: ""
+    property string draggingWidgetRecordId: ""
     property string openSourceNoticesText: ""
     readonly property bool androidWidgetModalVisible: forgetDialog.visible || homeAppDialog.visible
         || createFolderDialog.visible || folderDialog.visible || addFolderAppsDialog.visible
         || deleteFolderDialog.visible || restoreLayoutDialog.visible || owlEditorDialog.visible
         || openSourceNoticesDialog.visible
+    property bool languageSaveFailed: false
+
+    Connections {
+        target: appTranslations
+        function onLanguageChanged() {
+            owl.refreshLocalizedText()
+            window.layoutMessage = ""
+            window.widgetMessage = ""
+        }
+    }
+
+    Connections {
+        target: launcher
+        function onSystemFontScaleChanged() {
+            Theme.systemFontScale = launcher.systemFontScale
+        }
+    }
 
     function widgetThemeColor(value) {
         const color = Qt.color(value)
@@ -98,12 +116,40 @@ ApplicationWindow {
         } catch (error) {
             return false
         }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+            return false
         const owlBackup = parsed.owlWidgets === undefined ? "" : JSON.stringify(parsed.owlWidgets)
         if (owlBackup.length > 0 && !owl.canImportWidgetBackup(owlBackup))
             return false
+        const androidWidgetBackup = parsed.androidWidgets === undefined
+                ? "" : JSON.stringify(parsed.androidWidgets)
+        if (androidWidgetBackup.length > 0 && launcher.platformSupported
+                && !launcher.canRestoreAndroidWidgetBackup(androidWidgetBackup))
+            return false
         if (!launcher.importLayout(json))
             return false
-        return owlBackup.length === 0 || owl.importWidgetBackup(owlBackup)
+        if (owlBackup.length > 0 && !owl.importWidgetBackup(owlBackup))
+            return false
+        return androidWidgetBackup.length === 0 || !launcher.platformSupported
+                || launcher.restoreAndroidWidgetBackup(androidWidgetBackup)
+    }
+
+    function widgetResizeStep() {
+        return Math.max(32, Math.round((homePageView.width / launcher.gridColumns) / 8) * 8)
+    }
+
+    function moveAndroidWidgetTo(recordId, page, order) {
+        if (!launcher.moveAndroidWidget(recordId, page, order))
+            androidWidgetMessage = qsTr("Android widget placement could not be saved.")
+        else
+            androidWidgetMessage = ""
+    }
+
+    function resizeAndroidWidgetTo(recordId, widthDp, heightDp) {
+        if (!launcher.resizeAndroidWidget(recordId, widthDp, heightDp))
+            androidWidgetMessage = qsTr("Android widget size could not be saved.")
+        else
+            androidWidgetMessage = ""
     }
 
     function openFolder(folderId, folderName) {
@@ -115,6 +161,7 @@ ApplicationWindow {
 
     LauncherModel {
         id: launcher
+        objectName: "omaappLauncherModel"
     }
 
     PairingModel {
@@ -163,6 +210,66 @@ ApplicationWindow {
     function featureEnabled(permission) {
         const permissions = pairing.features.permissions || {}
         return permissions[permission] === true
+    }
+
+    function localizedFeatureMessage(message) {
+        const raw = String(message || "")
+        switch (raw) {
+        case "There is no text in the phone clipboard.":
+            return qsTr("There is no text in the phone clipboard.")
+        case "Clipboard text is empty or exceeds 64 KiB.":
+            return qsTr("Clipboard text is empty or exceeds 64 KiB.")
+        case "Could not read phone clipboard text.":
+            return qsTr("Could not read phone clipboard text.")
+        case "Pair OmaApp with a computer first.":
+            return qsTr("Pair OmaApp with a computer first.")
+        case "Reading computer clipboard…":
+            return qsTr("Reading computer clipboard…")
+        case "The computer clipboard exceeds 64 KiB.":
+            return qsTr("The computer clipboard exceeds 64 KiB.")
+        case "Android clipboard is unavailable.":
+            return qsTr("Android clipboard is unavailable.")
+        case "Computer text copied to the phone clipboard.":
+            return qsTr("Computer text copied to the phone clipboard.")
+        case "This media action is not allowed.":
+            return qsTr("This media action is not allowed.")
+        case "This computer command is not configured.":
+            return qsTr("This computer command is not configured.")
+        case "The selected file name or size is not supported.":
+            return qsTr("The selected file name or size is not supported.")
+        case "Android could not open this file.":
+            return qsTr("Android could not open this file.")
+        case "The selected file changed while sending.":
+            return qsTr("The selected file changed while sending.")
+        case "Enable this feature for this phone in the Omarchy plugin permissions.":
+            return qsTr("Enable this feature for this phone in the Omarchy plugin permissions.")
+        case "The computer clipboard is unavailable in this session.":
+            return qsTr("The computer clipboard is unavailable in this session.")
+        case "Computer feature request failed. Check the local network and plugin permissions.":
+            return qsTr("Computer feature request failed. Check the local network and plugin permissions.")
+        case "Sending command to the computer…":
+            return qsTr("Sending command to the computer…")
+        case "Phone clipboard sent to the computer.":
+            return qsTr("Phone clipboard sent to the computer.")
+        case "Computer action completed.":
+            return qsTr("Computer action completed.")
+        }
+
+        let match = raw.match(/^Sending (.+) to the computer…$/)
+        if (match)
+            return qsTr("Sending %1 to the computer…").arg(match[1])
+        match = raw.match(/^Sent (.+) to Downloads\/OmaApp\.$/)
+        if (match)
+            return qsTr("Sent %1 to Downloads/OmaApp.").arg(match[1])
+        match = raw.match(/^Computer rejected the file \(HTTP ([0-9]{3})\)\.$/)
+        if (match)
+            return qsTr("Computer rejected the file (HTTP %1).").arg(match[1])
+        match = raw.match(/^Computer feature request failed \(HTTP ([0-9]{3})\)\.$/)
+        if (match)
+            return qsTr("Computer feature request failed (HTTP %1).").arg(match[1])
+
+        return raw.length === 0 ? ""
+                                : qsTr("Computer feature request failed. Check the local network and plugin permissions.")
     }
 
     function applySyncedTheme() {
@@ -292,6 +399,7 @@ ApplicationWindow {
         id: forgetDialog
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
         title: qsTr("Forget this computer?")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: pairing.forget()
@@ -484,7 +592,10 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: modelData.name
                         Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                        onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                        onClicked: {
+                            launcher.performHapticFeedback()
+                            launcher.launchActivity(modelData.packageName, modelData.activityName)
+                        }
                     }
                     ToolButton {
                         text: "−"
@@ -593,6 +704,7 @@ ApplicationWindow {
         id: deleteFolderDialog
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
         title: qsTr("Delete folder?")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
@@ -621,7 +733,7 @@ ApplicationWindow {
 
             Label {
                 Layout.fillWidth: true
-                text: qsTr("Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, and gesture preferences.")
+                text: qsTr("Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, gesture preferences and haptic feedback.")
                 color: Theme.muted
                 wrapMode: Text.WordWrap
             }
@@ -716,6 +828,7 @@ ApplicationWindow {
                 widgetId: ""
                 themeJson: window.owlThemeJson()
                 useSourceText: true
+                active: true
                 sourceText: owlEditor.text
             }
 
@@ -794,6 +907,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         launcher.refresh()
+        Theme.systemFontScale = launcher.systemFontScale
         applySyncedTheme()
     }
 
@@ -926,6 +1040,25 @@ ApplicationWindow {
                                     font.pixelSize: Theme.fontSize(13)
                                     Accessible.name: qsTr("Home page %1 of %2")
                                                        .arg(index + 1).arg(launcher.homePageCount)
+                                }
+                                DropArea {
+                                    Layout.preferredWidth: window.draggingWidgetRecordId.length > 0 ? 96 : 0
+                                    Layout.preferredHeight: 36
+                                    visible: window.draggingWidgetRecordId.length > 0
+                                    onDropped: function(drop) {
+                                        const source = drop.source
+                                        if (source && source.widgetRecordId)
+                                            window.moveAndroidWidgetTo(source.widgetRecordId,
+                                                homePagePage.pageIndex, 7)
+                                    }
+                                    Text {
+                                        anchors.fill: parent
+                                        text: qsTr("Drop here")
+                                        color: Theme.accent
+                                        font.pixelSize: Theme.fontSize(11)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
                                 }
                             }
 
@@ -1103,7 +1236,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                visible: homePagePage.pageIndex === 0 && launcher.platformSupported
+                                visible: launcher.platformSupported
                                 Text {
                                     text: qsTr("Android widgets")
                                     color: Theme.foreground
@@ -1116,7 +1249,8 @@ ApplicationWindow {
                                     Accessible.name: qsTr("Add Android widget")
                                     enabled: launcher.androidWidgets.length < 8
                                     onClicked: {
-                                        window.androidWidgetMessage = launcher.addAndroidWidget()
+                                        window.androidWidgetMessage = launcher.addAndroidWidgetOnPage(
+                                            homePagePage.pageIndex)
                                                 ? "" : qsTr("Android widget picker could not be opened.")
                                     }
                                 }
@@ -1124,8 +1258,7 @@ ApplicationWindow {
 
                             Text {
                                 Layout.fillWidth: true
-                                visible: homePagePage.pageIndex === 0
-                                         && window.androidWidgetMessage.length > 0
+                                visible: window.androidWidgetMessage.length > 0
                                 text: window.androidWidgetMessage
                                 color: Theme.urgent
                                 font.pixelSize: Theme.fontSize(12)
@@ -1134,9 +1267,10 @@ ApplicationWindow {
 
                             Text {
                                 Layout.fillWidth: true
-                                visible: homePagePage.pageIndex === 0
-                                         && launcher.platformSupported
-                                         && launcher.androidWidgets.length === 0
+                                visible: launcher.platformSupported
+                                         && launcher.androidWidgets.filter(function(widget) {
+                                             return widget.page === homePagePage.pageIndex
+                                         }).length === 0
                                 text: qsTr("Android widgets you add here stay on this phone and work offline.")
                                 color: Theme.muted
                                 font.pixelSize: Theme.fontSize(11)
@@ -1148,6 +1282,10 @@ ApplicationWindow {
                                 delegate: ColumnLayout {
                                     required property var modelData
                                     required property int index
+                                    readonly property int pageWidgetCount:
+                                        launcher.androidWidgets.filter(function(widget) {
+                                            return widget.page === modelData.page
+                                        }).length
                                     visible: modelData.page === homePagePage.pageIndex
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: visible ? implicitHeight : 0
@@ -1166,7 +1304,7 @@ ApplicationWindow {
                                             text: qsTr("Remove")
                                             Accessible.name: qsTr("Remove Android widget %1").arg(modelData.name)
                                             onClicked: {
-                                                if (!launcher.removeAndroidWidget(modelData.id))
+                                                if (!launcher.removeAndroidWidgetRecord(modelData.recordId))
                                                     window.androidWidgetMessage = qsTr("Android widget could not be removed.")
                                                 else
                                                     window.androidWidgetMessage = ""
@@ -1174,11 +1312,138 @@ ApplicationWindow {
                                         }
                                     }
 
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: Theme.space(3)
+
+                                        Button {
+                                            id: widgetDragHandle
+                                            text: "⋮"
+                                            property string widgetRecordId: modelData.recordId
+                                            Accessible.name: qsTr("Drag Android widget %1").arg(modelData.name)
+                                            Drag.active: false
+                                            Drag.hotSpot.x: width / 2
+                                            Drag.hotSpot.y: height / 2
+                                            DragHandler {
+                                                id: widgetDragHandler
+                                                target: null
+                                                onActiveChanged: {
+                                                    if (active) {
+                                                        window.draggingWidgetRecordId = modelData.recordId
+                                                        widgetDragHandle.Drag.active = true
+                                                    } else {
+                                                        widgetDragHandle.Drag.drop()
+                                                        widgetDragHandle.Drag.active = false
+                                                        window.draggingWidgetRecordId = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Button {
+                                            text: "↑"
+                                            enabled: modelData.order > 0
+                                            Accessible.name: qsTr("Move Android widget up")
+                                            onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                modelData.page, Math.max(0, modelData.order - 1))
+                                        }
+                                        Button {
+                                            text: "↓"
+                                            enabled: modelData.order + 1 < pageWidgetCount
+                                            Accessible.name: qsTr("Move Android widget down")
+                                            onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                modelData.page, modelData.order + 1)
+                                        }
+                                        Button {
+                                            text: "←"
+                                            enabled: modelData.page > 0
+                                            Accessible.name: qsTr("Move Android widget to previous page")
+                                            onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                modelData.page - 1, 7)
+                                        }
+                                        Button {
+                                            text: "→"
+                                            enabled: modelData.page + 1 < launcher.homePageCount
+                                            Accessible.name: qsTr("Move Android widget to next page")
+                                            onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                modelData.page + 1, 7)
+                                        }
+                                        Button {
+                                            text: "−W"
+                                            enabled: modelData.widthDp > modelData.minWidthDp
+                                            Accessible.name: qsTr("Make Android widget narrower")
+                                            onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                Math.max(modelData.minWidthDp,
+                                                    modelData.widthDp - window.widgetResizeStep()),
+                                                modelData.heightDp)
+                                        }
+                                        Button {
+                                            text: "+W"
+                                            enabled: modelData.widthDp < 1200
+                                            Accessible.name: qsTr("Make Android widget wider")
+                                            onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                Math.min(1200, modelData.widthDp + window.widgetResizeStep()),
+                                                modelData.heightDp)
+                                        }
+                                        Button {
+                                            text: "−H"
+                                            enabled: modelData.heightDp > modelData.minHeightDp
+                                            Accessible.name: qsTr("Make Android widget shorter")
+                                            onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                modelData.widthDp, Math.max(modelData.minHeightDp,
+                                                    modelData.heightDp - window.widgetResizeStep()))
+                                        }
+                                        Button {
+                                            text: "+H"
+                                            enabled: modelData.heightDp < 1200
+                                            Accessible.name: qsTr("Make Android widget taller")
+                                            onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                modelData.widthDp, Math.min(1200,
+                                                    modelData.heightDp + window.widgetResizeStep()))
+                                        }
+                                    }
+
+                                    HyprlandSurface {
+                                        Layout.fillWidth: false
+                                        Layout.preferredWidth: Math.min(homePageView.width - Theme.space(32),
+                                            Number(modelData.widthDp) || 400)
+                                        Layout.preferredHeight: Math.max(120, Math.min(1200,
+                                            Number(modelData.heightDp) || 240))
+                                        Layout.alignment: Qt.AlignHCenter
+                                        visible: modelData.state !== "ready"
+                                        fillColor: Theme.surface
+                                        borderStart: Theme.outline
+                                        borderEnd: Theme.outline
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: Theme.space(12)
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: qsTr("This widget needs a fresh Android system binding.")
+                                                color: Theme.muted
+                                                wrapMode: Text.WordWrap
+                                            }
+                                            Button {
+                                                text: qsTr("Rebind")
+                                                Accessible.name: qsTr("Rebind Android widget %1").arg(modelData.name)
+                                                onClicked: {
+                                                    window.androidWidgetMessage = launcher.rebindAndroidWidget(
+                                                        modelData.recordId) ? "" : qsTr("Android widget picker could not be opened.")
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     Item {
                                         id: nativeWidgetSlot
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: Math.max(120, Math.min(480,
-                                            Number(modelData.minHeightDp) || 160))
+                                        Layout.fillWidth: false
+                                        Layout.preferredWidth: Math.min(homePageView.width - Theme.space(32),
+                                            Number(modelData.widthDp) || 400)
+                                        Layout.preferredHeight: Math.max(120, Math.min(1200,
+                                            Number(modelData.heightDp) || 240))
+                                        Layout.alignment: Qt.AlignHCenter
+                                        visible: modelData.state === "ready"
                                         Accessible.name: modelData.name
 
                                         function syncNativeWidgetFrame() {
@@ -1296,6 +1561,7 @@ ApplicationWindow {
                                     owlModel: owl
                                     widgetId: modelData.id
                                     itemIndex: index
+                                    active: window.selectedPage === 0
                                     themeJson: window.owlThemeJson()
                                 }
                             }
@@ -1333,10 +1599,14 @@ ApplicationWindow {
                                     width: homeAppsGrid.cellWidth - 8
                                     height: homeAppsGrid.cellHeight - 8
                                     Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                                    onClicked: launcher.launchActivity(modelData.packageName,
-                                                                       modelData.activityName)
+                                    onClicked: {
+                                        launcher.performHapticFeedback()
+                                        launcher.launchActivity(modelData.packageName,
+                                                                modelData.activityName)
+                                    }
                                     onPressAndHold: {
                                         if (launcher.gestures.longPressEdit) {
+                                            launcher.performHapticFeedback()
                                             window.editingHomeApp = modelData
                                             homeAppDialog.open()
                                         }
@@ -1470,10 +1740,14 @@ ApplicationWindow {
                                                 height: 78
                                                 Accessible.name: qsTr("Dock shortcut: launch %1")
                                                                    .arg(modelData.name)
-                                                onClicked: launcher.launchActivity(modelData.packageName,
-                                                                                   modelData.activityName)
+                                                onClicked: {
+                                                    launcher.performHapticFeedback()
+                                                    launcher.launchActivity(modelData.packageName,
+                                                                            modelData.activityName)
+                                                }
                                                 onPressAndHold: {
                                                     if (launcher.gestures.longPressEdit) {
+                                                        launcher.performHapticFeedback()
                                                         window.editingHomeApp = modelData
                                                         homeAppDialog.open()
                                                     }
@@ -1680,7 +1954,11 @@ ApplicationWindow {
                                     width: 72
                                     height: 82
                                     Accessible.name: qsTr("Launch %1").arg(modelData.name)
-                                    onClicked: launcher.launchActivity(modelData.packageName, modelData.activityName)
+                                    onClicked: {
+                                        launcher.performHapticFeedback()
+                                        launcher.launchActivity(modelData.packageName,
+                                                                modelData.activityName)
+                                    }
                                     onPressAndHold: {
                                         if (launcher.gestures.longPressEdit)
                                             launcher.removeFavorite(modelData.packageName,
@@ -1894,10 +2172,15 @@ ApplicationWindow {
                             Accessible.name: qsTr("Launch %1").arg(name)
                             display: AbstractButton.TextUnderIcon
                             spacing: Theme.space(7)
-                            onClicked: launcher.launch(index)
+                            onClicked: {
+                                launcher.performHapticFeedback()
+                                launcher.launch(index)
+                            }
                             onPressAndHold: {
-                                if (launcher.gestures.longPressPin)
+                                if (launcher.gestures.longPressPin) {
+                                    launcher.performHapticFeedback()
                                     launcher.toggleFavorite(index, window.selectedHomePage)
+                                }
                             }
 
                             Drag.active: appDragHandler.active
@@ -2155,6 +2438,11 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                             }
                             Button {
+                                text: qsTr("Retry")
+                                enabled: !pairing.connected
+                                onClicked: pairing.retry()
+                            }
+                            Button {
                                 text: qsTr("Scan")
                                 enabled: pairing.platformSupported
                                 onClicked: pairing.startScan()
@@ -2239,7 +2527,7 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         visible: pairing.featureMessage.length > 0
-                        text: pairing.featureMessage
+                        text: window.localizedFeatureMessage(pairing.featureMessage)
                         color: Theme.muted
                         font.pixelSize: Theme.fontSize(12)
                         wrapMode: Text.WordWrap
@@ -2735,6 +3023,12 @@ ApplicationWindow {
                         font.pixelSize: Theme.fontSize(14)
                         wrapMode: Text.WordWrap
                     }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: qsTr("New")
+                        Accessible.name: qsTr("Create an OWL widget")
+                        onClicked: createOwlWidget()
+                    }
                 }
 
                 HyprlandSurface {
@@ -2901,6 +3195,46 @@ ApplicationWindow {
 
                 HyprlandSurface {
                     Layout.fillWidth: true
+                    Layout.preferredHeight: hapticSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: hapticSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: Theme.space(8)
+                        Text {
+                            text: qsTr("Haptic feedback")
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(17)
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Use Android touch feedback when opening apps and editing Home. System settings can still disable haptics.")
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+                        CheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Enable haptic feedback")
+                            Accessible.name: qsTr("Enable haptic feedback")
+                            checked: launcher.hapticFeedbackEnabled
+                            onToggled: {
+                                if (launcher.setHapticFeedbackEnabled(checked) && checked)
+                                    launcher.performHapticFeedback()
+                            }
+                        }
+                    }
+                }
+
+                HyprlandSurface {
+                    Layout.fillWidth: true
                     Layout.preferredHeight: owlStoreSettings.implicitHeight + 36
                     fillColor: Theme.surface
                     borderStart: Theme.outline
@@ -2923,11 +3257,6 @@ ApplicationWindow {
                                 font.pixelSize: Theme.fontSize(17)
                                 font.weight: Font.DemiBold
                             }
-                            Button {
-                                text: qsTr("New")
-                                Accessible.name: qsTr("Create an OWL widget")
-                                onClicked: createOwlWidget()
-                            }
                         }
 
                         Text {
@@ -2940,10 +3269,10 @@ ApplicationWindow {
 
                         Repeater {
                             model: owl.widgetStore
-                            delegate: RowLayout {
+                            delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
-                                spacing: Theme.space(8)
+                                spacing: Theme.space(6)
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
@@ -2951,48 +3280,57 @@ ApplicationWindow {
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.name
+                                        Accessible.name: text
                                         color: Theme.foreground
                                         font.pixelSize: Theme.fontSize(13)
                                         font.weight: Font.DemiBold
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.WordWrap
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         text: modelData.description
+                                        Accessible.name: text
                                         color: Theme.muted
                                         font.pixelSize: Theme.fontSize(10)
                                         wrapMode: Text.WordWrap
                                     }
                                 }
 
-                                Button {
-                                    text: modelData.installed ? qsTr("Remove") : qsTr("Add")
-                                    Accessible.name: modelData.installed
-                                                     ? qsTr("Remove %1 from Home").arg(modelData.name)
-                                                     : qsTr("Add %1 to Home").arg(modelData.name)
-                                    onClicked: {
-                                        const wasInstalled = modelData.installed
-                                        const widgetId = modelData.id
-                                        owl.setWidgetInstalled(widgetId, !wasInstalled)
-                                        window.widgetMessage = wasInstalled
-                                                ? qsTr("Widget removed from Home.")
-                                                : qsTr("Widget added to Home.")
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.space(6)
+                                    Button {
+                                        Layout.fillWidth: true
+                                        text: modelData.installed ? qsTr("Remove") : qsTr("Add")
+                                        Accessible.name: modelData.installed
+                                                         ? qsTr("Remove %1 from Home").arg(modelData.name)
+                                                         : qsTr("Add %1 to Home").arg(modelData.name)
+                                        onClicked: {
+                                            const wasInstalled = modelData.installed
+                                            const widgetId = modelData.id
+                                            owl.setWidgetInstalled(widgetId, !wasInstalled)
+                                            window.widgetMessage = wasInstalled
+                                                    ? qsTr("Widget removed from Home.")
+                                                    : qsTr("Widget added to Home.")
+                                        }
                                     }
-                                }
-                                Button {
-                                    text: modelData.editable ? qsTr("Edit") : qsTr("Copy")
-                                    Accessible.name: modelData.editable
-                                                     ? qsTr("Edit %1").arg(modelData.name)
-                                                     : qsTr("Make an editable copy of %1").arg(modelData.name)
-                                    onClicked: editOwlWidget(modelData.id, !modelData.editable)
-                                }
-                                Button {
-                                    visible: modelData.editable
-                                    text: qsTr("Delete")
-                                    Accessible.name: qsTr("Delete %1").arg(modelData.name)
-                                    onClicked: {
-                                        owl.removeWidget(modelData.id)
-                                        window.widgetMessage = qsTr("Custom widget deleted.")
+                                    Button {
+                                        Layout.fillWidth: true
+                                        text: modelData.editable ? qsTr("Edit") : qsTr("Copy")
+                                        Accessible.name: modelData.editable
+                                                         ? qsTr("Edit %1").arg(modelData.name)
+                                                         : qsTr("Make an editable copy of %1").arg(modelData.name)
+                                        onClicked: editOwlWidget(modelData.id, !modelData.editable)
+                                    }
+                                    Button {
+                                        Layout.fillWidth: true
+                                        visible: modelData.editable
+                                        text: qsTr("Delete")
+                                        Accessible.name: qsTr("Delete %1").arg(modelData.name)
+                                        onClicked: {
+                                            owl.removeWidget(modelData.id)
+                                            window.widgetMessage = qsTr("Custom widget deleted.")
+                                        }
                                     }
                                 }
                             }
@@ -3035,8 +3373,9 @@ ApplicationWindow {
                             font.pixelSize: Theme.fontSize(12)
                             wrapMode: Text.WordWrap
                         }
-                        RowLayout {
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: Theme.space(6)
                             Button {
                                 Layout.fillWidth: true
                                 text: qsTr("Copy backup")
@@ -3075,6 +3414,98 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
 
+                HyprlandSurface {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: languageSettings.implicitHeight + 36
+                    fillColor: Theme.surface
+                    borderStart: Theme.outline
+                    borderEnd: Theme.outline
+                    radius: Theme.defaultCornerRadius
+                    borderWidth: 1
+
+                    ColumnLayout {
+                        id: languageSettings
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: Theme.space(12)
+
+                        Text {
+                            text: qsTr("Language")
+                            Accessible.name: text
+                            color: Theme.foreground
+                            font.pixelSize: Theme.fontSize(17)
+                            font.weight: Font.DemiBold
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Choose the app language. System default follows the phone language; English and Russian are available offline.")
+                            Accessible.name: text
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: launcher.systemFontScale > 1.01
+                            text: qsTr("Android accessibility text scale: %1×")
+                                  .arg(launcher.systemFontScale.toFixed(1))
+                            Accessible.name: text
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(11)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.space(6)
+
+                            Repeater {
+                                model: [
+                                    { value: "system", label: qsTr("System default") },
+                                    { value: "en", label: qsTr("English") },
+                                    { value: "ru", label: qsTr("Russian") }
+                                ]
+
+                                delegate: Button {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    checkable: true
+                                    checked: appTranslations.languagePreference === modelData.value
+                                    text: modelData.label
+                                    font.pixelSize: Theme.fontSize(11)
+                                    Accessible.name: text
+
+                                    onClicked: {
+                                        if (!appTranslations.setLanguage(modelData.value))
+                                            window.languageSaveFailed = true
+                                        else
+                                            window.languageSaveFailed = false
+                                    }
+
+                                    background: HyprlandSurface {
+                                        fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface
+                                        borderStart: parent.checked ? Theme.accent : Theme.outline
+                                        borderEnd: parent.checked ? Theme.accent : Theme.outline
+                                        radius: Theme.defaultCornerRadius
+                                        borderWidth: 1
+                                    }
+                                }
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: window.languageSaveFailed
+                            text: qsTr("The language preference could not be saved.")
+                            color: Theme.urgent
+                            font.pixelSize: Theme.fontSize(11)
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
                 Button {
                     Layout.fillWidth: true
                     text: qsTr("Open-source notices and licenses")
@@ -3091,17 +3522,20 @@ ApplicationWindow {
 
             Repeater {
                 model: [
-                    { label: qsTr("Home"), page: 0 },
-                    { label: qsTr("Apps"), page: 1 },
-                    { label: qsTr("Devices"), page: 2 },
-                    { label: qsTr("Style"), page: 3 },
-                    { label: qsTr("Settings"), page: 4 }
+                    { label: qsTr("Home"), compactLabel: qsTr("Home compact"), page: 0 },
+                    { label: qsTr("Apps"), compactLabel: qsTr("Apps compact"), page: 1 },
+                    { label: qsTr("Devices"), compactLabel: qsTr("Devices compact"), page: 2 },
+                    { label: qsTr("Style"), compactLabel: qsTr("Style compact"), page: 3 },
+                    { label: qsTr("Settings"), compactLabel: qsTr("Settings compact"), page: 4 }
                 ]
 
                 delegate: Button {
                     required property var modelData
                     Layout.fillWidth: true
-                    text: modelData.label
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 1
+                    text: appTranslations.language === "ru"
+                          ? modelData.compactLabel : modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
                     Accessible.name: modelData.label
@@ -3116,9 +3550,10 @@ ApplicationWindow {
                     contentItem: Text {
                         text: parent.text
                         color: parent.checked ? Theme.foreground : Theme.muted
-                        font.pixelSize: Theme.fontSize(13)
+                        font.pixelSize: Theme.fontSize(10)
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.Wrap
                     }
                 }
             }

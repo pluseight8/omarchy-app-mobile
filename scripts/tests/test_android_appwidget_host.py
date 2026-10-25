@@ -57,7 +57,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
             encoding="utf-8"
         )
-        self.assertIn('putString(WIDGETS_KEY, array.toString()).commit()', host)
+        self.assertIn('putString(WIDGETS_KEY, root.toString()).commit()', host)
         self.assertIn("AppWidgetHost(context.getApplicationContext(), HOST_ID)", host)
         self.assertIn("host.getAppWidgetIds()", host)
         self.assertIn("info.provider.equals(savedProvider)", host)
@@ -77,7 +77,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         )
         self.assertIn("Saved Android widget state is unreadable; leaving it untouched.", host)
         self.assertIn("if (widgets == null) {\n            // Do not interpret corrupt preferences", host)
-        self.assertIn("widgets == null || widgets.size() >= MAX_WIDGETS", host)
+        self.assertIn('(recordId.isEmpty() && widgets.size() >= MAX_WIDGETS)', host)
         self.assertIn("savedWidgets == null || findWidget(savedWidgets, widgetId) == null", host)
 
     def test_qt_activity_overlay_maps_and_clips_live_qml_slot_geometry(self):
@@ -197,6 +197,87 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
         self.assertIn("build_android_appwidget_fixture.sh", workflow)
         self.assertIn("android_appwidget_host_smoke.sh", workflow)
+
+    def test_widget_storage_is_versioned_and_migrates_legacy_arrays(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("WIDGETS_SCHEMA_VERSION = 2", host)
+        self.assertIn('root.optInt("schemaVersion", -1) != WIDGETS_SCHEMA_VERSION', host)
+        self.assertIn('legacyArray = stored.trim().startsWith("[")', host)
+        self.assertIn('recordId = id > 0 ? "legacy-" + id', host)
+        self.assertIn('root.put("schemaVersion", WIDGETS_SCHEMA_VERSION)', host)
+        self.assertIn('sanitized.put("widthDp", width)', host)
+        self.assertIn('sanitized.put("heightDp", height)', host)
+        self.assertIn('sanitized.put("page", page)', host)
+        self.assertIn("normalizePageOrders(result)", host)
+
+    def test_removal_persists_before_android_releases_the_widget_id(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        remove_start = host.index("public static boolean removeWidget(Context context, int widgetId)")
+        remove_end = host.index("/** Updates the native view", remove_start)
+        remove_method = host[remove_start:remove_end]
+        self.assertLess(remove_method.index("if (!writeWidgets(context, updated))"),
+                        remove_method.index("host.deleteAppWidgetId(widgetId)"))
+        self.assertIn("writeWidgets(context, original)", remove_method)
+
+    def test_portable_widget_backup_never_restores_android_binding_ids(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        export_start = host.index("public static String exportWidgetBackup")
+        export_end = host.index("public static boolean canRestoreWidgetBackup", export_start)
+        export_method = host[export_start:export_end]
+        restore_start = host.index("private static List<JSONObject> parseWidgetBackup")
+        restore_end = host.index("private static boolean isWidgetBound", restore_start)
+        parser = host[restore_start:restore_end]
+        self.assertIn("BACKUP_SCHEMA_VERSION = 1", host)
+        self.assertNotIn('entry.put("id"', export_method)
+        self.assertNotIn('entry.put("grant"', export_method)
+        self.assertIn('entry.length() != 8', parser)
+        self.assertIn('placeholder.put("id", 0)', parser)
+        self.assertIn('placeholder.put("state", "needs_rebind")', parser)
+        self.assertIn('"The selected provider does not match the saved widget placeholder."', host)
+        self.assertIn('"requestWidgetRebind"', (
+            ROOT / "app/native/LauncherModel.cpp"
+        ).read_text(encoding="utf-8"))
+
+    def test_home_widget_controls_drive_per_page_move_resize_and_placeholder_rebind(self):
+        model = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "app/native/LauncherModel.h").read_text(encoding="utf-8")
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        self.assertIn("moveAndroidWidget(const QString &recordId, int page, int order)", header)
+        self.assertIn("resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp)", header)
+        self.assertIn('"moveWidgetRecord"', model)
+        self.assertIn('"resizeWidgetRecord"', model)
+        self.assertIn('launcher.addAndroidWidgetOnPage(\n                                            homePagePage.pageIndex)', qml)
+        self.assertIn('modelData.page + 1, 7)', qml)
+        self.assertIn('window.resizeAndroidWidgetTo(modelData.recordId', qml)
+        self.assertIn('launcher.rebindAndroidWidget(\n                                                        modelData.recordId)', qml)
+        self.assertIn('modelData.state !== "ready"', qml)
+        self.assertIn("DropArea {", qml)
+
+    def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("android_widget_host_layout_roundtrip_passed", instrumentation)
+        self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
+        self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
+        self.assertIn("exportWidgetBackup(context)", instrumentation)
+        self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
+        self.assertIn('"needs_rebind"', instrumentation)
+        self.assertIn('clickAccessibleText(automation, "Rebind")', instrumentation)
+        self.assertIn('"omaapp-appwidget-home-layout.png"', instrumentation)
+        self.assertIn('"omaapp-appwidget-rebind-placeholder.png"', instrumentation)
+        self.assertIn("widget-home-layout.png", smoke)
+        self.assertIn("widget-rebind-placeholder.png", smoke)
+        self.assertIn("android_widget_host_geometry_restore_passed", smoke)
 
 
 if __name__ == "__main__":

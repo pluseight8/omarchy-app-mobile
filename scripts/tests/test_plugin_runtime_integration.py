@@ -2,9 +2,11 @@ import hashlib
 import http.client
 import json
 import os
+import runpy
 import select
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import tempfile
@@ -16,6 +18,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = ROOT / "omarchy-plugin" / "service.py"
+sys.path.insert(0, str(SERVICE.parent))
+try:
+    HTTP_HANDLER = runpy.run_path(str(SERVICE), run_name="oma_service_test")["Handler"]
+finally:
+    sys.path.pop(0)
 DEVICE_ID = "pixel-10-integration"
 TOKEN = "a-real-helper-process-test-token"
 
@@ -85,6 +92,25 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
             "X-OmaApp-Device": DEVICE_ID,
             "Authorization": "Bearer " + TOKEN,
         }
+
+    def test_reply_suppresses_a_client_disconnect_while_writing(self):
+        class DisconnectedWriter:
+            def write(self, _payload):
+                raise BrokenPipeError("client closed the socket")
+
+        class HandlerStub:
+            wfile = DisconnectedWriter()
+
+            def send_response(self, _status):
+                pass
+
+            def send_header(self, _name, _value):
+                pass
+
+            def end_headers(self):
+                pass
+
+        HTTP_HANDLER._reply(HandlerStub(), 200, {"ok": True})
 
     def request(self, path, headers=None):
         context = ssl._create_unverified_context()
@@ -177,6 +203,40 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
                 self.assertEqual(event["devices"], [])
                 break
         self.assertEqual(self.request("/v1/status", self.auth())[0], 401)
+
+    def test_abandoned_event_long_poll_does_not_log_disconnect_traceback(self):
+        self.start_helper()
+        status, features = self.request("/v1/features", self.auth())
+        self.assertEqual(status, 200)
+
+        context = ssl._create_unverified_context()
+        raw = socket.create_connection(("127.0.0.1", self.port), timeout=3)
+        client = context.wrap_socket(raw, server_hostname="localhost")
+        revision = features["eventRevision"]
+        request = (
+            f"GET /v1/events?since={revision} HTTP/1.1\r\n"
+            "Host: localhost\r\n"
+            f"X-OmaApp-Device: {DEVICE_ID}\r\n"
+            f"Authorization: Bearer {TOKEN}\r\n"
+            "Connection: keep-alive\r\n\r\n"
+        )
+        client.sendall(request.encode("ascii"))
+        time.sleep(0.1)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        client.close()
+
+        self.command({"action": "set_permission", "deviceId": DEVICE_ID,
+                      "permission": "system.read", "enabled": True})
+        event = self.read_event(timeout=3)
+        self.assertEqual(event.get("event"), "devices")
+        time.sleep(0.1)
+
+        process = self.process
+        self.command({"action": "stop"})
+        _, stderr = process.communicate(timeout=5)
+        self.process = None
+        self.assertNotIn("Traceback", stderr)
+        self.assertNotIn("BrokenPipeError", stderr)
 
 
 if __name__ == "__main__":

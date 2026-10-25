@@ -23,11 +23,13 @@ import org.json.JSONObject;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -37,8 +39,14 @@ public final class AndroidWidgetHost {
     private static final String TAG = "OmaAppAppWidget";
     private static final String PREFS = "android_widget_host";
     private static final String WIDGETS_KEY = "widgets";
+    private static final int WIDGETS_SCHEMA_VERSION = 2;
+    private static final int BACKUP_SCHEMA_VERSION = 1;
     private static final String PENDING_ID_KEY = "pending_widget_id";
+    private static final String PENDING_RECORD_ID_KEY = "pending_widget_record_id";
+    private static final String PENDING_PAGE_KEY = "pending_widget_page";
     private static final String PENDING_ID_STATE = "omaapp.pending_widget_id";
+    private static final String PENDING_RECORD_ID_STATE = "omaapp.pending_widget_record_id";
+    private static final String PENDING_PAGE_STATE = "omaapp.pending_widget_page";
     private static final int HOST_ID = 0x4f4d41;
     private static final int REQUEST_PICK = 0x4f40;
     private static final int REQUEST_CONFIGURE = 0x4f41;
@@ -51,6 +59,8 @@ public final class AndroidWidgetHost {
     private static FrameLayout overlay;
     private static boolean listening;
     private static int pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
+    private static String pendingRecordId = "";
+    private static int pendingPage;
     private static final Map<Integer, AppWidgetHostView> views = new HashMap<>();
     private static final Map<Integer, FrameLayout> clips = new HashMap<>();
     private static final Map<Integer, WidgetFrame> frames = new HashMap<>();
@@ -69,12 +79,16 @@ public final class AndroidWidgetHost {
             if (restoredId > 0) {
                 pendingWidgetId = restoredId;
             }
+            pendingRecordId = state.getString(PENDING_RECORD_ID_STATE, "");
+            pendingPage = Math.max(0, state.getInt(PENDING_PAGE_STATE, 0));
         }
     }
 
     static void saveInstanceState(Bundle state) {
         if (state != null && pendingWidgetId > 0) {
             state.putInt(PENDING_ID_STATE, pendingWidgetId);
+            state.putString(PENDING_RECORD_ID_STATE, pendingRecordId);
+            state.putInt(PENDING_PAGE_STATE, pendingPage);
         }
     }
 
@@ -183,8 +197,32 @@ public final class AndroidWidgetHost {
 
     /** Starts Android's system widget picker, which performs the user's provider selection/bind. */
     public static boolean requestWidgetPicker() {
+        return requestWidgetPicker(0);
+    }
+
+    public static boolean requestWidgetPicker(int page) {
+        return requestWidgetPickerForRecord(page, "");
+    }
+
+    /** Rebinds a restored placeholder through Android's system picker and user confirmation. */
+    public static boolean requestWidgetRebind(String recordId) {
         OmaAppActivity activity = activityRef.get();
-        if (activity == null || activity.isFinishing() || pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+        if (activity == null || recordId == null || recordId.isEmpty()) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(activity);
+        JSONObject placeholder = findWidgetByRecordId(widgets, recordId);
+        if (placeholder == null || isWidgetBound(activity, placeholder)) {
+            return false;
+        }
+        return requestWidgetPickerForRecord(placeholder.optInt("page", 0), recordId);
+    }
+
+    private static boolean requestWidgetPickerForRecord(int page, String recordId) {
+        OmaAppActivity activity = activityRef.get();
+        if (activity == null || activity.isFinishing()
+                || pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
+                || page < 0 || page >= 5) {
             return false;
         }
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
@@ -192,7 +230,7 @@ public final class AndroidWidgetHost {
             CountDownLatch completed = new CountDownLatch(1);
             activity.runOnUiThread(() -> {
                 try {
-                    accepted.set(requestWidgetPicker());
+                    accepted.set(requestWidgetPickerForRecord(page, recordId));
                 } finally {
                     completed.countDown();
                 }
@@ -206,7 +244,9 @@ public final class AndroidWidgetHost {
         }
         ensureHost(activity);
         List<JSONObject> widgets = readWidgets(activity);
-        if (host == null || widgets == null || widgets.size() >= MAX_WIDGETS) {
+        if (host == null || widgets == null
+                || (recordId.isEmpty() && widgets.size() >= MAX_WIDGETS)
+                || (!recordId.isEmpty() && findWidgetByRecordId(widgets, recordId) == null)) {
             return false;
         }
         final int widgetId;
@@ -217,9 +257,17 @@ public final class AndroidWidgetHost {
             return false;
         }
         pendingWidgetId = widgetId;
-        if (!activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putInt(PENDING_ID_KEY, widgetId).commit()) {
+        pendingRecordId = recordId;
+        pendingPage = page;
+        boolean pendingSaved = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(PENDING_ID_KEY, widgetId)
+                .putString(PENDING_RECORD_ID_KEY, recordId)
+                .putInt(PENDING_PAGE_KEY, page)
+                .commit();
+        if (!pendingSaved) {
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
+            pendingRecordId = "";
+            pendingPage = 0;
             host.deleteAppWidgetId(widgetId);
             return false;
         }
@@ -293,26 +341,60 @@ public final class AndroidWidgetHost {
     private static void finishWidgetSelection(OmaAppActivity activity, int widgetId,
                                               AppWidgetProviderInfo info) {
         List<JSONObject> widgets = readWidgets(activity);
-        if (widgets == null || widgets.size() >= MAX_WIDGETS || findWidget(widgets, widgetId) != null) {
+        if (widgets == null || findWidget(widgets, widgetId) != null
+                || (pendingRecordId.isEmpty() && widgets.size() >= MAX_WIDGETS)) {
             deletePendingWidget(activity);
             OmaAppActivity.notifyAndroidWidgetsChanged();
             return;
         }
-        JSONObject item = widgetRecord(activity, widgetId, info, widgets.size());
+        JSONObject previous = pendingRecordId.isEmpty() ? null
+                : findWidgetByRecordId(widgets, pendingRecordId);
+        if (!pendingRecordId.isEmpty() && (previous == null || isWidgetBound(activity, previous)
+                || !previous.optString("provider", "").equals(info.provider.flattenToString()))) {
+            Log.w(TAG, "The selected provider does not match the saved widget placeholder.");
+            deletePendingWidget(activity);
+            OmaAppActivity.notifyAndroidWidgetsChanged();
+            return;
+        }
+        int order = previous == null ? countWidgetsOnPage(widgets, pendingPage)
+                : previous.optInt("order", 0);
+        JSONObject item = widgetRecord(activity, widgetId, info,
+                previous == null ? UUID.randomUUID().toString()
+                        : previous.optString("recordId", UUID.randomUUID().toString()),
+                previous == null ? pendingPage : previous.optInt("page", pendingPage), order);
         if (item == null) {
             deletePendingWidget(activity);
             OmaAppActivity.notifyAndroidWidgetsChanged();
             return;
         }
-        widgets.add(item);
+        if (previous == null) {
+            widgets.add(item);
+        } else {
+            int previousIndex = widgets.indexOf(previous);
+            item = preserveWidgetGeometry(previous, item);
+            widgets.set(previousIndex, item);
+        }
         if (!writeWidgets(activity, widgets)) {
             deletePendingWidget(activity);
             Log.e(TAG, "Could not persist the selected Android widget; the allocated ID was released.");
             OmaAppActivity.notifyAndroidWidgetsChanged();
             return;
         }
+        if (previous != null) {
+            int previousId = previous.optInt("id", 0);
+            if (previousId > 0 && previousId != widgetId && host != null) {
+                try {
+                    host.deleteAppWidgetId(previousId);
+                } catch (RuntimeException error) {
+                    // The new record is durable. Cold-start recovery removes this orphan ID.
+                    Log.w(TAG, "Could not release the replaced Android widget ID.", error);
+                }
+            }
+        }
         clearPendingWidget(activity);
         pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
+        pendingRecordId = "";
+        pendingPage = 0;
         ensureOverlay(activity);
         createWidgetView(activity, widgetId, info);
         OmaAppActivity.notifyAndroidWidgetsChanged();
@@ -323,7 +405,213 @@ public final class AndroidWidgetHost {
             return "[]";
         }
         List<JSONObject> widgets = readWidgets(context);
-        return widgets == null ? "[]" : new JSONArray(widgets).toString();
+        if (widgets == null) {
+            return "[]";
+        }
+        JSONArray result = new JSONArray();
+        for (JSONObject widget : widgets) {
+            JSONObject visible = copyJsonObject(widget);
+            try {
+                visible.put("state", isWidgetBound(context, widget) ? "ready" : "needs_rebind");
+                result.put(visible);
+            } catch (JSONException ignored) {
+                // The object contains only bounded JSON values.
+            }
+        }
+        return result.toString();
+    }
+
+    public static boolean moveWidget(Context context, int widgetId, int page, int order,
+                                     int pageCount) {
+        if (context == null || widgetId <= 0) {
+            return false;
+        }
+        JSONObject widget = findWidget(readWidgets(context), widgetId);
+        return widget != null && moveWidgetRecord(context, widget.optString("recordId", ""),
+                page, order, pageCount);
+    }
+
+    public static boolean moveWidgetRecord(Context context, String recordId, int page, int order,
+                                           int pageCount) {
+        if (context == null || recordId == null || recordId.isEmpty()
+                || page < 0 || page >= pageCount
+                || pageCount < 1 || pageCount > 5 || order < 0 || order >= MAX_WIDGETS) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(context);
+        if (widgets == null) {
+            return false;
+        }
+        JSONObject moving = findWidgetByRecordId(widgets, recordId);
+        if (moving == null) {
+            return false;
+        }
+        List<JSONObject> reordered = deepCopyWidgets(widgets);
+        JSONObject moved = findWidgetByRecordId(reordered, recordId);
+        reordered.remove(moved);
+        int targetCount = countWidgetsOnPage(reordered, page);
+        int targetOrder = Math.min(order, targetCount);
+        try {
+            moved.put("page", page);
+            moved.put("order", targetOrder);
+        } catch (JSONException ignored) {
+            return false;
+        }
+        int insertAt = reordered.size();
+        for (int index = 0; index < reordered.size(); ++index) {
+            JSONObject item = reordered.get(index);
+            if (item.optInt("page", 0) == page && item.optInt("order", 0) >= targetOrder) {
+                insertAt = index;
+                break;
+            }
+        }
+        reordered.add(insertAt, moved);
+        normalizePageOrders(reordered);
+        if (!writeWidgets(context, reordered)) {
+            return false;
+        }
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    public static boolean resizeWidget(Context context, int widgetId, int widthDp, int heightDp) {
+        if (context == null || widgetId <= 0) {
+            return false;
+        }
+        JSONObject widget = findWidget(readWidgets(context), widgetId);
+        return widget != null && resizeWidgetRecord(context, widget.optString("recordId", ""),
+                widthDp, heightDp);
+    }
+
+    public static boolean resizeWidgetRecord(Context context, String recordId, int widthDp,
+                                             int heightDp) {
+        if (context == null || recordId == null || recordId.isEmpty()
+                || widthDp < 1 || widthDp > 1200
+                || heightDp < 1 || heightDp > 1200) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(context);
+        if (widgets == null) {
+            return false;
+        }
+        JSONObject widget = findWidgetByRecordId(widgets, recordId);
+        if (widget == null
+                || widthDp < widget.optInt("minWidthDp", 1)
+                || heightDp < widget.optInt("minHeightDp", 1)) {
+            return false;
+        }
+        List<JSONObject> updated = deepCopyWidgets(widgets);
+        JSONObject target = findWidgetByRecordId(updated, recordId);
+        try {
+            target.put("widthDp", widthDp);
+            target.put("heightDp", heightDp);
+        } catch (JSONException ignored) {
+            return false;
+        }
+        if (!writeWidgets(context, updated)) {
+            return false;
+        }
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    public static boolean setHomePageCount(Context context, int pageCount) {
+        if (context == null || pageCount < 1 || pageCount > 5) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(context);
+        if (widgets == null) {
+            return false;
+        }
+        List<JSONObject> updated = deepCopyWidgets(widgets);
+        for (JSONObject widget : updated) {
+            try {
+                widget.put("page", Math.min(pageCount - 1, widget.optInt("page", 0)));
+            } catch (JSONException ignored) {
+                return false;
+            }
+        }
+        normalizePageOrders(updated);
+        if (!writeWidgets(context, updated)) {
+            return false;
+        }
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    /** Exports provider/layout metadata only. Android widget IDs and grants are never portable. */
+    public static String exportWidgetBackup(Context context) {
+        List<JSONObject> widgets = context == null ? null : readWidgets(context);
+        if (widgets == null) {
+            return "";
+        }
+        JSONObject backup = new JSONObject();
+        JSONArray entries = new JSONArray();
+        try {
+            backup.put("schemaVersion", BACKUP_SCHEMA_VERSION);
+            for (JSONObject widget : widgets) {
+                JSONObject entry = new JSONObject();
+                entry.put("provider", widget.optString("provider", ""));
+                entry.put("label", widget.optString("label", ""));
+                entry.put("page", widget.optInt("page", 0));
+                entry.put("order", widget.optInt("order", 0));
+                entry.put("minWidthDp", widget.optInt("minWidthDp", 160));
+                entry.put("minHeightDp", widget.optInt("minHeightDp", 120));
+                entry.put("widthDp", widget.optInt("widthDp", 400));
+                entry.put("heightDp", widget.optInt("heightDp", 240));
+                entries.put(entry);
+            }
+            backup.put("widgets", entries);
+        } catch (JSONException ignored) {
+            return "";
+        }
+        return backup.toString();
+    }
+
+    public static boolean canRestoreWidgetBackup(String json) {
+        return parseWidgetBackup(json) != null;
+    }
+
+    /** Restores placeholders only; a provider must be chosen again in Android's system picker. */
+    public static boolean restoreWidgetBackup(Context context, String json) {
+        if (context == null || pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            return false;
+        }
+        List<JSONObject> placeholders = parseWidgetBackup(json);
+        List<JSONObject> oldWidgets = readWidgets(context);
+        if (placeholders == null || oldWidgets == null) {
+            return false;
+        }
+        if (!writeWidgets(context, placeholders)) {
+            return false;
+        }
+        ensureHost(context);
+        for (JSONObject old : oldWidgets) {
+            int id = old.optInt("id", 0);
+            if (id > 0 && host != null) {
+                try {
+                    host.deleteAppWidgetId(id);
+                } catch (RuntimeException error) {
+                    Log.w(TAG, "Could not release a replaced widget binding; recovery will retry.", error);
+                }
+            }
+        }
+        releaseActivityViews();
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    public static boolean removeWidgetRecord(Context context, String recordId) {
+        if (context == null || recordId == null || recordId.isEmpty()) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(context);
+        JSONObject widget = findWidgetByRecordId(widgets, recordId);
+        if (widget == null) {
+            return false;
+        }
+        int id = widget.optInt("id", 0);
+        return id > 0 ? removeWidget(context, id) : removePlaceholder(context, recordId);
     }
 
     public static boolean removeWidget(Context context, int widgetId) {
@@ -359,17 +647,29 @@ public final class AndroidWidgetHost {
         if (!known) {
             return false;
         }
-        ensureHost(context);
-        if (host != null) {
-            try {
-                host.deleteAppWidgetId(widgetId);
-            } catch (RuntimeException error) {
-                Log.e(TAG, "Could not release Android widget ID " + widgetId + ".", error);
-                return false;
-            }
+        List<JSONObject> original = deepCopyWidgets(widgets);
+        List<JSONObject> updated = deepCopyWidgets(widgets);
+        updated.removeIf(item -> item.optInt("id", -1) == widgetId);
+        normalizePageOrders(updated);
+        // Persist first. If SharedPreferences cannot commit, keep the Android
+        // binding and its RemoteViews intact for the next recovery attempt.
+        if (!writeWidgets(context, updated)) {
+            return false;
         }
-        widgets.removeIf(item -> item.optInt("id", -1) == widgetId);
-        boolean stateSaved = writeWidgets(context, widgets);
+        ensureHost(context);
+        if (host == null) {
+            writeWidgets(context, original);
+            return false;
+        }
+        try {
+            host.deleteAppWidgetId(widgetId);
+        } catch (RuntimeException error) {
+            Log.e(TAG, "Could not release Android widget ID " + widgetId + ".", error);
+            if (!writeWidgets(context, original)) {
+                Log.e(TAG, "Could not roll back widget metadata after ID release failed.");
+            }
+            return false;
+        }
         AppWidgetHostView view = views.remove(widgetId);
         if (view != null && view.getParent() instanceof ViewGroup) {
             ((ViewGroup) view.getParent()).removeView(view);
@@ -381,7 +681,7 @@ public final class AndroidWidgetHost {
         frames.remove(widgetId);
         lastSizeOptions.remove(widgetId);
         OmaAppActivity.notifyAndroidWidgetsChanged();
-        return stateSaved;
+        return true;
     }
 
     /** Updates the native view in density-independent coordinates supplied by Qt Quick. */
@@ -518,27 +818,28 @@ public final class AndroidWidgetHost {
         }
         cleanupInterruptedPick(context);
         Set<Integer> known = new HashSet<>();
+        Set<Integer> savedIds = new HashSet<>();
         for (JSONObject widget : widgets) {
-            int id = widget.optInt("id", -1);
+            int id = widget.optInt("id", 0);
+            if (id <= 0) {
+                continue;
+            }
+            savedIds.add(id);
             AppWidgetProviderInfo info = id > 0 ? widgetManager(context).getAppWidgetInfo(id) : null;
             ComponentName savedProvider = ComponentName.unflattenFromString(
                     widget.optString("provider", ""));
             if (info == null || info.provider == null || !info.provider.equals(savedProvider)
                     || !hostOwnsId(id)) {
-                if (id > 0) {
-                    try {
-                        host.deleteAppWidgetId(id);
-                    } catch (RuntimeException ignored) {
-                        Log.w(TAG, "Could not release an orphaned widget ID.");
-                    }
-                }
+                // Provider packages can be temporarily unavailable during boot,
+                // package replacement, or profile restoration. Keep the saved
+                // placement so Home can show a rebind placeholder.
                 continue;
             }
             known.add(id);
             createWidgetView(context, id, info);
         }
         for (int id : host.getAppWidgetIds()) {
-            if (!known.contains(id) && id != pendingWidgetId) {
+            if (!savedIds.contains(id) && id != pendingWidgetId) {
                 try {
                     host.deleteAppWidgetId(id);
                 } catch (RuntimeException error) {
@@ -556,16 +857,6 @@ public final class AndroidWidgetHost {
                 frames.remove(id);
                 lastSizeOptions.remove(id);
             }
-        }
-        if (known.size() != widgets.size()) {
-            List<JSONObject> valid = new ArrayList<>();
-            for (JSONObject widget : widgets) {
-                if (known.contains(widget.optInt("id", -1))) {
-                    valid.add(widget);
-                }
-            }
-            writeWidgets(context, valid);
-            OmaAppActivity.notifyAndroidWidgetsChanged();
         }
         applySavedFrames(context);
     }
@@ -620,9 +911,11 @@ public final class AndroidWidgetHost {
         }
     }
 
-    private static JSONObject widgetRecord(Context context, int id,
-                                           AppWidgetProviderInfo info, int order) {
-        if (info == null || info.provider == null || id <= 0 || order < 0 || order >= MAX_WIDGETS) {
+    private static JSONObject widgetRecord(Context context, int id, AppWidgetProviderInfo info,
+                                           String recordId, int page, int order) {
+        if (info == null || info.provider == null || id <= 0 || recordId == null
+                || recordId.isEmpty() || page < 0 || page >= 5
+                || order < 0 || order >= MAX_WIDGETS) {
             return null;
         }
         try {
@@ -635,14 +928,20 @@ public final class AndroidWidgetHost {
             if (label.isEmpty() || label.length() > 160) {
                 label = info.provider.getPackageName();
             }
+            int minWidth = boundedProviderSize(info.minWidth);
+            int minHeight = boundedProviderSize(info.minHeight);
             JSONObject item = new JSONObject();
+            item.put("recordId", recordId);
             item.put("id", id);
             item.put("provider", info.provider.flattenToString());
             item.put("label", label.substring(0, Math.min(160, label.length())));
-            item.put("page", 0);
+            item.put("page", page);
             item.put("order", order);
-            item.put("minWidthDp", Math.max(1, info.minWidth));
-            item.put("minHeightDp", Math.max(1, info.minHeight));
+            item.put("minWidthDp", minWidth);
+            item.put("minHeightDp", minHeight);
+            item.put("widthDp", Math.max(minWidth, Math.min(1200, 400)));
+            item.put("heightDp", Math.max(minHeight, Math.min(1200, 240)));
+            item.put("state", "ready");
             return item;
         } catch (JSONException | RuntimeException error) {
             Log.e(TAG, "Could not describe the selected Android widget.", error);
@@ -657,45 +956,89 @@ public final class AndroidWidgetHost {
     private static List<JSONObject> readWidgets(Context context) {
         List<JSONObject> result = new ArrayList<>();
         JSONArray array;
+        boolean legacyArray = false;
         try {
-            array = new JSONArray(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(WIDGETS_KEY, "[]"));
+            String stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(WIDGETS_KEY, "[]");
+            legacyArray = stored.trim().startsWith("[");
+            if (legacyArray) {
+                // Migrate the original unversioned array shape after sanitizing it.
+                array = new JSONArray(stored);
+            } else {
+                JSONObject root = new JSONObject(stored);
+                if (root.optInt("schemaVersion", -1) != WIDGETS_SCHEMA_VERSION) {
+                    throw new JSONException("unsupported Android widget schema version");
+                }
+                array = root.getJSONArray("widgets");
+            }
+            if (array.length() > MAX_WIDGETS) {
+                throw new JSONException("saved Android widget count exceeds the host limit");
+            }
         } catch (JSONException | RuntimeException error) {
             Log.e(TAG, "Saved Android widget state is unreadable; leaving it untouched.", error);
             return null;
         }
         Set<Integer> ids = new HashSet<>();
+        Set<String> recordIds = new HashSet<>();
         for (int index = 0; index < array.length() && result.size() < MAX_WIDGETS; ++index) {
             JSONObject item = array.optJSONObject(index);
             if (item == null) {
                 continue;
             }
-            int id = item.optInt("id", -1);
+            int id = item.optInt("id", 0);
+            String recordId = item.optString("recordId", "");
             String provider = item.optString("provider", "");
             String label = item.optString("label", "");
-            if (id <= 0 || !ids.add(id)
+            int page = item.optInt("page", 0);
+            int order = item.optInt("order", index);
+            if (id < 0 || (id > 0 && !ids.add(id))
                     || provider.length() > 512 || ComponentName.unflattenFromString(provider) == null
-                    || label.length() > 160) {
+                    || label.length() > 160 || page < 0 || page >= 5
+                    || order < 0 || order >= MAX_WIDGETS) {
                 continue;
             }
+            if (recordId.isEmpty()) {
+                // Keep identity stable if SharedPreferences is temporarily read-only.
+                recordId = id > 0 ? "legacy-" + id : UUID.randomUUID().toString();
+            }
+            if (recordId.length() > 64 || !recordIds.add(recordId)) {
+                continue;
+            }
+            int minWidth = boundedProviderSize(item.optInt("minWidthDp", 160));
+            int minHeight = boundedProviderSize(item.optInt("minHeightDp", 120));
+            int width = Math.max(minWidth, Math.min(1200, item.optInt("widthDp", 400)));
+            int height = Math.max(minHeight, Math.min(1200, item.optInt("heightDp", 240)));
             JSONObject sanitized = new JSONObject();
             try {
+                sanitized.put("recordId", recordId);
                 sanitized.put("id", id);
                 sanitized.put("provider", provider);
-                sanitized.put("label", label);
-                sanitized.put("page", 0);
-                sanitized.put("order", result.size());
-                sanitized.put("minWidthDp", Math.max(1, Math.min(1200, item.optInt("minWidthDp", 160))));
-                sanitized.put("minHeightDp", Math.max(1, Math.min(1200, item.optInt("minHeightDp", 120))));
+                sanitized.put("label", safeLabel(label, provider));
+                sanitized.put("page", page);
+                sanitized.put("order", order);
+                sanitized.put("minWidthDp", minWidth);
+                sanitized.put("minHeightDp", minHeight);
+                sanitized.put("widthDp", width);
+                sanitized.put("heightDp", height);
+                sanitized.put("state", id > 0 ? "ready" : "needs_rebind");
                 result.add(sanitized);
             } catch (JSONException ignored) {
                 // JSONObject.put of these bounded primitive values cannot fail.
             }
         }
+        result.sort(Comparator.comparingInt((JSONObject item) -> item.optInt("page", 0))
+                .thenComparingInt(item -> item.optInt("order", 0)));
+        normalizePageOrders(result);
+        if (legacyArray && !writeWidgets(context, result)) {
+            Log.w(TAG, "Legacy Android widget configuration remains unmigrated.");
+        }
         return result;
     }
 
     private static JSONObject findWidget(List<JSONObject> widgets, int widgetId) {
+        if (widgets == null) {
+            return null;
+        }
         for (JSONObject widget : widgets) {
             if (widget.optInt("id", -1) == widgetId) {
                 return widget;
@@ -704,20 +1047,44 @@ public final class AndroidWidgetHost {
         return null;
     }
 
+    private static JSONObject findWidgetByRecordId(List<JSONObject> widgets, String recordId) {
+        if (widgets == null || recordId == null) {
+            return null;
+        }
+        for (JSONObject widget : widgets) {
+            if (recordId.equals(widget.optString("recordId", ""))) {
+                return widget;
+            }
+        }
+        return null;
+    }
+
     private static boolean writeWidgets(Context context, List<JSONObject> widgets) {
+        if (context == null || widgets == null || widgets.size() > MAX_WIDGETS) {
+            return false;
+        }
         JSONArray array = new JSONArray();
-        for (int index = 0; index < widgets.size() && index < MAX_WIDGETS; ++index) {
-            JSONObject value = widgets.get(index);
-            value.remove("order");
+        List<JSONObject> normalized = deepCopyWidgets(widgets);
+        normalizePageOrders(normalized);
+        for (int index = 0; index < normalized.size() && index < MAX_WIDGETS; ++index) {
+            JSONObject value = normalized.get(index);
+            value.remove("state");
             try {
-                value.put("order", index);
+                value.put("order", value.optInt("order", index));
             } catch (JSONException ignored) {
                 continue;
             }
             array.put(value);
         }
+        JSONObject root = new JSONObject();
+        try {
+            root.put("schemaVersion", WIDGETS_SCHEMA_VERSION);
+            root.put("widgets", array);
+        } catch (JSONException ignored) {
+            return false;
+        }
         boolean saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(WIDGETS_KEY, array.toString()).commit();
+                .putString(WIDGETS_KEY, root.toString()).commit();
         if (!saved) {
             Log.e(TAG, "Could not persist Android widget IDs and Home order.");
         }
@@ -771,7 +1138,195 @@ public final class AndroidWidgetHost {
 
     private static void clearPendingWidget(Context context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .remove(PENDING_ID_KEY).commit();
+                .remove(PENDING_ID_KEY)
+                .remove(PENDING_RECORD_ID_KEY)
+                .remove(PENDING_PAGE_KEY)
+                .commit();
+        pendingRecordId = "";
+        pendingPage = 0;
+    }
+
+    private static List<JSONObject> parseWidgetBackup(String json) {
+        if (json == null || json.isEmpty() || json.length() > 32_768) {
+            return null;
+        }
+        try {
+            JSONObject root = new JSONObject(json);
+            if (root.length() != 2 || root.optInt("schemaVersion", -1) != BACKUP_SCHEMA_VERSION) {
+                return null;
+            }
+            JSONArray entries = root.optJSONArray("widgets");
+            if (entries == null || entries.length() > MAX_WIDGETS) {
+                return null;
+            }
+            List<JSONObject> placeholders = new ArrayList<>();
+            Set<String> identityKeys = new HashSet<>();
+            for (int index = 0; index < entries.length(); ++index) {
+                JSONObject entry = entries.optJSONObject(index);
+                if (entry == null || entry.length() != 8) {
+                    return null;
+                }
+                String provider = entry.optString("provider", "");
+                String label = entry.optString("label", "");
+                int page = entry.optInt("page", -1);
+                int order = entry.optInt("order", -1);
+                int minWidth = entry.optInt("minWidthDp", -1);
+                int minHeight = entry.optInt("minHeightDp", -1);
+                int width = entry.optInt("widthDp", -1);
+                int height = entry.optInt("heightDp", -1);
+                ComponentName component = provider.length() <= 512
+                        ? ComponentName.unflattenFromString(provider) : null;
+                if (component == null || label.length() > 160 || page < 0 || page >= 5
+                        || order < 0 || order >= MAX_WIDGETS
+                        || minWidth < 1 || minWidth > 1200 || minHeight < 1 || minHeight > 1200
+                        || width < minWidth || width > 1200
+                        || height < minHeight || height > 1200) {
+                    return null;
+                }
+                String identity = provider + "\u0000" + page + "\u0000" + order;
+                if (!identityKeys.add(identity)) {
+                    return null;
+                }
+                JSONObject placeholder = new JSONObject();
+                placeholder.put("recordId", UUID.randomUUID().toString());
+                placeholder.put("id", 0);
+                placeholder.put("provider", provider);
+                placeholder.put("label", safeLabel(label, provider));
+                placeholder.put("page", page);
+                placeholder.put("order", order);
+                placeholder.put("minWidthDp", minWidth);
+                placeholder.put("minHeightDp", minHeight);
+                placeholder.put("widthDp", width);
+                placeholder.put("heightDp", height);
+                placeholder.put("state", "needs_rebind");
+                placeholders.add(placeholder);
+            }
+            placeholders.sort(Comparator.comparingInt((JSONObject item) -> item.optInt("page", 0))
+                    .thenComparingInt(item -> item.optInt("order", 0)));
+            normalizePageOrders(placeholders);
+            return placeholders;
+        } catch (JSONException | RuntimeException error) {
+            return null;
+        }
+    }
+
+    private static boolean isWidgetBound(Context context, JSONObject widget) {
+        if (context == null || widget == null || widget.optInt("id", 0) <= 0) {
+            return false;
+        }
+        ComponentName expected = ComponentName.unflattenFromString(
+                widget.optString("provider", ""));
+        if (expected == null) {
+            return false;
+        }
+        int id = widget.optInt("id", 0);
+        try {
+            AppWidgetManager manager = widgetManager(context);
+            AppWidgetProviderInfo info = manager == null ? null : manager.getAppWidgetInfo(id);
+            return info != null && expected.equals(info.provider) && hostOwnsId(id);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Could not verify the Android widget binding.", error);
+            return false;
+        }
+    }
+
+    private static JSONObject copyJsonObject(JSONObject value) {
+        if (value == null) {
+            return new JSONObject();
+        }
+        try {
+            return new JSONObject(value.toString());
+        } catch (JSONException error) {
+            return new JSONObject();
+        }
+    }
+
+    private static List<JSONObject> deepCopyWidgets(List<JSONObject> widgets) {
+        List<JSONObject> copies = new ArrayList<>();
+        if (widgets != null) {
+            for (JSONObject widget : widgets) {
+                copies.add(copyJsonObject(widget));
+            }
+        }
+        return copies;
+    }
+
+    private static void normalizePageOrders(List<JSONObject> widgets) {
+        if (widgets == null) {
+            return;
+        }
+        widgets.sort(Comparator.comparingInt((JSONObject item) -> item.optInt("page", 0))
+                .thenComparingInt(item -> item.optInt("order", 0)));
+        Map<Integer, Integer> nextOrder = new HashMap<>();
+        for (JSONObject widget : widgets) {
+            int page = Math.max(0, Math.min(4, widget.optInt("page", 0)));
+            int order = nextOrder.containsKey(page) ? nextOrder.get(page) : 0;
+            try {
+                widget.put("page", page);
+                widget.put("order", order);
+            } catch (JSONException ignored) {
+                // Bounded primitive values cannot fail to encode.
+            }
+            nextOrder.put(page, order + 1);
+        }
+    }
+
+    private static int countWidgetsOnPage(List<JSONObject> widgets, int page) {
+        int count = 0;
+        if (widgets != null) {
+            for (JSONObject widget : widgets) {
+                if (widget.optInt("page", 0) == page) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int boundedProviderSize(int size) {
+        return Math.max(1, Math.min(1200, size));
+    }
+
+    private static String safeLabel(String label, String provider) {
+        String value = label == null ? "" : label.replaceAll("[\\p{Cntrl}]", " ").trim();
+        if (value.isEmpty()) {
+            ComponentName component = ComponentName.unflattenFromString(provider == null ? "" : provider);
+            value = component == null ? "Android widget" : component.getPackageName();
+        }
+        return value.substring(0, Math.min(160, value.length()));
+    }
+
+    private static JSONObject preserveWidgetGeometry(JSONObject previous, JSONObject updated) {
+        if (previous == null || updated == null) {
+            return updated;
+        }
+        try {
+            updated.put("page", previous.optInt("page", 0));
+            updated.put("order", previous.optInt("order", 0));
+            updated.put("widthDp", Math.max(updated.optInt("minWidthDp", 1),
+                    Math.min(1200, previous.optInt("widthDp", 400))));
+            updated.put("heightDp", Math.max(updated.optInt("minHeightDp", 1),
+                    Math.min(1200, previous.optInt("heightDp", 240))));
+        } catch (JSONException ignored) {
+            // These values are bounded primitives.
+        }
+        return updated;
+    }
+
+    private static boolean removePlaceholder(Context context, String recordId) {
+        List<JSONObject> widgets = readWidgets(context);
+        JSONObject placeholder = findWidgetByRecordId(widgets, recordId);
+        if (placeholder == null || placeholder.optInt("id", 0) > 0) {
+            return false;
+        }
+        List<JSONObject> updated = deepCopyWidgets(widgets);
+        updated.remove(findWidgetByRecordId(updated, recordId));
+        normalizePageOrders(updated);
+        if (!writeWidgets(context, updated)) {
+            return false;
+        }
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
     }
 
     private static final class WidgetFrame {

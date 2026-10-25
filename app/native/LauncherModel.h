@@ -14,6 +14,7 @@ class LauncherModel : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(bool platformSupported READ platformSupported CONSTANT)
+    Q_PROPERTY(qreal systemFontScale READ systemFontScale NOTIFY systemFontScaleChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
@@ -22,6 +23,8 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
     Q_PROPERTY(QVariantList androidWidgets READ androidWidgets NOTIFY androidWidgetsChanged)
     Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
+    Q_PROPERTY(bool hapticFeedbackEnabled READ hapticFeedbackEnabled
+               NOTIFY hapticFeedbackEnabledChanged)
 
 public:
     enum Role {
@@ -42,6 +45,7 @@ public:
 
     int count() const;
     bool platformSupported() const;
+    qreal systemFontScale() const;
     QString filter() const;
     QVariantList favorites() const;
     QVariantList folders() const;
@@ -50,12 +54,20 @@ public:
     QVariantMap homeWidgets() const;
     QVariantList androidWidgets() const;
     QVariantMap gestures() const;
+    bool hapticFeedbackEnabled() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void refreshAndroidWidgets();
     Q_INVOKABLE bool addAndroidWidget();
+    Q_INVOKABLE bool addAndroidWidgetOnPage(int page);
     Q_INVOKABLE bool removeAndroidWidget(int widgetId);
+    Q_INVOKABLE bool removeAndroidWidgetRecord(const QString &recordId);
+    Q_INVOKABLE bool rebindAndroidWidget(const QString &recordId);
+    Q_INVOKABLE bool moveAndroidWidget(const QString &recordId, int page, int order);
+    Q_INVOKABLE bool resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp);
+    Q_INVOKABLE bool canRestoreAndroidWidgetBackup(const QString &json) const;
+    Q_INVOKABLE bool restoreAndroidWidgetBackup(const QString &json);
     Q_INVOKABLE void setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
                                            qreal width, qreal height, qreal clipX, qreal clipY,
                                            qreal clipWidth, qreal clipHeight, bool visible);
@@ -68,6 +80,8 @@ public:
                                    int page, int index);
     Q_INVOKABLE void setHomeWidgetEnabled(const QString &widgetId, bool enabled);
     Q_INVOKABLE bool setGestureEnabled(const QString &gestureId, bool enabled);
+    Q_INVOKABLE bool setHapticFeedbackEnabled(bool enabled);
+    Q_INVOKABLE void performHapticFeedback();
     Q_INVOKABLE QString exportLayout() const;
     Q_INVOKABLE bool importLayout(const QString &json);
     Q_INVOKABLE bool copyLayoutBackup(const QString &owlWidgetBackup = QString()) const;
@@ -95,6 +109,8 @@ signals:
     void homeWidgetsChanged();
     void androidWidgetsChanged();
     void gesturesChanged();
+    void hapticFeedbackEnabledChanged();
+    void systemFontScaleChanged();
 
 private:
     struct Entry {
@@ -120,8 +136,10 @@ private:
     QVariantMap m_homeWidgets;
     QVariantList m_androidWidgets;
     QVariantMap m_gestures;
+    bool m_hapticFeedbackEnabled = false;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;
+    qreal m_systemFontScale = 1.0;
 
     void rebuildVisibleRows();
     void saveFavorites();

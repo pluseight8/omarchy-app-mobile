@@ -131,7 +131,7 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             self.assertTrue(is_checked(path, "Use 5 app columns"))
             self.assertFalse(is_checked(path, "Use 3 app columns"))
 
-    def test_checked_tab_does_not_match_part_of_another_control_name(self):
+    def test_does_not_treat_a_checked_gesture_setting_as_the_apps_tab(self):
         xml = """<hierarchy>
             <node package="app.omaapp" checked="true"
                 content-desc="Swipe between Home, Apps, Devices, Style, and Settings" />

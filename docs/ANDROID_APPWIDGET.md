@@ -1,53 +1,51 @@
 # Android AppWidgetHost integration status
 
-OmaApp now has the first `AndroidWidgetHost` integration in the same Android
-APK. The Home screen opens Android's system widget picker, which allocates and binds a
-provider after the user selects it. OmaApp starts a provider configuration
-activity when one is declared, creates a real `AppWidgetHostView`, and overlays
-it above its Qt Quick Activity in the matching Home slot. The bridge sends the
-slot's density-independent bounds and visible QML viewport to Android so the
-native view is clipped while the Home page scrolls or moves. A fixed host ID and
-provider IDs/order are saved locally; Activity start/stop pairs call
-`startListening()` / `stopListening()`. Cancelled, interrupted, stale, and
-removed widget IDs are released.
+`AndroidWidgetHost` runs inside the existing OmaApp APK. The Home screen opens
+Android's system widget picker, launches provider configuration when required,
+and overlays the provider's real `AppWidgetHostView` over its Qt Quick slot.
+Native bounds are supplied in density-independent units and clipped to the
+visible page viewport. Activity start/stop pairs call `startListening()` /
+`stopListening()`.
 
-The emulator CI builds a separate test-only APK containing a real interactive
-`AppWidgetProvider` and a configuration Activity. It selects that provider
-through Android's system picker, completes the provider configuration result,
-checks its live `RemoteViews` and clicks its button, then force-stops and cold
-starts OmaApp. It verifies the saved widget and its updated provider state are
-restored, clicks it again, and finally removes the widget and checks that
-Android releases the ID. This test runs in the OpenGL and Vulkan
-emulator jobs. The fixture package, resources, and short-lived fixture signing
-key are generated only in CI; they are not included in the product APK or
-release workflow.
+Widget configuration is versioned. It records provider identity, a local Android
+widget ID, Home page, order, provider minimum size, and selected width/height.
+Legacy array state migrates to the versioned format. Removal commits the new
+configuration before releasing the Android ID and rolls back metadata if ID
+release fails. Missing providers and portable restores remain visible as
+placeholders; backup JSON contains provider/layout metadata but never Android
+binding IDs or grants. Rebinding runs through the system picker and only accepts
+the provider component saved in the placeholder.
 
-Current placement is an ordered vertical stack on the first Home page. Android
-provider configuration and size options are supported, but user drag/reorder,
-resize handles, per-page placement, layout backup/restore, and virtualization
-are not implemented yet. The native view is clipped to the QML scroll/page
-viewport, but its z-order is above the Qt Quick scene; cross-page gesture
-arbitration and screen-reader behavior still need device testing. Ordinary OWL
-widgets continue to render in their existing Qt Quick list below the Android
-widget section.
+The Home UI supports per-page placement, page/order movement, drag-to-page-header,
+accessible reorder controls, and width/height adjustment controls. Widgets are
+currently arranged in an ordered vertical stack on each page; this is not yet a
+freeform shared grid with edge resize handles. Resized slot bounds update Android
+widget options, and native widget controls remain interactive.
+
+The OpenGL and Vulkan emulator smoke uses a separate test-only APK containing a
+real interactive `AppWidgetProvider` and configuration Activity. It binds via
+the system picker, verifies a `RemoteViews` click, moves and resizes the saved
+placement, checks `AppWidgetManager` size options, force-stops and cold-starts
+OmaApp, and verifies the widget remains interactive. It exports a backup,
+confirms the binding ID is absent, removes the widget, restores a placeholder,
+rebinds through Android's picker to a fresh ID, checks preserved geometry, and
+removes the rebound widget. The smoke stores Home and placeholder screenshots
+as CI artifacts. The fixture package and signing key are generated only in CI;
+neither is part of the product APK or release workflow.
 
 The host uses Android's picker rather than silently invoking
-`bindAppWidgetIdIfAllowed`; choosing a provider in the system picker is the
-user's explicit bind action. Persisted provider identity is checked against
-`AppWidgetManager` before restoring a saved ID, and IDs not represented in
-OmaApp's saved state are released during recovery. The bridge rejects invalid,
-non-finite, or oversized bounds before changing native views.
+`bindAppWidgetIdIfAllowed`; choosing a provider there is the user's bind action.
+Persisted provider identity is checked against `AppWidgetManager` before
+restoring a saved ID. Untracked allocated IDs are released during recovery.
+Invalid, non-finite, or oversized frame data is rejected before changing native
+views. Importing a backup does not install a missing provider; the user must
+install it and approve a fresh binding in the Android picker.
 
-GitHub Actions [run #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660)
-passed the `android_widget_host_smoke.sh` setup, restart, and removal stages on
-both OpenGL and Vulkan. The fixture was selected through Android's picker,
-interacted with before and after cold process restoration, and its widget ID was
-released on removal. This is emulator verification only. Physical device
-behavior, GrapheneOS policy, drag/resize, multi-page placement, widget backup,
-cross-page gesture arbitration, and screen-reader interaction remain to be
-verified before broader support.
-Rotation, density changes, Android system gestures/insets, memory use, and
-frame performance have not been measured yet.
+CI verification is emulator-only. Pixel/GrapheneOS behavior, provider
+compatibility beyond the CI fixture, rotation, density changes, Android system
+gestures/insets, TalkBack focus, memory use, and frame performance still need
+physical-device or broader provider testing. Freeform x/y positioning, shared
+app/OWL/widget grid placement, and edge resize handles are not implemented.
 
 Qt documents the Android integration options in [Qt for Android](https://doc.qt.io/qt-6/android.html)
 and [Qt Quick for Android](https://doc.qt.io/qt-6/qtquick-for-android.html).

@@ -10,18 +10,33 @@ OmaApp is an Android launcher and direct Omarchy companion, built with Qt Quick.
 
 - The Android app uses Qt 6.10+ / C++ / QML and includes a local Home screen with up to five swipeable pages, a pinned-app dock, full Android launcher icons, app search, folders, adjustable 3–5 column grid, and settings for the live clock/computer/media cards. Pinned apps can be moved between pages or removed with a long press. Android launcher data stays local, and the optional HOME activity works without an Omarchy computer.
 - Pairing is a direct HTTPS connection to the one Omarchy plugin. The first pairing requires approval in OmaApp and in the plugin; the client pins the QR's computer certificate and keeps its bearer token encrypted with Android Keystore.
+- After QR trust is established, foreground DNS-SD discovery can find the same trusted plugin after a local IP change. It advertises only the public certificate fingerprint; OmaApp still verifies the pinned TLS certificate and stored token before updating an address.
 - The plugin reads active Omarchy colors, `shell.toml`, wallpaper, Hyprland border gradients, rounding, rounding power, gaps, animations, and Bezier curves. Theme/configuration and workspace events are event-driven; a slower 30-second foreground refresh covers metrics and missed events. OmaApp keeps the last successful theme while offline.
 - Clipboard, file transfer, MPRIS, system metrics, Hyprland workspace switching, and configured user commands are available behind independent per-device permissions. Clipboard is tapped and foreground-only; files use Android's system picker and a 100 MiB limit; arbitrary shell commands are never accepted.
 - Home supports drag and drop between pages and the dock, dynamic Android app shortcuts, configurable gestures, and local backup/restore. It includes an offline OWL widget store/editor, an embedded copy of the original OWL compiler/runtime, and an OWL Canvas renderer for bounded local widgets. Android apps, widget sources and layout backups stay usable without the computer.
-- Android widgets use the system picker and appear as interactive native views in Home. OmaApp saves their widget IDs and order; placement is currently a vertical stack on the first Home page, without drag/resize or layout-backup integration.
+- Optional Home haptics use Android's system-respecting `View.performHapticFeedback` API for app launches and Home editing. They are off by default, saved locally, included in layout backups, and remain subject to Android's touch-feedback settings.
+- English and Russian UI are available offline, with Android language detection and an in-app language selector. App installs and removals refresh the launcher model from Android package events.
+- Native Android widgets use the system picker and real `AppWidgetHostView` in the same APK. OmaApp saves versioned per-page order and size, supports page moves and accessible reorder/resize controls, and restores portable backups as placeholders that require a new Android system binding. Current Home placement is a vertical stack; freeform shared-grid positioning and edge resize handles remain outstanding. OpenGL/Vulkan emulator coverage exercises binding, RemoteViews clicks, resize options, process restore, backup placeholder, and fresh-ID rebinding.
 - OWL currently runs an offline subset: layout/text/basic controls plus Canvas shapes, paths, transforms, clipping and gradients. Widgets requiring shell commands, network, assets, background triggers, interactive handlers, secrets or sampled state are rejected with an editor error instead of being run.
 - The desktop target is a preview. It does not fake an installed-app list.
 - The listener starts when pairing is requested or saved devices are present. The Python helper and QR encoder are files inside the one plugin; no extra product or system service is installed.
 - OmaApp does not install Arch Linux ARM or PRoot. It does not bundle the Quickshell executable or Linux/Wayland modules into the APK.
-- GitHub Actions builds desktop and arm64 APKs, then exercises the launcher, pairing, theme sync, Hyprland rendering, and paired-PC features in Android x86_64 emulators using OpenGL and Vulkan. The emulator also binds, interacts with, restores, and removes a real test-only Android widget provider through the native host view. CI APKs are debug artifacts; a signed release has not yet been published.
+- This development iteration improves DNS-SD address changes across active IPv4 interfaces, refreshes mDNS memberships after interface changes, uses Android's service-info updates on API 34+ and Android 13 T extension 7+ with a legacy fallback, and drains rediscovery after active network work finishes. It also checks Android text scaling, repeated locale switches, QML binding loops, and records Android/Qt stage diagnostics when HOME readiness times out. Check the current build and emulator results in [GitHub Actions](https://github.com/pluseight8/omarchy-app-mobile/actions/workflows/ci.yml). The CI APK is a test artifact; this iteration does not claim a signed release.
 - No Quickshell executable or library is included. The Android app uses Qt Quick; the Omarchy plugin runs inside Quickshell.
 
-The plugin has also been installed and restarted in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. Current-head [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed desktop and arm64 builds, Android OpenGL/Vulkan smoke, and native widget binding, interaction, process restoration, and removal. This workspace lacks Qt ShaderTools (`qsb`) and the Android build SDK, so full builds run in GitHub Actions. No Pixel device is attached; Pixel 10 / GrapheneOS behavior remains unverified.
+The integrated branch includes the merged localization/rediscovery work from PR #16 and the Android widget implementation from PR #17. The preceding CI run #270 passed on the pre-integration widget-host head; the combined branch is awaiting its own full Desktop, arm64, OpenGL, and Vulkan workflow. Local validation currently passes 153 Python tests, 314 Russian translation entries, shell syntax, Python compilation, and whitespace checks. The system `qmllint` executable in this environment exits with status 255 and no diagnostic output; no CMake, JDK, Android SDK, emulator, or device is installed here for a full local build. The plugin was installed and restarted earlier in Omarchy 4.0.4 / Quickshell 0.3.1, but live Android pairing against Omarchy has not been verified in this workspace. No Pixel device is attached, so Pixel 10 / GrapheneOS behavior remains unverified. The Russian Settings screenshots below are from CI run #201.
+
+### Emulator screenshots
+
+The Russian Settings screen was captured at 412 × 892 in each emulator graphics backend during CI run #201.
+
+![Russian Settings on OpenGL](docs/screenshots/ci-201-opengl-settings-ru.png)
+
+![Russian Settings on Vulkan](docs/screenshots/ci-201-vulkan-settings-ru.png)
+
+![Home on OpenGL](docs/screenshots/ci-201-opengl-home.png)
+
+![Home on Vulkan](docs/screenshots/ci-201-vulkan-home.png)
 
 ## Build the desktop preview
 

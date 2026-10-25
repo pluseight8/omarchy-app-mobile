@@ -12,10 +12,10 @@ The Android launcher and arm64 debug packaging already exist. Direct QR pairing 
 - OmaApp scans the QR, pins the certificate, and requests pairing over HTTPS.
 - The user approves the phone in the widget. The host stores a hash of a random per-device token; Android stores the token encrypted with an Android Keystore key.
 - An already trusted phone can scan a fresh QR to reconnect if the router changes the computer's address. A different certificate identity requires forgetting the old pairing and confirming a new one.
-- The service reads active Omarchy theme files and Hyprland options/animations. Android waits for authenticated inotify/socket2 events and falls back to a 30-second foreground refresh for missed events and system metrics.
+- The service reads active Omarchy theme files and Hyprland options/animations. Android applies authenticated theme/workspace events and uses a 30-second foreground refresh for missed events and system metrics.
 - Clipboard, file-transfer, MPRIS, system metrics, Hyprland workspaces, and user-configured commands have independent, disabled-by-default per-device grants.
 
-The localization and safe rediscovery changes in [PR #16](https://github.com/pluseight8/omarchy-app-mobile/pull/16) are Ready for Review at `9cbd3588a5871002ac0fb0eb64f2c943da564e94`; [CI #266](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40210984247) passed all four jobs. The separate AppWidgetHost proof in draft [PR #17](https://github.com/pluseight8/omarchy-app-mobile/pull/17) is at `a785074ccf295074b3ddb47443c6c0f8342f9569`; [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed desktop, arm64, and OpenGL/Vulkan emulator checks, including real picker binding, widget interaction, cold process restoration, and ID removal. The PR #17 branch's Python suite passes 83 tests; PR #16's local suite passes 138. The plugin has been installed and restarted inside Omarchy 4.0.4 / Quickshell 0.3.1. This workspace has no CMake, JDK, Android SDK, emulator, or attached device, so physical Pixel/GrapheneOS behavior remains unverified.
+PR #16 was merged into `main` at `bf4baef832968383d1d1a3ac29abc61f0f15e6af`; its [CI #266](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40210984247) passed all four jobs and its review threads were resolved. PR #17 remains a draft while its AppWidgetHost work is integrated against that merge. The existing [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed the earlier host implementation on Desktop, arm64, OpenGL, and Vulkan. The current local integration passes 153 Python tests and 314 Russian translation checks; its combined CI run has not started yet. The plugin was installed and restarted earlier inside Omarchy 4.0.4 / Quickshell 0.3.1. This workspace has no CMake, JDK, Android SDK, emulator, or attached device; the Pixel/GrapheneOS and live Android-to-Omarchy checks remain unverified here.
 
 ## Work sequence
 
@@ -77,8 +77,11 @@ The localization and safe rediscovery changes in [PR #16](https://github.com/plu
 - [x] Launch Android's system picker and provider configuration flow; do not bind providers without the user's picker choice.
 - [x] Restore persisted provider IDs through one stable `AppWidgetHost` and release cancelled, stale, and deleted IDs.
 - [x] Align interactive `AppWidgetHostView` children with first-page Qt Quick Home slots, convert dp bounds, and clip them to the scroll/page viewport.
-- [x] Verify the real test provider through picker selection, RemoteViews click, force-stop/relaunch, and ID release in OpenGL and Vulkan emulator jobs ([CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660)).
-- [ ] Add drag/reorder, resize handles, per-page positions, and layout backup/restore as separately reviewable follow-up work.
+- [x] Save provider identity, local Android ID, page/order, minimum size and selected size in a versioned schema; migrate the former array format.
+- [x] Add per-page widget placement, order controls, drag-to-page, and width/height adjustment controls without disabling RemoteViews interaction.
+- [x] Add ID-free backup export, placeholder restore, provider-matched system-picker rebind, and safe remove ordering with metadata rollback.
+- [ ] Run the integrated real-provider emulator smoke for placement/size persistence, options updates, ID-free backup, placeholder restore and rebind after pushing PR #17.
+- [ ] Add freeform shared-grid x/y placement and edge resize handles; current widgets remain an ordered vertical stack per page.
 - [ ] Measure Home performance and check gestures, accessibility, orientation/insets, and GrapheneOS with a physical device.
 - [ ] Measure widget memory and frame cost across display densities, rotation, and the emulator's available refresh rates.
 

@@ -3,18 +3,22 @@ package app.omaapp;
 import android.app.Activity;
 import android.app.Instrumentation;
 import android.app.UiAutomation;
+import android.accessibilityservice.AccessibilityServiceInfo;
+import android.appwidget.AppWidgetHost;
+import android.appwidget.AppWidgetHostView;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
-import android.content.ComponentName;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
@@ -23,17 +27,36 @@ import android.os.SystemClock;
 import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
+import android.widget.FrameLayout;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.Inet4Address;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.URI;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -47,6 +70,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static final String TAG = "OmaAppPairingSmoke";
     private static final long PAIRING_TIMEOUT_MILLIS = 60_000L;
     private static final long REVOCATION_TIMEOUT_MILLIS = 20_000L;
+    private static final int MAX_ACCESSIBILITY_NODES = 512;
+    private static final int MAX_ACCESSIBILITY_WINDOWS = 16;
+    private static final int MAX_APPWIDGET_DIAGNOSTIC_CHARS = 1_799;
     private Bundle testArguments = new Bundle();
 
     @Override
@@ -92,6 +118,66 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 finish(Activity.RESULT_OK, result);
                 return;
             }
+            if (Boolean.parseBoolean(testArguments.getString("nativeQtTranslations"))) {
+                Intent launch = context.getPackageManager().getLaunchIntentForPackage(
+                        context.getPackageName());
+                if (launch == null) {
+                    throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                context.startActivity(launch);
+                SystemClock.sleep(2_000L);
+                String translated = NativeStrings.get("Computer files");
+                if (!"Файлы компьютера".equals(translated)) {
+                    throw new IllegalStateException("Native Android UI did not use the Russian Qt catalog: "
+                            + translated);
+                }
+                if (!"Действие на компьютере выполнено.".equals(
+                        NativeStrings.featureMessage("Computer action completed."))) {
+                    throw new IllegalStateException("Russian UI lost a recognized feature success message.");
+                }
+                if (!"Разрешите эту функцию для телефона в настройках плагина Omarchy.".equals(
+                        NativeStrings.fileTransferError(
+                                "Enable this feature for this phone in the Omarchy plugin permissions."))) {
+                    throw new IllegalStateException("Russian file UI lost the plugin permission guidance.");
+                }
+                result.putString("stage", "native_qt_translations_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if (Boolean.parseBoolean(testArguments.getString("nativeEnglishStrings"))) {
+                Intent launch = context.getPackageManager().getLaunchIntentForPackage(
+                        context.getPackageName());
+                if (launch == null) {
+                    throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                context.startActivity(launch);
+                SystemClock.sleep(2_000L);
+                String success = "Computer action completed.";
+                String permission = "Enable this feature for this phone in the Omarchy plugin permissions.";
+                if (!success.equals(NativeStrings.featureMessage(success))
+                        || !permission.equals(NativeStrings.featureMessage(permission))
+                        || !permission.equals(NativeStrings.fileTransferError(permission))
+                        || !"Computer feature request failed (HTTP 403).".equals(
+                                NativeStrings.fileTransferError("Computer feature request failed (HTTP 403)."))
+                        || !"Computer file transfer failed. Check pairing and the network.".equals(
+                                NativeStrings.fileTransferError("unrecognized server detail"))) {
+                    throw new IllegalStateException("English Android UI did not preserve known native messages or contain unknown errors.");
+                }
+                result.putString("stage", "native_english_strings_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if (Boolean.parseBoolean(testArguments.getString("appWidgetHost"))) {
+                runAppWidgetHostPoc(context);
+                result.putString("stage", "app_widget_host_overlay_and_touch_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
             runEventRefreshQueueSmoke(context);
             runFileTransferStateSmoke();
             runOwlRuntimeSmoke();
@@ -102,10 +188,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 finish(Activity.RESULT_OK, result);
                 return;
             }
-            String reconnectTheme = testArguments.getString("assertReconnect", "");
-            if (!reconnectTheme.isEmpty()) {
-                awaitPluginRestartReconnect(context, reconnectTheme);
-                result.putString("stage", "plugin_restart_reconnected");
+            String dnsSdPort = testArguments.getString("dnsSdPort", "");
+            if (!dnsSdPort.isEmpty()) {
+                JSONObject reconnected = runDnsSdReconnectSmoke(context,
+                        Integer.parseInt(dnsSdPort),
+                        Integer.parseInt(testArguments.getString("dnsSdWrongCertPort", "0")),
+                        testArguments.getString("dnsSdFingerprint", ""),
+                        testArguments.getString("expectedTheme", ""));
+                report("dns_sd_reconnected", reconnected);
+                result.putString("stage", "dns_sd_reconnected");
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -158,6 +249,749 @@ public final class PairingTestInstrumentation extends Instrumentation {
             sendStatus(2, result);
             finish(Activity.RESULT_CANCELED, result);
         }
+    }
+
+    /** Exercises Android's real widget binding, RemoteViews, host view, and QtActivity overlay. */
+    private void runAppWidgetHostPoc(Context context) throws Exception {
+        reportAppWidgetStage("activity_starting");
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Instrumentation.ActivityMonitor monitor = new Instrumentation.ActivityMonitor(
+                launch.getComponent().getClassName(), null, false);
+        addMonitor(monitor);
+        Activity activity;
+        try {
+            context.startActivity(launch);
+            activity = monitor.waitForActivityWithTimeout(15_000L);
+        } finally {
+            removeMonitor(monitor);
+        }
+        if (activity == null || activity.isFinishing()) {
+            throw new IllegalStateException("Could not open Qt Quick Home for the Android widget overlay test.");
+        }
+        reportAppWidgetStage("activity_started");
+        UiAutomation automation = getUiAutomation();
+        AccessibilityServiceInfo serviceInfo = automation.getServiceInfo();
+        serviceInfo.flags |= AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+        automation.setServiceInfo(serviceInfo);
+        if (!awaitAccessibleControlClick(automation, "Home", 8_000L)) {
+            throw new IllegalStateException("The Home navigation control did not become clickable.");
+        }
+        reportAppWidgetStage("home_control_clicked");
+        if (!awaitAccessibilityText(automation, "Home page 1 of", 8_000L)) {
+            throw new IllegalStateException("Could not select the existing Qt Quick Home page.");
+        }
+        reportAppWidgetStage("home_selected");
+
+        AppWidgetManager manager = AppWidgetManager.getInstance(activity);
+        AppWidgetProviderInfo provider = null;
+        for (AppWidgetProviderInfo candidate : manager.getInstalledProviders()) {
+            if (candidate.provider != null
+                    && "app.omaapp".equals(candidate.provider.getPackageName())
+                    && candidate.provider.getClassName().endsWith("CiAppWidgetProvider")) {
+                provider = candidate;
+                break;
+            }
+        }
+        if (provider == null) {
+            throw new IllegalStateException("The debug AppWidgetProvider fixture was not installed.");
+        }
+
+        AppWidgetHost host = new AppWidgetHost(activity, 0x4f4d41);
+        host.startListening();
+        int widgetId = host.allocateAppWidgetId();
+        FrameLayout content = activity.findViewById(android.R.id.content);
+        AtomicReference<AppWidgetHostView> hostViewResult = new AtomicReference<>();
+        AtomicReference<String> viewError = new AtomicReference<>("");
+        try {
+            reportAppWidgetStage("binding_started");
+            if (!manager.bindAppWidgetIdIfAllowed(widgetId, provider.provider)) {
+                Intent bind = new Intent(AppWidgetManager.ACTION_APPWIDGET_BIND)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider);
+                activity.runOnUiThread(() -> activity.startActivityForResult(bind, 0x4f4d42));
+                long deadline = SystemClock.uptimeMillis() + 20_000L;
+                while (SystemClock.uptimeMillis() < deadline
+                        && manager.getAppWidgetInfo(widgetId) == null) {
+                    clickWidgetBindConfirmation(automation);
+                    SystemClock.sleep(250L);
+                }
+            }
+            if (manager.getAppWidgetInfo(widgetId) == null) {
+                Log.w(TAG, "AppWidget confirmation accessibility nodes: "
+                        + describeInteractiveWindows(automation));
+                throw new IllegalStateException("Android did not confirm AppWidget binding.");
+            }
+            reportAppWidgetStage("binding_confirmed");
+
+            activity.runOnUiThread(() -> {
+                try {
+                    FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                            Math.min(dp(activity, 340), Math.max(dp(activity, 220), content.getWidth() - dp(activity, 24))),
+                            dp(activity, 132), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                    params.topMargin = dp(activity, 300);
+                    AppWidgetHostView widgetView = host.createView(
+                            activity, widgetId, manager.getAppWidgetInfo(widgetId));
+                    widgetView.setContentDescription("OmaApp live AppWidgetHostView proof of concept");
+                    content.addView(widgetView, params);
+                    widgetView.bringToFront();
+                    hostViewResult.set(widgetView);
+                } catch (RuntimeException error) {
+                    viewError.set(error.getClass().getSimpleName() + ": " + error.getMessage());
+                }
+            });
+            if (!awaitLatchlessView(hostViewResult, viewError, 10_000L)) {
+                throw new IllegalStateException("Could not attach AppWidgetHostView above Qt Quick: "
+                        + viewError.get());
+            }
+            reportAppWidgetStage("view_attached");
+
+            if (!awaitAccessibilityText(automation, "CI live Android widget", 10_000L)) {
+                throw new IllegalStateException("The real RemoteViews content was not visible over Qt Quick Home.");
+            }
+            reportAppWidgetStage("content_visible");
+            saveAppWidgetScreenshot(activity, automation);
+            reportAppWidgetStage("screenshot_saved");
+
+            AppWidgetHostView widgetView = hostViewResult.get();
+            Rect buttonBounds = new Rect();
+            boolean buttonFound = false;
+            long buttonDeadline = SystemClock.uptimeMillis() + 10_000L;
+            while (!buttonFound && SystemClock.uptimeMillis() < buttonDeadline) {
+                AtomicReference<Boolean> found = new AtomicReference<>(false);
+                runOnMainSync(() -> {
+                    ArrayList<View> matches = new ArrayList<>();
+                    widgetView.findViewsWithText(matches, "Tap widget", View.FIND_VIEWS_WITH_TEXT);
+                    if (!matches.isEmpty()) {
+                        found.set(matches.get(0).getGlobalVisibleRect(buttonBounds));
+                    }
+                });
+                buttonFound = found.get();
+                if (!buttonFound) {
+                    SystemClock.sleep(200L);
+                }
+            }
+            if (!buttonFound || buttonBounds.isEmpty()) {
+                throw new IllegalStateException("The host view did not expose the widget's clickable RemoteViews button.");
+            }
+
+            float x = buttonBounds.centerX();
+            float y = buttonBounds.centerY();
+            long downTime = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(
+                    downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
+            try {
+                sendPointerSync(down);
+            } finally {
+                down.recycle();
+            }
+            MotionEvent up = MotionEvent.obtain(
+                    downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+            try {
+                sendPointerSync(up);
+            } finally {
+                up.recycle();
+            }
+            reportAppWidgetStage("touch_sent");
+            if (!awaitAccessibilityText(automation, "Widget tap received by Android provider", 10_000L)) {
+                throw new IllegalStateException("A touch on AppWidgetHostView did not reach its real provider.");
+            }
+            reportAppWidgetStage("touch_received");
+            Log.i(TAG, "Real AppWidgetHostView RemoteViews overlay and provider click passed.");
+        } finally {
+            AppWidgetHostView widgetView = hostViewResult.get();
+            if (widgetView != null) {
+                activity.runOnUiThread(() -> {
+                    ViewGroup parent = (ViewGroup) widgetView.getParent();
+                    if (parent != null) {
+                        parent.removeView(widgetView);
+                    }
+                });
+            }
+            host.stopListening();
+            host.deleteAppWidgetId(widgetId);
+        }
+    }
+
+    private void reportAppWidgetStage(String stage) {
+        Bundle status = new Bundle();
+        status.putString("stage", "app_widget_" + stage);
+        sendStatus(2, status);
+    }
+
+    /** Exercises real Android NSD discovery/resolution and the saved TLS trust gate. */
+    private JSONObject runDnsSdReconnectSmoke(Context context, int port, int wrongCertPort,
+                                               String fingerprint, String expectedTheme) throws Exception {
+        if (!PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, false)
+                || PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, true)) {
+            throw new IllegalStateException(
+                    "A queued DNS-SD endpoint must bypass duplicate-announcement throttling.");
+        }
+        if (port < 1 || port > 65535 || wrongCertPort < 1 || wrongCertPort > 65535
+                || wrongCertPort == port || fingerprint == null
+                || !fingerprint.matches("[a-fA-F0-9]{64}")) {
+            throw new IllegalArgumentException("Bounded CI endpoints for the trusted and wrong TLS identities are required.");
+        }
+        JSONObject saved = PairingStore.readCredential(context);
+        if (saved == null || !saved.has("token") || !saved.has("fingerprint")) {
+            throw new IllegalStateException("DNS-SD reconnect requires an existing QR-trusted device.");
+        }
+        String originalUrl = saved.optString("serverUrl", "");
+        String pinnedFingerprint = saved.optString("fingerprint", "");
+        String token = saved.optString("token", "");
+        if (!fingerprint.equalsIgnoreCase(pinnedFingerprint)) {
+            throw new IllegalStateException("The DNS-SD fixture does not represent a changed endpoint for the pinned host.");
+        }
+
+        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+        if (launch == null) {
+            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(launch);
+        SystemClock.sleep(2_000L);
+        DeviceDiscovery.start(context);
+
+        TestTlsProxy proxy = new TestTlsProxy(port);
+        try {
+            proxy.start();
+            InetAddress host = proxy.getLocalAddress();
+            int discoveryPort = proxy.getPort();
+            String expectedUrl = "https://" + host.getHostAddress() + ":" + discoveryPort;
+            if (expectedUrl.equals(originalUrl)) {
+                throw new IllegalStateException("The DNS-SD fixture did not change the saved endpoint.");
+            }
+            startDnsSdFixture(context,
+                    "OmaApp-" + fingerprint.substring(0, 12),
+                    host, discoveryPort, "0".repeat(64));
+            try {
+                SystemClock.sleep(3_000L);
+                JSONObject stillSaved = PairingStore.readCredential(context);
+                if (stillSaved == null || !originalUrl.equals(stillSaved.optString("serverUrl", ""))) {
+                    throw new IllegalStateException("An untrusted DNS-SD fingerprint changed the saved endpoint.");
+                }
+            } finally {
+                stopDnsSdFixture(context);
+                SystemClock.sleep(500L);
+            }
+
+            // A spoof can copy both the saved service-name hint and TXT fingerprint. It still
+            // must not move the endpoint unless the actual TLS certificate is the QR-pinned one.
+            TestTlsProxy wrongCertificateProxy = new TestTlsProxy(wrongCertPort);
+            try {
+                wrongCertificateProxy.start();
+                startDnsSdFixture(context,
+                        "OmaApp-" + fingerprint.substring(0, 12),
+                        wrongCertificateProxy.getLocalAddress(), wrongCertificateProxy.getPort(),
+                        fingerprint);
+                long deadline = SystemClock.uptimeMillis() + 6_000L;
+                while (SystemClock.uptimeMillis() < deadline
+                        && (wrongCertificateProxy.getForwardedConnectionCount() == 0
+                        || wrongCertificateProxy.getActiveConnectionCount() != 0)) {
+                    SystemClock.sleep(200L);
+                }
+                if (wrongCertificateProxy.getForwardedConnectionCount() == 0) {
+                    throw new IllegalStateException("Android did not attempt TLS against the spoofed DNS-SD endpoint.");
+                }
+                if (wrongCertificateProxy.getActiveConnectionCount() != 0) {
+                    throw new IllegalStateException("TLS against the spoofed DNS-SD endpoint did not finish within its bounded window.");
+                }
+                long unchangedDeadline = SystemClock.uptimeMillis() + 2_000L;
+                do {
+                    JSONObject stillSaved = PairingStore.readCredential(context);
+                    if (stillSaved == null || !originalUrl.equals(
+                            stillSaved.optString("serverUrl", ""))) {
+                        throw new IllegalStateException("A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.");
+                    }
+                    SystemClock.sleep(200L);
+                } while (SystemClock.uptimeMillis() < unchangedDeadline);
+            } finally {
+                stopDnsSdFixture(context);
+                wrongCertificateProxy.close();
+            }
+            // Keep the valid endpoint outside PairingBridge's 10-second duplicate reconnect window.
+            SystemClock.sleep(10_500L);
+
+            startDnsSdFixture(context,
+                    "OmaApp-" + fingerprint.substring(0, 12),
+                    host, discoveryPort, fingerprint);
+            try {
+                long deadline = SystemClock.uptimeMillis() + 25_000L;
+                JSONObject updated = PairingStore.readCredential(context);
+                while (SystemClock.uptimeMillis() < deadline
+                        && (updated == null
+                        || originalUrl.equals(updated.optString("serverUrl", ""))
+                        || !isPrivateTlsEndpoint(updated.optString("serverUrl", ""), discoveryPort))) {
+                    SystemClock.sleep(200L);
+                    updated = PairingStore.readCredential(context);
+                }
+                if (updated == null
+                        || originalUrl.equals(updated.optString("serverUrl", ""))
+                        || !isPrivateTlsEndpoint(updated.optString("serverUrl", ""), discoveryPort)) {
+                    throw new IllegalStateException("Android NSD did not reconnect to the TLS-pinned endpoint.");
+                }
+                if (!token.equals(updated.optString("token", ""))
+                        || !pinnedFingerprint.equalsIgnoreCase(updated.optString("fingerprint", ""))) {
+                    throw new IllegalStateException("DNS-SD reconnect changed saved pairing trust material.");
+                }
+                Log.i(TAG, "Android NSD resolved the fixture and accepted the endpoint after pinned TLS verification.");
+                // Keep the ephemeral NSD fixture and TLS forwarder alive until the
+                // saved device has applied the post-restart theme snapshot.
+                return awaitTheme(context, expectedTheme, 30_000L, false);
+            } finally {
+                stopDnsSdFixture(context);
+            }
+        } finally {
+            proxy.close();
+        }
+    }
+
+    private static boolean isPrivateTlsEndpoint(String value, int expectedPort) {
+        try {
+            URI endpoint = URI.create(value);
+            if (!"https".equalsIgnoreCase(endpoint.getScheme()) || endpoint.getUserInfo() != null
+                    || endpoint.getQuery() != null || endpoint.getFragment() != null
+                    || (endpoint.getPath() != null && !endpoint.getPath().isEmpty())
+                    || endpoint.getPort() != expectedPort || endpoint.getHost() == null) {
+                return false;
+            }
+            InetAddress address = InetAddress.getByName(endpoint.getHost());
+            return address instanceof Inet4Address && address.isSiteLocalAddress();
+        } catch (IllegalArgumentException | IOException error) {
+            return false;
+        }
+    }
+
+    private static void startDnsSdFixture(Context context, String name, InetAddress host,
+                                          int port, String fingerprint) {
+        Intent serviceIntent = new Intent().setComponent(new ComponentName(
+                "app.omaapp.launcherfixture",
+                "app.omaapp.launcherfixture.NsdFixtureService"));
+        serviceIntent.putExtra("serviceName", name);
+        serviceIntent.putExtra("serviceHost", host.getHostAddress());
+        serviceIntent.putExtra("servicePort", port);
+        serviceIntent.putExtra("fingerprint", fingerprint);
+        Intent fixtureActivity = new Intent().setComponent(new ComponentName(
+                "app.omaapp.launcherfixture",
+                "app.omaapp.launcherfixture.NsdFixtureActivity"));
+        fixtureActivity.putExtras(serviceIntent);
+        fixtureActivity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(fixtureActivity);
+    }
+
+    private static void stopDnsSdFixture(Context context) {
+        Intent fixtureActivity = new Intent().setComponent(new ComponentName(
+                "app.omaapp.launcherfixture",
+                "app.omaapp.launcherfixture.NsdFixtureActivity"));
+        fixtureActivity.setAction("app.omaapp.launcherfixture.STOP_NSD_FIXTURE");
+        fixtureActivity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        context.startActivity(fixtureActivity);
+    }
+
+    /** Transparent TLS tunnel from an emulator-local NSD endpoint to the CI plugin fixture. */
+    private static final class TestTlsProxy implements AutoCloseable {
+        private final InetAddress localAddress;
+        private final int targetPort;
+        private final ServerSocket server;
+        private volatile boolean closed;
+        private volatile Socket clientSocket;
+        private volatile Socket upstreamSocket;
+        private final java.util.concurrent.atomic.AtomicInteger forwardedConnectionCount =
+                new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicInteger activeConnectionCount =
+                new java.util.concurrent.atomic.AtomicInteger();
+        private Thread acceptThread;
+
+        TestTlsProxy(int targetPort) throws Exception {
+            this.targetPort = targetPort;
+            localAddress = findLocalSiteIpv4();
+            server = new ServerSocket();
+            server.setReuseAddress(false);
+            // DNS-SD may resolve the emulator host through another local interface.
+            // Advertise the selected site-local address, but accept on every interface.
+            server.bind(new InetSocketAddress(0), 2);
+            server.setSoTimeout(1_000);
+        }
+
+        InetAddress getLocalAddress() {
+            return localAddress;
+        }
+
+        int getPort() {
+            return server.getLocalPort();
+        }
+
+        int getForwardedConnectionCount() {
+            return forwardedConnectionCount.get();
+        }
+
+        int getActiveConnectionCount() {
+            return activeConnectionCount.get();
+        }
+
+        void start() {
+            acceptThread = new Thread(this::acceptConnections, "OmaApp CI TLS forwarder");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+        }
+
+        private void acceptConnections() {
+            while (!closed) {
+                try {
+                    Socket client = server.accept();
+                    activeConnectionCount.incrementAndGet();
+                    clientSocket = client;
+                    Thread connection = new Thread(() -> forward(client),
+                            "OmaApp CI TLS forwarder connection");
+                    connection.setDaemon(true);
+                    connection.start();
+                } catch (java.net.SocketTimeoutException ignored) {
+                    // Recheck the close flag while the listener remains idle.
+                } catch (IOException error) {
+                    if (!closed) {
+                        Log.w(TAG, "The DNS-SD TLS fixture listener stopped.", error);
+                    }
+                    return;
+                }
+            }
+        }
+
+        private void forward(Socket client) {
+            try (Socket accepted = client) {
+                Socket upstream = new Socket();
+                upstreamSocket = upstream;
+                upstream.connect(new InetSocketAddress("10.0.2.2", targetPort), 5_000);
+                forwardedConnectionCount.incrementAndGet();
+                upstream.setSoTimeout(30_000);
+                accepted.setSoTimeout(30_000);
+                Thread request = new Thread(() -> copyTls(accepted, upstream),
+                        "OmaApp CI TLS request tunnel");
+                Thread response = new Thread(() -> copyTls(upstream, accepted),
+                        "OmaApp CI TLS response tunnel");
+                request.setDaemon(true);
+                response.setDaemon(true);
+                request.start();
+                response.start();
+                request.join(30_000);
+                response.join(30_000);
+            } catch (IOException error) {
+                if (!closed) {
+                    Log.w(TAG, "The DNS-SD TLS fixture connection failed.", error);
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            } finally {
+                Socket upstream = upstreamSocket;
+                if (upstream != null) {
+                    try {
+                        upstream.close();
+                    } catch (IOException ignored) {
+                    }
+                    upstreamSocket = null;
+                }
+                clientSocket = null;
+                activeConnectionCount.decrementAndGet();
+            }
+        }
+
+        private static void copyTls(Socket source, Socket destination) {
+            try {
+                InputStream input = source.getInputStream();
+                OutputStream output = destination.getOutputStream();
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, read);
+                    output.flush();
+                }
+                destination.shutdownOutput();
+            } catch (IOException ignored) {
+                // Closing either side ends the transparent tunnel after the HTTPS response.
+            }
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+            try {
+                server.close();
+            } catch (IOException ignored) {
+            }
+            Socket client = clientSocket;
+            if (client != null) {
+                try {
+                    client.close();
+                } catch (IOException ignored) {
+                }
+            }
+            Socket upstream = upstreamSocket;
+            if (upstream != null) {
+                try {
+                    upstream.close();
+                } catch (IOException ignored) {
+                }
+            }
+            if (acceptThread != null) {
+                try {
+                    acceptThread.join(2_000L);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+
+        private static InetAddress findLocalSiteIpv4() throws Exception {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            if (interfaces == null) {
+                throw new SocketException("Android returned no network interfaces for DNS-SD.");
+            }
+            for (NetworkInterface network : Collections.list(interfaces)) {
+                if (!network.isUp() || network.isLoopback()) {
+                    continue;
+                }
+                Enumeration<InetAddress> addresses = network.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress address = addresses.nextElement();
+                    if (address instanceof Inet4Address && address.isSiteLocalAddress()) {
+                        return address;
+                    }
+                }
+            }
+            throw new SocketException("Android returned no site-local IPv4 interface for DNS-SD.");
+        }
+    }
+
+    private static int dp(Context context, int value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
+    }
+
+    private static void saveAppWidgetScreenshot(Activity activity, UiAutomation automation)
+            throws Exception {
+        saveAppWidgetScreenshot(activity, automation, "omaapp-appwidget-host-poc.png");
+    }
+
+    private static void saveAppWidgetScreenshot(Activity activity, UiAutomation automation,
+                                                String fileName) throws Exception {
+        Bitmap bitmap = automation.takeScreenshot();
+        if (bitmap == null) {
+            throw new IllegalStateException("Android could not capture the live AppWidgetHostView.");
+        }
+        File directory = activity.getExternalFilesDir(null);
+        if (directory == null) {
+            directory = activity.getFilesDir();
+        }
+        if (!directory.isDirectory() && !directory.mkdirs()) {
+            throw new IllegalStateException("Android could not create the AppWidgetHostView screenshot directory.");
+        }
+        File output = new File(directory, fileName);
+        try (FileOutputStream stream = new FileOutputStream(output, false)) {
+            if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                throw new IllegalStateException("Android could not save the AppWidgetHostView screenshot.");
+            }
+            stream.getFD().sync();
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private static boolean clickAccessibleControl(UiAutomation automation, String label) {
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean clicked = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && label.contentEquals(nodeText))
+                        || (nodeDescription != null && label.contentEquals(nodeDescription));
+                if (matches && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
+                        && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                    clicked = true;
+                    break;
+                }
+                if (matches) {
+                    AccessibilityNodeInfo parent = node.getParent();
+                    try {
+                        for (int depth = 0; parent != null && depth < 8; depth++) {
+                            if (parent.isVisibleToUser() && parent.isEnabled()
+                                    && parent.isClickable()
+                                    && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                                clicked = true;
+                                break;
+                            }
+                            AccessibilityNodeInfo ancestor = parent.getParent();
+                            parent.recycle();
+                            parent = ancestor;
+                        }
+                    } finally {
+                        if (parent != null) {
+                            parent.recycle();
+                        }
+                    }
+                    if (clicked) {
+                        break;
+                    }
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return clicked;
+    }
+
+    private static ArrayList<AccessibilityNodeInfo> accessibilityRoots(UiAutomation automation) {
+        ArrayList<AccessibilityNodeInfo> roots = new ArrayList<>();
+        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
+        if (activeRoot != null) {
+            roots.add(activeRoot);
+        }
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows != null) {
+            try {
+                int count = 0;
+                for (AccessibilityWindowInfo window : windows) {
+                    if (count++ >= MAX_ACCESSIBILITY_WINDOWS) {
+                        break;
+                    }
+                    AccessibilityNodeInfo windowRoot = window.getRoot();
+                    if (windowRoot != null && roots.size() < MAX_ACCESSIBILITY_WINDOWS + 1) {
+                        roots.add(windowRoot);
+                    } else if (windowRoot != null) {
+                        windowRoot.recycle();
+                    }
+                }
+            } finally {
+                for (AccessibilityWindowInfo window : windows) {
+                    window.recycle();
+                }
+            }
+        }
+        return roots;
+    }
+
+    private static boolean awaitAccessibilityText(UiAutomation automation, String text,
+            long timeoutMillis) {
+        if (text == null || text.isEmpty() || text.length() > 256 || timeoutMillis < 0) {
+            return false;
+        }
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        do {
+            if (accessibilityTreeContains(automation, text)) {
+                return true;
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                break;
+            }
+            SystemClock.sleep(250L);
+        } while (true);
+        return false;
+    }
+
+    private static boolean accessibilityTreeContains(UiAutomation automation, String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                if ((nodeText != null && nodeText.toString().contains(expected))
+                        || (nodeDescription != null
+                                && nodeDescription.toString().contains(expected))) {
+                    found = true;
+                    break;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
+    }
+
+    private static String describeInteractiveWindows(UiAutomation automation) {
+        StringBuilder summary = new StringBuilder("windows=");
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows == null) {
+            return "windows=unavailable";
+        }
+        try {
+            int count = 0;
+            for (AccessibilityWindowInfo window : windows) {
+                if (count >= MAX_ACCESSIBILITY_WINDOWS) {
+                    summary.append("; …");
+                    break;
+                }
+                Rect bounds = new Rect();
+                window.getBoundsInScreen(bounds);
+                String entry = (count == 0 ? "" : "; ")
+                        + "id=" + window.getId()
+                        + ",type=" + window.getType()
+                        + ",active=" + window.isActive()
+                        + ",focused=" + window.isFocused()
+                        + ",bounds=" + bounds.flattenToString();
+                if (summary.length() + entry.length() > MAX_APPWIDGET_DIAGNOSTIC_CHARS) {
+                    summary.append("…");
+                    break;
+                }
+                summary.append(entry);
+                count++;
+            }
+        } finally {
+            for (AccessibilityWindowInfo window : windows) {
+                window.recycle();
+            }
+        }
+        return summary.toString();
+    }
+
+    private static boolean awaitAccessibleControlClick(UiAutomation automation, String label,
+            long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (clickAccessibleControl(automation, label)) {
+                return true;
+            }
+            SystemClock.sleep(250L);
+        }
+        return false;
+    }
+
+    private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
+        for (String label : new String[] {
+                "Allow", "Add", "Add widget", "Create", "Create widget",
+                "Разрешить", "Добавить", "Создать", "Создать виджет"}) {
+            if (clickAccessibleControl(automation, label)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void runOwlRuntimeSmoke() throws Exception {
@@ -317,6 +1151,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
         Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
     }
 
+    private static boolean awaitLatchlessView(AtomicReference<AppWidgetHostView> view,
+            AtomicReference<String> error, long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (view.get() != null || !error.get().isEmpty()) {
+                return view.get() != null;
+            }
+            SystemClock.sleep(50L);
+        }
+        return false;
+    }
+
     private static void runFileTransferStateSmoke() {
         Bundle savedState = new Bundle();
         FileTransferActivity.savePendingDownloadName(savedState, "fixture-report.txt");
@@ -366,18 +1212,27 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void runConnectivityHeartbeatSmoke(Context context) throws Exception {
+        // The persistent event listener can refresh last_contact while this test
+        // deliberately ages it. Stop that worker for the boundary assertion,
+        // then resume event-driven updates for the rest of the pairing smoke.
+        PairingBridge.setRealtimeSync(context, false);
+        SystemClock.sleep(2_100L);
         android.content.SharedPreferences preferences = context.getSharedPreferences(
                 PairingBridge.PREFERENCES, Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
-        preferences.edit().putString("phase", "connected")
-                .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
-        if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
-            throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
-        }
+        try {
+            preferences.edit().putString("phase", "connected")
+                    .putLong(PairingBridge.LAST_CONTACT_KEY, now - 20_000L).apply();
+            if (!"connected".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+                throw new IllegalStateException("A healthy connection expired before the event refresh interval.");
+            }
 
-        preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
-        if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
-            throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+            preferences.edit().putLong(PairingBridge.LAST_CONTACT_KEY, now - 60_000L).apply();
+            if (!"offline".equals(new JSONObject(PairingBridge.stateJson(context)).optString("phase"))) {
+                throw new IllegalStateException("A stale computer connection was incorrectly left online.");
+            }
+        } finally {
+            PairingBridge.setRealtimeSync(context, true);
         }
 
         reportStage("connectivity_heartbeat_waiting");
@@ -425,33 +1280,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         throw new IllegalStateException("Timed out waiting for theme " + expectedTheme
                 + "; last phase=" + lastState.optString("phase"));
-    }
-
-    private static void awaitPluginRestartReconnect(Context context, String expectedTheme)
-            throws Exception {
-        Intent launch = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
-        if (launch == null) {
-            throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
-        }
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        context.startActivity(launch);
-
-        long deadline = SystemClock.elapsedRealtime() + 90_000L;
-        while (SystemClock.elapsedRealtime() < deadline) {
-            JSONObject state = new JSONObject(PairingBridge.stateJson(context));
-            JSONObject snapshot = state.optJSONObject("snapshot");
-            JSONObject theme = snapshot == null ? null : snapshot.optJSONObject("theme");
-            if ("connected".equals(state.optString("phase"))
-                    && theme != null && expectedTheme.equals(theme.optString("name"))) {
-                if (!state.optBoolean("hasPairedDevice")) {
-                    throw new IllegalStateException("The plugin restart cleared the saved device token.");
-                }
-                Log.i(TAG, "The saved device reconnected after the Omarchy plugin restarted.");
-                return;
-            }
-            SystemClock.sleep(250L);
-        }
-        throw new IllegalStateException("The saved device did not reconnect and receive the post-restart theme.");
     }
 
     private void reportProgress(Context context, String stage) throws Exception {
@@ -820,6 +1648,52 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The bound provider disappeared after its click action.");
         }
 
+        JSONObject originalWidget = requireWidgetRecord(context, expectedProvider);
+        String widgetRecordId = originalWidget.getString("recordId");
+        int widgetId = originalWidget.getInt("id");
+        int resizedWidth = Math.max(originalWidget.getInt("minWidthDp"), 320);
+        int resizedHeight = Math.max(originalWidget.getInt("minHeightDp"), 224);
+        AtomicReference<String> layoutError = new AtomicReference<>("");
+        runOnMainSync(() -> {
+            try {
+                if (!AndroidWidgetHost.moveWidgetRecord(context, widgetRecordId, 1, 0, 2)
+                        || !AndroidWidgetHost.resizeWidgetRecord(context, widgetRecordId,
+                                resizedWidth, resizedHeight)
+                        || !AndroidWidgetHost.moveWidgetRecord(context, widgetRecordId, 0, 0, 2)) {
+                    throw new IllegalStateException("The AppWidgetHost rejected page/order/size updates.");
+                }
+            } catch (Exception error) {
+                layoutError.set(error.getMessage());
+            }
+        });
+        if (!layoutError.get().isEmpty()) {
+            throw new IllegalStateException(layoutError.get());
+        }
+        JSONObject resizedWidget = requireWidgetRecord(context, expectedProvider);
+        if (resizedWidget.getInt("id") != widgetId
+                || !widgetRecordId.equals(resizedWidget.getString("recordId"))
+                || resizedWidget.getInt("page") != 0 || resizedWidget.getInt("order") != 0
+                || resizedWidget.getInt("widthDp") != resizedWidth
+                || resizedWidget.getInt("heightDp") != resizedHeight) {
+            throw new IllegalStateException("The Android widget placement/size did not round-trip: "
+                    + resizedWidget);
+        }
+        awaitWidgetOptions(context, widgetId, resizedWidth, resizedHeight, 10_000L);
+        String widgetBackup = AndroidWidgetHost.exportWidgetBackup(context);
+        JSONObject portableBackup = new JSONObject(widgetBackup);
+        JSONArray portableWidgets = portableBackup.optJSONArray("widgets");
+        if (portableBackup.optInt("schemaVersion", -1) != 1 || portableWidgets == null
+                || portableWidgets.length() != 1 || widgetBackup.contains("\"id\"")) {
+            throw new IllegalStateException("Android widget backup included a binding ID or lost its placement: "
+                    + widgetBackup);
+        }
+        if (!context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE).edit()
+                .putString("json", widgetBackup).commit()) {
+            throw new IllegalStateException("The test could not retain the exported widget backup.");
+        }
+        saveAppWidgetScreenshot(activity, automation, "omaapp-appwidget-home-layout.png");
+        reportStage("android_widget_host_layout_roundtrip_passed");
+
         // QtActivity owns a process-wide native Qt engine; forcing Activity.recreate() tears
         // down that engine and is not a supported way to test Android lifecycle restoration.
         // The next instrumentation stage force-stops this process and verifies a cold restore.
@@ -846,6 +1720,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The Android widget ID/provider record did not survive process death.");
         }
+        String exportedBackup = context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE)
+                .getString("json", "");
+        JSONArray backupWidgets = new JSONObject(exportedBackup).optJSONArray("widgets");
+        JSONObject expectedPlacement = backupWidgets == null ? null : backupWidgets.optJSONObject(0);
+        JSONObject restoredPlacement = requireWidgetRecord(context, expectedProvider);
+        if (expectedPlacement == null
+                || restoredPlacement.optInt("page", -1) != expectedPlacement.optInt("page", -2)
+                || restoredPlacement.optInt("order", -1) != expectedPlacement.optInt("order", -2)
+                || restoredPlacement.optInt("widthDp", -1) != expectedPlacement.optInt("widthDp", -2)
+                || restoredPlacement.optInt("heightDp", -1) != expectedPlacement.optInt("heightDp", -2)
+                || !"ready".equals(restoredPlacement.optString("state"))) {
+            throw new IllegalStateException("The widget page/order/size did not survive process death: "
+                    + restoredPlacement);
+        }
+        awaitWidgetOptions(context, restoredPlacement.getInt("id"),
+                restoredPlacement.getInt("widthDp"), restoredPlacement.getInt("heightDp"),
+                10_000L);
+        reportStage("android_widget_host_geometry_restore_passed");
         UiAutomation automation = getUiAutomation();
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
         if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
@@ -908,7 +1800,133 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Widget ID " + widgetId
                     + " or its saved placement remains after removal.");
         }
+
+        String backup = AndroidWidgetHost.exportWidgetBackup(context);
+        // The removal smoke also covers the empty-list backup below; recreate a real
+        // placement from provider metadata to verify the system-approved rebinding path.
+        if (backup == null || backup.isEmpty()) {
+            throw new IllegalStateException("The widget host could not export a versioned backup.");
+        }
+        JSONObject portableBackup = new JSONObject(backup);
+        JSONArray backupWidgets = portableBackup.optJSONArray("widgets");
+        if (portableBackup.optInt("schemaVersion", -1) != 1
+                || backupWidgets == null || backupWidgets.length() != 0) {
+            throw new IllegalStateException("A removed widget remained in the empty portable backup.");
+        }
+        // Use the layout captured before removal so the restore stage creates a placeholder
+        // without importing the old Android widget ID or its provider grant.
+        String widgetBackup = context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE)
+                .getString("json", "");
+        if (widgetBackup.isEmpty()) {
+            throw new IllegalStateException("The setup stage did not preserve its real widget backup.");
+        }
+        AtomicReference<Boolean> backupRestored = new AtomicReference<>(false);
+        runOnMainSync(() -> backupRestored.set(
+                AndroidWidgetHost.restoreWidgetBackup(context, widgetBackup)));
+        if (!backupRestored.get()) {
+            throw new IllegalStateException("Android widget backup did not restore its placeholder.");
+        }
+        JSONObject placeholder = requireWidgetRecord(context, expectedProvider);
+        String recordId = placeholder.getString("recordId");
+        if (placeholder.getInt("id") != 0
+                || !"needs_rebind".equals(placeholder.getString("state"))) {
+            throw new IllegalStateException("Portable restore imported a binding ID instead of a placeholder: "
+                    + placeholder);
+        }
+        reportStage("android_widget_host_backup_placeholder_passed");
+        awaitAccessibilityText(automation, "Rebind", 15_000L, context);
+        saveAppWidgetScreenshot(activity, automation, "omaapp-appwidget-rebind-placeholder.png");
+        if (!clickAccessibleText(automation, "Rebind")) {
+            throw new IllegalStateException("The restored widget placeholder did not expose Rebind.");
+        }
+        String providerLabel = "OmaApp CI Interactive Widget";
+        long rebindDeadline = SystemClock.elapsedRealtime() + 90_000L;
+        boolean providerChoiceClicked = false;
+        boolean configurationClicked = false;
+        while (SystemClock.elapsedRealtime() < rebindDeadline
+                && (!configurationClicked || !hasBoundWidgetRecord(context, expectedProvider))) {
+            if (!providerChoiceClicked && clickAccessibleText(automation, providerLabel)) {
+                providerChoiceClicked = true;
+            } else if (providerChoiceClicked) {
+                if (!configurationClicked && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
+                    configurationClicked = true;
+                } else {
+                    clickAccessibleText(automation, "Add to home screen", "Add to Home screen",
+                            "Add widget", "Add", "Place widget");
+                }
+            }
+            if (!providerChoiceClicked) {
+                scrollSystemPicker(automation, context);
+            }
+            SystemClock.sleep(500L);
+        }
+        if (!providerChoiceClicked || !configurationClicked
+                || !hasBoundWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("The Android system picker did not complete placeholder rebinding. UI: "
+                    + accessibilityTree(automation));
+        }
+        JSONObject rebound = requireWidgetRecord(context, expectedProvider);
+        int reboundId = rebound.getInt("id");
+        if (!recordId.equals(rebound.getString("recordId")) || reboundId == widgetId
+                || rebound.getInt("page") != placeholder.getInt("page")
+                || rebound.getInt("widthDp") != placeholder.getInt("widthDp")
+                || rebound.getInt("heightDp") != placeholder.getInt("heightDp")) {
+            throw new IllegalStateException("The system rebind did not preserve placement with a fresh ID: "
+                    + rebound);
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_READY", 15_000L, context);
+        if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
+            throw new IllegalStateException("The rebound RemoteViews action was not interactive.");
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
+        AtomicReference<Boolean> reboundRemoved = new AtomicReference<>(false);
+        runOnMainSync(() -> reboundRemoved.set(AndroidWidgetHost.removeWidget(context, reboundId)));
+        if (!reboundRemoved.get() || hasWidgetRecord(context, expectedProvider)
+                || AppWidgetManager.getInstance(context).getAppWidgetInfo(reboundId) != null) {
+            throw new IllegalStateException("The rebound fixture widget was not released cleanly.");
+        }
         reportStage("android_widget_host_id_release_passed");
+    }
+
+    private static JSONObject requireWidgetRecord(Context context, ComponentName provider)
+            throws Exception {
+        JSONArray widgets = new JSONArray(AndroidWidgetHost.listWidgets(context));
+        for (int index = 0; index < widgets.length(); ++index) {
+            JSONObject item = widgets.optJSONObject(index);
+            if (item != null && provider.flattenToString().equals(item.optString("provider"))) {
+                return item;
+            }
+        }
+        throw new IllegalStateException("No saved Android widget record exists for " + provider + ".");
+    }
+
+    private static boolean hasBoundWidgetRecord(Context context, ComponentName provider) {
+        try {
+            JSONObject widget = requireWidgetRecord(context, provider);
+            int id = widget.optInt("id", 0);
+            AppWidgetProviderInfo info = id > 0
+                    ? AppWidgetManager.getInstance(context).getAppWidgetInfo(id) : null;
+            return info != null && provider.equals(info.provider);
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private static void awaitWidgetOptions(Context context, int widgetId, int width, int height,
+                                           long timeoutMillis) throws Exception {
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        Bundle options;
+        do {
+            options = manager.getAppWidgetOptions(widgetId);
+            if (options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, -1) == width
+                    && options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, -1) == height) {
+                return;
+            }
+            SystemClock.sleep(100L);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        throw new IllegalStateException("AppWidget size options did not reach " + width + "x" + height
+                + " dp: " + options);
     }
 
     private static boolean hasWidgetRecord(Context context, ComponentName expectedProvider) {

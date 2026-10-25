@@ -32,6 +32,16 @@ public final class LauncherBridge {
 
     private LauncherBridge() {}
 
+    /** Returns the current Android accessibility text scale from this Activity's resources. */
+    public static float systemFontScale(Context context) {
+        if (context == null) {
+            return 1.0f;
+        }
+        float scale = context.getResources().getConfiguration().fontScale;
+        return !Float.isNaN(scale) && !Float.isInfinite(scale) && scale > 0.0f
+                ? Math.max(0.5f, Math.min(4.0f, scale)) : 1.0f;
+    }
+
     public static String listLauncherApps(Context context) {
         JSONArray result = new JSONArray();
         if (context == null) {

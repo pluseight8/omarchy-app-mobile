@@ -15,13 +15,17 @@ run_stage() {
   local mode="$1"
   local expected="$2"
   local output="$artifacts/$mode-instrumentation.txt"
-  timeout 120s adb shell am instrument -w -e androidWidgetHost "$mode" "$instrumentation" \
+  timeout 180s adb shell am instrument -w -e androidWidgetHost "$mode" "$instrumentation" \
     2>&1 | tee "$output"
   grep -F "INSTRUMENTATION_STATUS: stage=$expected" "$output"
   grep -F 'INSTRUMENTATION_CODE: -1' "$output"
 }
 
 run_stage setup android_widget_host_picker_bind_touch_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_layout_roundtrip_passed' \
+  "$artifacts/setup-instrumentation.txt"
+adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-home-layout.png \
+  "$artifacts/widget-home-layout.png"
 # Some Android builds terminate the target Qt process when the instrumentation
 # runner exits. An empty PID here is a valid already-stopped starting state.
 pid_before="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
@@ -58,5 +62,13 @@ if [[ -z "$pid_after_start" || "$pid_after_start" == "$pid_before" ]]; then
 fi
 printf '%s\n' "$pid_after_start" > "$artifacts/pid-after-relaunch.txt"
 run_stage restore android_widget_host_process_restore_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_geometry_restore_passed' \
+  "$artifacts/restore-instrumentation.txt"
 run_stage remove android_widget_host_id_release_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_placeholder_passed' \
+  "$artifacts/remove-instrumentation.txt"
+adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-rebind-placeholder.png \
+  "$artifacts/widget-rebind-placeholder.png"
+test -s "$artifacts/widget-home-layout.png"
+test -s "$artifacts/widget-rebind-placeholder.png"
 adb uninstall "$package"

@@ -6,14 +6,17 @@ Item {
     id: node
     required property var nodeData
     required property var widgetRoot
-    property var nodeProps: nodeData.props || ({})
-    property var nodeChildren: nodeData.children || []
-    property string nodeType: nodeData.type || ""
-    property real preferredWidth: widgetRoot.scalar(nodeProps.width, 0)
-    property real preferredHeight: widgetRoot.scalar(nodeProps.height, 0)
-    property real nodePadding: widgetRoot.scalar(nodeProps.padding, 0)
-    property color nodeForeground: widgetRoot.colorValue(nodeProps.color, Theme.foreground)
-    property real spacerSize: widgetRoot.scalar(nodeProps.size, 0)
+    property var nodeProps: nodeData && typeof nodeData === "object"
+                             && nodeData.props && typeof nodeData.props === "object"
+                             ? nodeData.props : ({})
+    property var nodeChildren: nodeData && typeof nodeData === "object"
+                               && Array.isArray(nodeData.children) ? nodeData.children : []
+    property string nodeType: nodeData && typeof nodeData === "object" ? String(nodeData.type || "") : ""
+    property real preferredWidth: scalar(nodeProps.width, 0)
+    property real preferredHeight: scalar(nodeProps.height, 0)
+    property real nodePadding: scalar(nodeProps.padding, 0)
+    property color nodeForeground: colorValue(nodeProps.color, Theme.foreground)
+    property real spacerSize: scalar(nodeProps.size, 0)
     property real contentImplicitWidth: nodeType === "Text" ? textContent.implicitWidth
                                        : nodeType === "Row" ? rowContent.implicitWidth
                                        : nodeType === "Flow" ? flowContent.implicitWidth
@@ -26,6 +29,34 @@ Item {
                                         : nodeType === "Grid" ? gridContent.implicitHeight
                                         : nodeType === "Box" ? boxContent.childrenRect.height
                                         : contentLayout.implicitHeight
+
+    // A Loader may briefly create the component while its initial properties
+    // are being applied. Keep those first binding evaluations safe; when the
+    // renderer arrives, these helpers re-evaluate through the widgetRoot
+    // dependency and the fully themed values replace their fallbacks.
+    function scalar(value, fallback) {
+        const renderer = widgetRoot
+        return renderer && typeof renderer.scalar === "function"
+                ? renderer.scalar(value, fallback) : fallback
+    }
+
+    function colorValue(value, fallback) {
+        const renderer = widgetRoot
+        return renderer && typeof renderer.colorValue === "function"
+                ? renderer.colorValue(value, fallback) : fallback
+    }
+
+    function imageSource(value) {
+        const renderer = widgetRoot
+        return renderer && typeof renderer.imageSource === "function"
+                ? renderer.imageSource(value) : ""
+    }
+
+    function paintValue(context, value, fallback) {
+        const renderer = widgetRoot
+        return renderer && typeof renderer.paintValue === "function"
+                ? renderer.paintValue(context, value, fallback) : fallback
+    }
 
     implicitWidth: preferredWidth > 0 ? preferredWidth
                    : nodeType === "Spacer" ? spacerSize
@@ -44,18 +75,19 @@ Item {
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent
-        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        anchors.margins: node.scalar(node.nodeProps.padding, 0)
         visible: node.nodeType === "Column" || node.nodeType === ""
-        spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+        spacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Column" || node.nodeType === "" ? node.nodeChildren : []
+            model: node.nodeType === "Column" || node.nodeType === ""
+                   ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
                 Layout.fillWidth: node.nodeProps.fill === "width" ||
-                                  widgetRoot.scalar(node.nodeProps.weight, 0) > 0
+                                  node.scalar(node.nodeProps.weight, 0) > 0
             }
         }
     }
@@ -63,14 +95,14 @@ Item {
     Item {
         id: boxContent
         anchors.fill: parent
-        anchors.margins: widgetRoot.scalar(node.nodeProps.padding, 0)
+        anchors.margins: node.scalar(node.nodeProps.padding, 0)
         visible: node.nodeType === "Box"
 
         Repeater {
-            model: node.nodeType === "Box" ? node.nodeChildren : []
+            model: node.nodeType === "Box" ? node.nodeChildren.length : 0
             delegate: Item {
                 id: alignedChild
-                required property var modelData
+                required property int index
                 property string alignment: String(node.nodeProps.align || "center")
                 width: child.implicitWidth
                 height: child.implicitHeight
@@ -85,7 +117,7 @@ Item {
                 OwlNodeLoader {
                     id: child
                     anchors.fill: parent
-                    nodeData: alignedChild.modelData
+                    nodeData: node.nodeChildren[alignedChild.index]
                     widgetRoot: node.widgetRoot
                 }
             }
@@ -97,14 +129,14 @@ Item {
         anchors.fill: parent
         anchors.margins: node.nodePadding
         visible: node.nodeType === "Row"
-        spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+        spacing: node.scalar(node.nodeProps.gap, 4)
         Repeater {
-            model: node.nodeType === "Row" ? node.nodeChildren : []
+            model: node.nodeType === "Row" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
-                Layout.fillWidth: widgetRoot.scalar(node.nodeProps.weight, 0) > 0
+                Layout.fillWidth: node.scalar(node.nodeProps.weight, 0) > 0
             }
         }
     }
@@ -114,15 +146,15 @@ Item {
         anchors.fill: parent
         anchors.margins: node.nodePadding
         visible: node.nodeType === "Flow"
-        spacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+        spacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Flow" ? node.nodeChildren : []
+            model: node.nodeType === "Flow" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
+                required property int index
                 width: implicitWidth
                 height: implicitHeight
-                nodeData: modelData
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
             }
         }
@@ -133,15 +165,15 @@ Item {
         anchors.fill: parent
         anchors.margins: node.nodePadding
         visible: node.nodeType === "Grid"
-        columns: Math.max(1, Math.min(8, Math.floor(widgetRoot.scalar(node.nodeProps.columns, 2))))
-        rowSpacing: widgetRoot.scalar(node.nodeProps.gap, 4)
-        columnSpacing: widgetRoot.scalar(node.nodeProps.gap, 4)
+        columns: Math.max(1, Math.min(8, Math.floor(node.scalar(node.nodeProps.columns, 2))))
+        rowSpacing: node.scalar(node.nodeProps.gap, 4)
+        columnSpacing: node.scalar(node.nodeProps.gap, 4)
 
         Repeater {
-            model: node.nodeType === "Grid" ? node.nodeChildren : []
+            model: node.nodeType === "Grid" ? node.nodeChildren.length : 0
             delegate: OwlNodeLoader {
-                required property var modelData
-                nodeData: modelData
+                required property int index
+                nodeData: node.nodeChildren[index]
                 widgetRoot: node.widgetRoot
                 Layout.fillWidth: true
             }
@@ -162,7 +194,7 @@ Item {
         visible: node.nodeType === "Text"
         text: node.nodeProps.text === undefined ? "" : String(node.nodeProps.text)
         color: node.nodeForeground
-        font.pixelSize: Theme.fontSize(widgetRoot.scalar(node.nodeProps.fontSize,
+        font.pixelSize: Theme.fontSize(node.scalar(node.nodeProps.fontSize,
                                           node.nodeProps.style === "huge" ? 34
                                           : node.nodeProps.style === "title" ? 20
                                           : node.nodeProps.style === "small" || node.nodeProps.style === "muted" ? 12 : 15))
@@ -170,9 +202,9 @@ Item {
                      : node.nodeProps.font === "serif" ? "serif"
                      : node.nodeProps.font === "sans" ? "sans-serif" : Theme.fontFamily
         font.weight: node.nodeProps.bold === true ? Font.DemiBold
-                     : widgetRoot.scalar(node.nodeProps.fontWeight, Font.Normal)
+                     : node.scalar(node.nodeProps.fontWeight, Font.Normal)
         font.italic: node.nodeProps.italic === true
-        font.letterSpacing: widgetRoot.scalar(node.nodeProps.letterSpacing, 0)
+        font.letterSpacing: node.scalar(node.nodeProps.letterSpacing, 0)
         horizontalAlignment: node.nodeProps.align === "center"
                              || String(node.nodeProps.align || "").endsWith("Center") ? Text.AlignHCenter
                              : node.nodeProps.align === "end"
@@ -180,7 +212,7 @@ Item {
         verticalAlignment: String(node.nodeProps.align || "").startsWith("top") ? Text.AlignTop
                             : String(node.nodeProps.align || "").startsWith("bottom") ? Text.AlignBottom
                               : Text.AlignVCenter
-        maximumLineCount: Math.max(1, widgetRoot.scalar(node.nodeProps.maxLines, 4))
+        maximumLineCount: Math.max(1, node.scalar(node.nodeProps.maxLines, 4))
         wrapMode: Text.WordWrap
         elide: Text.ElideRight
     }
@@ -188,7 +220,7 @@ Item {
     Image {
         anchors.fill: parent
         visible: node.nodeType === "Image"
-        source: visible ? widgetRoot.imageSource(node.nodeProps.src) : ""
+        source: visible ? node.imageSource(node.nodeProps.src) : ""
         fillMode: node.nodeProps.fit === "cover" ? Image.PreserveAspectCrop
                   : node.nodeProps.fit === "fill" ? Image.Stretch : Image.PreserveAspectFit
         asynchronous: true
@@ -210,20 +242,20 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: node.nodeType === "Progress"
         from: 0
-        to: Math.max(1, widgetRoot.scalar(node.nodeProps.max, 1))
-        value: widgetRoot.scalar(node.nodeProps.value, 0)
+        to: Math.max(1, node.scalar(node.nodeProps.max, 1))
+        value: node.scalar(node.nodeProps.value, 0)
         background: Rectangle {
             implicitHeight: 4
-            color: node.widgetRoot.colorValue(node.nodeProps.track, Theme.surfaceRaised)
+            color: node.colorValue(node.nodeProps.track, Theme.surfaceRaised)
             radius: height / 2
         }
         contentItem: Item {
             Rectangle {
                 width: parent.width * Math.max(0, Math.min(1,
-                    node.widgetRoot.scalar(node.nodeProps.value, 0)
-                    / Math.max(1, node.widgetRoot.scalar(node.nodeProps.max, 1))))
+                    node.scalar(node.nodeProps.value, 0)
+                    / Math.max(1, node.scalar(node.nodeProps.max, 1))))
                 height: parent.height
-                color: node.widgetRoot.colorValue(node.nodeProps.color, Theme.accent)
+                color: node.colorValue(node.nodeProps.color, Theme.accent)
                 radius: height / 2
             }
         }
@@ -239,27 +271,27 @@ Item {
             context.reset()
             context.clearRect(0, 0, width, height)
 
-            const maximum = Math.max(0.000001, widgetRoot.scalar(node.nodeProps.max, 1))
-            const value = Math.max(0, Math.min(maximum, widgetRoot.scalar(node.nodeProps.value, 0)))
+            const maximum = Math.max(0.000001, node.scalar(node.nodeProps.max, 1))
+            const value = Math.max(0, Math.min(maximum, node.scalar(node.nodeProps.value, 0)))
             const ratio = value / maximum
             const thickness = Math.max(0.5, Math.min(
                 Math.min(width, height) / 2,
-                widgetRoot.scalar(node.nodeProps.thickness, 6)))
+                node.scalar(node.nodeProps.thickness, 6)))
             const radius = Math.max(0, Math.min(width, height) / 2 - thickness / 2)
-            const start = (-90 + widgetRoot.scalar(node.nodeProps.start, 0)) * Math.PI / 180
-            const sweep = widgetRoot.scalar(node.nodeProps.sweep, 360) * Math.PI / 180
+            const start = (-90 + node.scalar(node.nodeProps.start, 0)) * Math.PI / 180
+            const sweep = node.scalar(node.nodeProps.sweep, 360) * Math.PI / 180
             const centerX = width / 2
             const centerY = height / 2
 
             context.lineWidth = thickness
             context.lineCap = "round"
-            context.strokeStyle = widgetRoot.colorValue(node.nodeProps.track, Theme.surfaceRaised)
+            context.strokeStyle = node.colorValue(node.nodeProps.track, Theme.surfaceRaised)
             context.beginPath()
             context.arc(centerX, centerY, radius, start, start + sweep, sweep < 0)
             context.stroke()
 
             if (ratio > 0) {
-                context.strokeStyle = widgetRoot.colorValue(node.nodeProps.color, Theme.accent)
+                context.strokeStyle = node.colorValue(node.nodeProps.color, Theme.accent)
                 context.beginPath()
                 context.arc(centerX, centerY, radius, start, start + sweep * ratio, sweep < 0)
                 context.stroke()
@@ -286,21 +318,21 @@ Item {
             if (samples.length === 0)
                 return
 
-            let minimum = widgetRoot.scalar(node.nodeProps.min,
+            let minimum = node.scalar(node.nodeProps.min,
                 samples.reduce(function(a, b) { return Math.min(a, b) }, samples[0]))
-            let maximum = widgetRoot.scalar(node.nodeProps.max,
+            let maximum = node.scalar(node.nodeProps.max,
                 samples.reduce(function(a, b) { return Math.max(a, b) }, samples[0]))
             if (maximum <= minimum) {
                 maximum = minimum + 1
             }
 
-            const inset = Math.max(1, widgetRoot.scalar(node.nodeProps.thickness, 2))
+            const inset = Math.max(1, node.scalar(node.nodeProps.thickness, 2))
             const point = function(index) {
                 const x = samples.length === 1 ? width / 2 : index * width / (samples.length - 1)
                 const fraction = Math.max(0, Math.min(1, (samples[index] - minimum) / (maximum - minimum)))
                 return Qt.point(x, height - inset - fraction * Math.max(0, height - 2 * inset))
             }
-            const color = widgetRoot.colorValue(node.nodeProps.color, Theme.accent)
+            const color = node.colorValue(node.nodeProps.color, Theme.accent)
             context.lineWidth = inset
             context.lineCap = "round"
             context.lineJoin = "round"
@@ -323,7 +355,7 @@ Item {
                 context.closePath()
                 const areaColor = node.nodeProps.area === true
                         ? Qt.rgba(color.r, color.g, color.b, 0.18)
-                        : widgetRoot.colorValue(node.nodeProps.area, Qt.rgba(color.r, color.g, color.b, 0.18))
+                        : node.colorValue(node.nodeProps.area, Qt.rgba(color.r, color.g, color.b, 0.18))
                 context.fillStyle = areaColor
                 context.fill()
                 context.beginPath()
@@ -359,12 +391,12 @@ Item {
                     continue
                 const args = item.args || []
                 const named = item.named || ({})
-                const fallbackColor = widgetRoot.colorValue(named.color, Theme.foreground)
-                const fill = widgetRoot.paintValue(context, named.fill, fallbackColor)
-                const stroke = widgetRoot.paintValue(context, named.stroke, fallbackColor)
+                const fallbackColor = node.colorValue(named.color, Theme.foreground)
+                const fill = node.paintValue(context, named.fill, fallbackColor)
+                const stroke = node.paintValue(context, named.stroke, fallbackColor)
                 context.fillStyle = fill
                 context.strokeStyle = stroke
-                context.lineWidth = Math.max(0.5, widgetRoot.scalar(named.width, 1))
+                context.lineWidth = Math.max(0.5, node.scalar(named.width, 1))
                 context.lineCap = named.cap === "round" ? "round" : named.cap === "square" ? "square" : "butt"
 
                 if (item.op === "rect" && args.length >= 4) {
@@ -372,7 +404,7 @@ Item {
                     const y = Number(args[1])
                     const w = Number(args[2])
                     const h = Number(args[3])
-                    const radius = Math.max(0, Math.min(widgetRoot.scalar(named.radius, 0), Math.abs(w) / 2, Math.abs(h) / 2))
+                    const radius = Math.max(0, Math.min(node.scalar(named.radius, 0), Math.abs(w) / 2, Math.abs(h) / 2))
                     context.beginPath()
                     if (radius === 0) {
                         context.rect(x, y, w, h)
@@ -416,7 +448,7 @@ Item {
                     context.strokeStyle = stroke
                     context.stroke()
                 } else if (item.op === "image" && args.length >= 5) {
-                    const source = widgetRoot.imageSource(args[0])
+                    const source = node.imageSource(args[0])
                     if (!canvas.isImageLoaded(source)
                             && !canvas.isImageLoading(source)
                             && !canvas.isImageError(source)) {
@@ -427,10 +459,10 @@ Item {
                                           Number(args[3]), Number(args[4]))
                 } else if (item.op === "text" && args.length >= 3) {
                     const weight = named.bold === true || Number(named.fontWeight) >= 600 ? "600 " : ""
-                    context.font = weight + String(Theme.fontSize(widgetRoot.scalar(named.size, 14))) + "px monospace"
+                    context.font = weight + String(Theme.fontSize(node.scalar(named.size, 14))) + "px monospace"
                     context.textAlign = named.align === "center" ? "center" : named.align === "end" ? "right" : "left"
                     context.textBaseline = "middle"
-                    context.fillStyle = widgetRoot.paintValue(context, named.color, fallbackColor)
+                    context.fillStyle = node.paintValue(context, named.color, fallbackColor)
                     context.fillText(String(args[0]), Number(args[1]), Number(args[2]))
                 } else if (item.op === "path" && args.length >= 1 && Array.isArray(args[0])) {
                     const points = args[0]
@@ -459,8 +491,8 @@ Item {
                             for (let column = 0; column < pixels.length; ++column) {
                                 const key = pixels.charAt(column)
                                 const pixelColor = palette[key] === undefined
-                                        ? widgetRoot.colorValue(named.fill, fallbackColor)
-                                        : widgetRoot.colorValue(palette[key], fallbackColor)
+                                        ? node.colorValue(named.fill, fallbackColor)
+                                        : node.colorValue(palette[key], fallbackColor)
                                 if (key === ".")
                                     continue
                                 context.fillStyle = pixelColor

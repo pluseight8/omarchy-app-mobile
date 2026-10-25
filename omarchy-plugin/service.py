@@ -20,6 +20,7 @@ import signal
 import socket
 import ssl
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
@@ -731,6 +732,340 @@ def _advertised_ipv4() -> str:
     return ""
 
 
+def _advertised_ipv4_addresses() -> list[str]:
+    """Return reachable RFC1918 IPv4 candidates from all active interfaces."""
+    addresses: list[str] = []
+
+    def add(value: object) -> None:
+        if not isinstance(value, str) or value in addresses:
+            return
+        try:
+            parsed = ipaddress.ip_address(value)
+        except ValueError:
+            return
+        if parsed.version == 4 and any(parsed in network for network in PRIVATE_IPV4_NETWORKS):
+            addresses.append(str(parsed))
+
+    # Keep the address selected by the active route first for QR pairing and
+    # for systems where iproute2 is unavailable.
+    add(_advertised_ipv4())
+    if len(addresses) >= 8:
+        return addresses
+    try:
+        result = subprocess.run(
+            ["ip", "-j", "-4", "addr", "show", "up"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        interfaces = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return addresses
+    if not isinstance(interfaces, list):
+        return addresses
+    for interface in interfaces:
+        if not isinstance(interface, dict) or "UP" not in interface.get("flags", []):
+            continue
+        for info in interface.get("addr_info", []):
+            if not isinstance(info, dict) or info.get("family") != "inet" \
+                    or info.get("scope") != "global":
+                continue
+            add(info.get("local"))
+            if len(addresses) >= 8:
+                return addresses
+    return addresses
+
+
+MDNS_GROUP = "224.0.0.251"
+MDNS_PORT = 5353
+MDNS_SERVICE_TYPE = "_omaapp._tcp.local."
+MAX_MDNS_ADDRESSES = 8
+
+
+def _dns_name_wire(name: str) -> bytes:
+    labels = name.rstrip(".").split(".")
+    encoded = bytearray()
+    for label in labels:
+        value = label.encode("ascii")
+        if not value or len(value) > 63:
+            raise ValueError("invalid DNS-SD label")
+        encoded.append(len(value))
+        encoded.extend(value)
+    encoded.append(0)
+    return bytes(encoded)
+
+
+def _dns_read_name(packet: bytes, offset: int) -> tuple[str, int]:
+    labels: list[str] = []
+    cursor = offset
+    resume_offset: int | None = None
+    visited: set[int] = set()
+    while cursor < len(packet):
+        size = packet[cursor]
+        if size & 0xC0 == 0xC0:
+            if cursor + 1 >= len(packet):
+                raise ValueError("truncated DNS name pointer")
+            pointer = ((size & 0x3F) << 8) | packet[cursor + 1]
+            if pointer >= len(packet) or pointer in visited:
+                raise ValueError("invalid DNS name pointer")
+            visited.add(pointer)
+            if resume_offset is None:
+                resume_offset = cursor + 2
+            cursor = pointer
+            continue
+        if size & 0xC0 or size > 63:
+            raise ValueError("invalid DNS label size")
+        cursor += 1
+        if size == 0:
+            return ".".join(labels).lower() + ".", resume_offset or cursor
+        if cursor + size > len(packet):
+            raise ValueError("truncated DNS label")
+        labels.append(packet[cursor:cursor + size].decode("ascii").lower())
+        cursor += size
+    raise ValueError("unterminated DNS name")
+
+
+def _mdns_questions_match(packet: bytes, instance_name: str, target_name: str) -> bool:
+    try:
+        if len(packet) < 12:
+            return False
+        _transaction, flags, questions, _answers, _authorities, _additionals = \
+            struct.unpack_from("!HHHHHH", packet)
+        if flags & 0x8000 or questions < 1:
+            return False
+        offset = 12
+        names = {MDNS_SERVICE_TYPE, instance_name.lower(), target_name.lower(),
+                 "_services._dns-sd._udp.local."}
+        for _ in range(min(questions, 32)):
+            name, offset = _dns_read_name(packet, offset)
+            if offset + 4 > len(packet):
+                return False
+            offset += 4
+            if name in names:
+                return True
+    except (UnicodeDecodeError, ValueError, struct.error):
+        return False
+    return False
+
+
+def _mdns_announcement(instance_name: str, target_name: str, address: str | list[str],
+                       port: int, fingerprint: str, ttl: int = 120) -> bytes:
+    raw_addresses = [address] if isinstance(address, str) else address
+    address_bytes: list[bytes] = []
+    for value in raw_addresses:
+        parsed = ipaddress.ip_address(value)
+        if parsed.version != 4:
+            raise ValueError("invalid OmaApp DNS-SD service data")
+        if parsed.packed not in address_bytes:
+            address_bytes.append(parsed.packed)
+    if not address_bytes or len(address_bytes) > MAX_MDNS_ADDRESSES \
+            or not 1 <= port <= 65535 or not 0 <= ttl <= 4500 \
+            or not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
+        raise ValueError("invalid OmaApp DNS-SD service data")
+
+    def record(name: str, record_type: int, data: bytes, cache_flush: bool = True) -> bytes:
+        rr_class = 0x8001 if cache_flush else 1
+        return (_dns_name_wire(name) + struct.pack("!HHIH", record_type, rr_class, ttl, len(data))
+                + data)
+
+    ptr = record(MDNS_SERVICE_TYPE, 12, _dns_name_wire(instance_name), cache_flush=False)
+    srv = record(instance_name, 33, struct.pack("!HHH", 0, 0, port) + _dns_name_wire(target_name))
+    txt_fields = [f"fingerprint={fingerprint}".encode("ascii"), b"protocol=1"]
+    txt_data = b"".join(bytes([len(field)]) + field for field in txt_fields)
+    txt = record(instance_name, 16, txt_data)
+    address_records = b"".join(record(target_name, 1, packed) for packed in address_bytes)
+    header = struct.pack("!HHHHHH", 0, 0x8400, 0, 3 + len(address_bytes), 0, 0)
+    return header + ptr + srv + txt + address_records
+
+
+class MdnsAdvertiser:
+    """Small DNS-SD responder for the pinned OmaApp service; it advertises no credentials."""
+
+    def __init__(self, data_provider, *, address_provider=None,
+                 multicast_group: str = MDNS_GROUP,
+                 multicast_port: int = MDNS_PORT,
+                 multicast_interface: str = "0.0.0.0"):
+        group = ipaddress.ip_address(multicast_group)
+        interface = ipaddress.ip_address(multicast_interface)
+        if (group.version != 4 or not group.is_multicast or not 1 <= multicast_port <= 65535
+                or interface.version != 4):
+            raise ValueError("invalid OmaApp multicast destination")
+        self.data_provider = data_provider
+        self.address_provider = address_provider or (lambda: [self.data_provider()[0]])
+        self.multicast_group = str(group)
+        self.multicast_port = multicast_port
+        self.multicast_interface = str(interface)
+        self.stop_event = threading.Event()
+        self.socket: socket.socket | None = None
+        self.thread: threading.Thread | None = None
+        self.instance_name = ""
+        self.target_name = ""
+        self.last_addresses: list[str] = []
+        self.last_port = 0
+        self.last_fingerprint = ""
+        self.announce_lock = threading.Lock()
+        self.memberships: set[str] = set()
+
+    def start(self) -> None:
+        address, port, fingerprint = self.data_provider()
+        suffix = fingerprint[:12]
+        self.instance_name = f"OmaApp-{suffix}.{MDNS_SERVICE_TYPE}"
+        self.target_name = f"omaapp-{suffix}.local."
+        addresses = self._current_addresses()
+        # Do not seed DNS-SD with an old route-selected IP when no active
+        # private IPv4 interface is available.
+        _mdns_announcement(self.instance_name, self.target_name, addresses, port, fingerprint)
+
+        listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        try:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(("", self.multicast_port))
+            self._refresh_memberships(listener, addresses)
+            listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+            listener.settimeout(1.0)
+        except OSError:
+            listener.close()
+            self.memberships.clear()
+            raise
+        self.socket = listener
+        self.thread = threading.Thread(target=self._serve, name="omaapp-mdns", daemon=True)
+        self.thread.start()
+        self.announce()
+
+    def announce(self, goodbye: bool = False) -> None:
+        with self.announce_lock:
+            listener = self.socket
+            if listener is None:
+                return
+            if goodbye:
+                self._send_announcement(listener, self.last_addresses, self.last_port,
+                                        self.last_fingerprint, ttl=0)
+                self.last_addresses = []
+                self.last_port = 0
+                self.last_fingerprint = ""
+                return
+            try:
+                _address, port, fingerprint = self.data_provider()
+                addresses = self._current_addresses()
+                changed = (set(addresses) != set(self.last_addresses)
+                           or port != self.last_port
+                           or fingerprint != self.last_fingerprint)
+                if self.last_addresses and changed:
+                    # Expire the previous RRset before joining the new routes,
+                    # including when all active interfaces have disappeared.
+                    self._send_announcement(listener, self.last_addresses, self.last_port,
+                                            self.last_fingerprint, ttl=0)
+                    self.last_addresses = []
+                    self.last_port = 0
+                    self.last_fingerprint = ""
+                self._refresh_memberships(listener, addresses)
+                self._send_announcement(listener, addresses, port, fingerprint, ttl=120)
+                self.last_addresses = list(addresses)
+                self.last_port = port
+                self.last_fingerprint = fingerprint
+            except (OSError, ValueError):
+                return
+
+    def _send_announcement(self, listener: socket.socket, addresses: list[str],
+                           port: int, fingerprint: str, *, ttl: int) -> None:
+        if not addresses or port < 1 or not fingerprint:
+            return
+        packet = _mdns_announcement(self.instance_name, self.target_name, addresses,
+                                    port, fingerprint, ttl=ttl)
+        interfaces = [self.multicast_interface] if self.multicast_interface != "0.0.0.0" \
+            else addresses
+        sent = 0
+        for interface in interfaces:
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                    socket.inet_aton(interface))
+                listener.sendto(packet, (self.multicast_group, self.multicast_port))
+                sent += 1
+            except OSError:
+                continue
+        if sent == 0 and ttl != 0:
+            raise OSError("DNS-SD announcement failed on all active interfaces")
+
+    def _current_addresses(self) -> list[str]:
+        try:
+            addresses = self.address_provider()
+        except (OSError, ValueError, TypeError):
+            addresses = []
+        if isinstance(addresses, str):
+            addresses = [addresses]
+        result = []
+        for address in addresses or []:
+            if not isinstance(address, str) or address in result:
+                continue
+            try:
+                parsed = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            if parsed.version == 4 and any(
+                parsed in network for network in PRIVATE_IPV4_NETWORKS
+            ):
+                result.append(str(parsed))
+            if len(result) >= MAX_MDNS_ADDRESSES:
+                break
+        return result
+
+    def _refresh_memberships(self, listener: socket.socket, addresses: list[str]) -> None:
+        desired = {self.multicast_interface} if self.multicast_interface != "0.0.0.0" \
+            else set(addresses)
+        for interface in self.memberships - desired:
+            membership = socket.inet_aton(self.multicast_group) + socket.inet_aton(interface)
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, membership)
+            except OSError:
+                pass
+            self.memberships.discard(interface)
+        join_error: OSError | None = None
+        for interface in desired - self.memberships:
+            membership = socket.inet_aton(self.multicast_group) + socket.inet_aton(interface)
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+                self.memberships.add(interface)
+            except OSError as error:
+                join_error = error
+        if not self.memberships:
+            if join_error is not None:
+                raise join_error
+            raise OSError("no active IPv4 interface is available for DNS-SD")
+
+    def _serve(self) -> None:
+        next_announce = time.monotonic() + 60.0
+        while not self.stop_event.is_set():
+            listener = self.socket
+            if listener is None:
+                return
+            try:
+                packet, _source = listener.recvfrom(4096)
+            except socket.timeout:
+                if time.monotonic() >= next_announce:
+                    self.announce()
+                    next_announce = time.monotonic() + 60.0
+                continue
+            except OSError:
+                return
+            if _mdns_questions_match(packet, self.instance_name, self.target_name):
+                self.announce()
+                next_announce = time.monotonic() + 60.0
+
+    def stop(self) -> None:
+        self.announce(goodbye=True)
+        self.stop_event.set()
+        listener, self.socket = self.socket, None
+        if listener is not None:
+            try:
+                listener.close()
+            except OSError:
+                pass
+        self.memberships.clear()
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=2)
+
+
 class ServiceState:
     def __init__(self, data_dir: Path, bind: str = "0.0.0.0", port: int = DEFAULT_PORT):
         self.data_dir = data_dir
@@ -750,6 +1085,7 @@ class ServiceState:
         self.lock = threading.RLock()
         self.server: http.server.ThreadingHTTPServer | None = None
         self.server_thread: threading.Thread | None = None
+        self.mdns_advertiser: MdnsAdvertiser | None = None
         self.advertised_address = ""
         self.wallpaper_cache: tuple[int, Path | None] | None = None
         self.event_hub = EventHub()
@@ -829,7 +1165,35 @@ class ServiceState:
             self.server_thread.start()
             self.port = int(server.server_address[1])
             self.start_monitors()
+            if self.bind == "0.0.0.0" and self.refresh_advertised_address():
+                try:
+                    self.mdns_advertiser = MdnsAdvertiser(
+                        self._mdns_data, address_provider=_advertised_ipv4_addresses)
+                    self.mdns_advertiser.start()
+                except (OSError, ValueError) as error:
+                    if self.mdns_advertiser is not None:
+                        self.mdns_advertiser.stop()
+                    self.mdns_advertiser = None
+                    print(f"OmaApp mDNS discovery unavailable: {type(error).__name__}",
+                          file=sys.stderr, flush=True)
             return self.port
+
+    def _mdns_data(self) -> tuple[str, int, str]:
+        address = self.refresh_advertised_address()
+        with self.lock:
+            return self.advertised_address, self.port, self.fingerprint
+
+    def refresh_advertised_address(self) -> str:
+        address = _advertised_ipv4() if self.bind == "0.0.0.0" else self.bind
+        try:
+            is_local = bool(address) and any(ipaddress.ip_address(address) in network
+                                             for network in PRIVATE_IPV4_NETWORKS)
+        except ValueError:
+            is_local = False
+        with self.lock:
+            if is_local:
+                self.advertised_address = address
+            return self.advertised_address
 
     def start_monitors(self) -> None:
         if any(thread.is_alive() for thread in self.monitor_threads):
@@ -938,6 +1302,9 @@ class ServiceState:
         with self.lock:
             server, self.server = self.server, None
             self.server_thread = None
+            advertiser, self.mdns_advertiser = self.mdns_advertiser, None
+        if advertiser is not None:
+            advertiser.stop()
         self.stop_monitors()
         if server is not None:
             server.shutdown()
@@ -994,6 +1361,10 @@ class ServiceState:
 
     def begin_pairing(self) -> dict[str, Any]:
         self.start_server()
+        self.refresh_advertised_address()
+        advertiser = self.mdns_advertiser
+        if advertiser is not None:
+            advertiser.announce()
         with self.lock:
             address = self.advertised_address
             self.pair_secret = secrets.token_urlsafe(32)
@@ -1253,13 +1624,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _reply(self, status: int, body: dict[str, Any], content_type: str = "application/json") -> None:
         encoded = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", content_type + "; charset=utf-8")
-        self.send_header("Content-Length", str(len(encoded)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type + "; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(encoded)
+        except OSError:
+            # A phone may cancel a request while leaving a page or stopping discovery.
+            # Once the peer closes its TLS socket, there is nothing useful to log or retry.
+            return
 
     def _read_json(self, maximum: int = MAX_JSON_BYTES) -> dict[str, Any] | None:
         try:
@@ -1395,7 +1771,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if revision > current_revision:
                 self._reply(400, {"error": "invalid_revision"})
                 return
-            self._reply(200, self.service_state.event_hub.wait_after(revision))
+            try:
+                self._reply(200, self.service_state.event_hub.wait_after(revision))
+            except OSError:
+                # A phone may cancel a pending long poll while reconnecting or
+                # stopping its event listener. The client will retry with the
+                # same revision, so a broken response socket is expected here.
+                return
             return
         if path.startswith("/v1/pair/status/"):
             request_id = path.removeprefix("/v1/pair/status/")

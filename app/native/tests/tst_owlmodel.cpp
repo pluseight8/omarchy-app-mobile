@@ -1,6 +1,7 @@
 #include "../OwlModel.h"
 
 #include <QCoreApplication>
+#include <QSignalSpy>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -10,6 +11,16 @@ class OwlModelTest : public QObject
     Q_OBJECT
 
 private slots:
+    void languageChangeRefreshesLocalizedStoreData()
+    {
+        OwlModel model;
+        QSignalSpy changed(&model, &OwlModel::widgetsChanged);
+
+        model.refreshLocalizedText();
+
+        QCOMPARE(changed.size(), 1);
+    }
+
     void initTestCase()
     {
         QSettings::setDefaultFormat(QSettings::IniFormat);

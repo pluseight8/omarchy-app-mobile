@@ -52,6 +52,16 @@ void PairingModel::startScan()
 #endif
 }
 
+void PairingModel::retry()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/PairingBridge", "retry", "(Landroid/content/Context;)V",
+        context.object<jobject>());
+#endif
+}
+
 void PairingModel::approveCandidate()
 {
     if (m_candidateQr.isEmpty())
