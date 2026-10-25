@@ -1680,7 +1680,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         || !AndroidWidgetHost.resizeWidgetRecord(context, widgetRecordId,
                                 resizedWidth, resizedHeight)
                         || !AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
-                                48, 72, 2)
+                                0, 72, 2)
                         || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
                                 25, 72, 2)
                         || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
@@ -1698,7 +1698,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (resizedWidget.getInt("id") != widgetId
                 || !widgetRecordId.equals(resizedWidget.getString("recordId"))
                 || resizedWidget.getInt("page") != 0 || resizedWidget.getInt("order") != 0
-                || resizedWidget.getInt("xDp") != 48 || resizedWidget.getInt("yDp") != 72
+                || resizedWidget.getInt("xDp") != 0 || resizedWidget.getInt("yDp") != 72
                 || resizedWidget.getInt("widthDp") != resizedWidth
                 || resizedWidget.getInt("heightDp") != resizedHeight) {
             throw new IllegalStateException("The Android widget placement/size did not round-trip: "
@@ -1708,20 +1708,21 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // The direct host mutation above notifies Qt asynchronously. Wait until the Home
         // accessibility bridge reports the durable position before clicking a control whose
         // target is derived from the QML delegate's modelData.
-        awaitAccessibilityText(automation, "Current Android widget position: 48, 72 dp",
+        // The fixture is wider than the compact emulator viewport, so QML correctly clamps x to 0.
+        awaitAccessibilityText(automation, "Current Android widget position: 0, 72 dp",
                 10_000L, context);
         awaitAccessibilityText(automation, "Move Android widget down", 20_000L, context);
         if (!clickAccessibleText(automation, "Move Android widget down")) {
             throw new IllegalStateException("The Android widget grid movement control was not accessible.");
         }
-        if (!awaitWidgetPosition(context, expectedProvider, 0, 48, 96, 10_000L)) {
+        if (!awaitWidgetPosition(context, expectedProvider, 0, 0, 96, 10_000L)) {
             throw new IllegalStateException("The Home screen could not save an accessible grid move. Saved widget: "
                     + requireWidgetRecord(context, expectedProvider) + "; visible accessibility tree: "
                     + accessibilityTree(automation));
         }
         awaitAccessibilityText(automation, "Undo Android widget layout change", 15_000L, context);
         if (!clickAccessibleText(automation, "Undo Android widget layout change")
-                || !awaitWidgetPosition(context, expectedProvider, 0, 48, 72, 10_000L)) {
+                || !awaitWidgetPosition(context, expectedProvider, 0, 0, 72, 10_000L)) {
             throw new IllegalStateException("The Home screen could not undo the Android widget grid move.");
         }
         reportStage("android_widget_host_qml_controls_passed");

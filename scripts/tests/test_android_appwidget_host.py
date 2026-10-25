@@ -134,7 +134,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             qml,
         )
         self.assertIn(
-            'awaitAccessibilityText(automation, "Current Android widget position: 48, 72 dp"',
+            'awaitAccessibilityText(automation, "Current Android widget position: 0, 72 dp"',
             instrumentation,
         )
         self.assertIn('"; visible accessibility tree: "', instrumentation)
