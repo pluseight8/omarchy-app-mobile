@@ -33,7 +33,7 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 - CI #228 attempt 1 showed a temporary black HOME screen. Its log showed the app startup marker but not confirmed Qt graphics initialization, with no Android fatal exception or ANR. The retry and [CI #229](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40138946664) both passed all four jobs: desktop, arm64, OpenGL and Vulkan. The cause remains unknown. A subsequent HOME timeout now records boot state, PID, Activity/Window dumps, screenshot, accessibility hierarchy, and all-buffer logcat, then classifies the observed startup stage.
 - Earlier CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Its renderer screenshots remain checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
-- CI #229 predates the current PR revision; the changes on this branch still need their own CI run. This workspace lacks CMake, Qt ShaderTools, a JDK, and an emulator, so no local APK build or Android emulator run is claimed. No Pixel 10 / GrapheneOS device is attached.
+- CI #231 passed desktop, arm64, OpenGL, and Vulkan for the current code. Its predecessor #230 exposed an order-dependent set assertion, corrected in the follow-up commit. This workspace lacks CMake, Qt ShaderTools, a JDK, and an emulator, so no local APK build or Android emulator run is claimed. No Pixel 10 / GrapheneOS device is attached.
 
 ## Remaining work
 

@@ -30,7 +30,7 @@
 
 - `python3 -m unittest discover -s scripts/tests -q`: 129 tests pass.
 - `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
-- Shell syntax checks and `git diff --check` pass. Qt `qmllint` and a full Android/desktop build are unavailable locally; CI #229 passed the previous PR revision on desktop, arm64, OpenGL, and Vulkan, and the new commit needs a fresh CI run.
+- Shell syntax checks and `git diff --check` pass. Qt `qmllint` and a full Android/desktop build are unavailable locally. CI #231 passed desktop, arm64, OpenGL, and Vulkan; CI #230 caught a set-order-dependent test assertion that was corrected in the latest commit.
 - CI #228 attempt 1 produced a transient black HOME screen. Its log showed OmaApp startup activity but did not confirm Qt graphics initialization; no Android fatal exception or ANR was present. The retry and CI #229 both passed OpenGL and Vulkan. Root cause remains unconfirmed; the HOME timeout now records diagnostics to distinguish emulator boot, process, Android, QML, graphics, and UI-readiness stages.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
