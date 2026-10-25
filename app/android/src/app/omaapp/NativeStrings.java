@@ -44,7 +44,7 @@ public final class NativeStrings {
             return "";
         }
         String translated = get(message);
-        if (!translated.equals(message)) {
+        if (!translated.equals(message) || isKnownFeatureMessage(message)) {
             return translated;
         }
         Matcher match = SENDING_FEATURE_FILE.matcher(message);
@@ -71,8 +71,12 @@ public final class NativeStrings {
             return get("Computer file transfer failed. Check pairing and the network.");
         }
         String translated = get(message);
-        if (!translated.equals(message)) {
+        if (!translated.equals(message) || isKnownFileTransferError(message)) {
             return translated;
+        }
+        Matcher featureFailure = FAILED_FEATURE_REQUEST.matcher(message);
+        if (featureFailure.matches()) {
+            return format("Computer feature request failed (HTTP %1).", featureFailure.group(1));
         }
         Matcher match = REJECTED_FILE_REQUEST.matcher(message);
         if (match.matches()) {
@@ -102,5 +106,44 @@ public final class NativeStrings {
             return format("Saved %1 to the selected phone location.", match.group(1));
         }
         return fileTransferError(message);
+    }
+
+    private static boolean isKnownFeatureMessage(String message) {
+        switch (message) {
+            case "There is no text in the phone clipboard.":
+            case "Clipboard text is empty or exceeds 64 KiB.":
+            case "Could not read phone clipboard text.":
+            case "Pair OmaApp with a computer first.":
+            case "Reading computer clipboard…":
+            case "Android clipboard is unavailable.":
+            case "Computer text copied to the phone clipboard.":
+            case "This media action is not allowed.":
+            case "This computer command is not configured.":
+            case "The selected file name or size is not supported.":
+            case "The computer clipboard is unavailable in this session.":
+            case "Enable this feature for this phone in the Omarchy plugin permissions.":
+            case "Computer feature request failed. Check the local network and plugin permissions.":
+            case "Sending command to the computer…":
+            case "Phone clipboard sent to the computer.":
+            case "Computer action completed.":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isKnownFileTransferError(String message) {
+        switch (message) {
+            case "Pair OmaApp with a computer first.":
+            case "The selected file name or size is not supported.":
+            case "Android could not open this file.":
+            case "The selected file changed while sending.":
+            case "The computer clipboard is unavailable in this session.":
+            case "Enable this feature for this phone in the Omarchy plugin permissions.":
+            case "Computer file transfer failed. Check pairing and the network.":
+                return true;
+            default:
+                return false;
+        }
     }
 }

@@ -76,6 +76,27 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn("trap restore_android_font_scale EXIT", smoke)
         self.assertIn("grep -F 'Binding loop detected'", smoke)
 
+    def test_native_android_messages_survive_both_english_and_russian(self):
+        root = Path(__file__).resolve().parents[2]
+        strings = (root / "app/android/src/app/omaapp/NativeStrings.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            root / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (root / "scripts/ci/android_translation_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("isKnownFeatureMessage(message)", strings)
+        self.assertIn("isKnownFileTransferError(message)", strings)
+        self.assertIn("FAILED_FEATURE_REQUEST.matcher(message)", strings)
+        self.assertIn('testArguments.getString("nativeEnglishStrings")', instrumentation)
+        self.assertIn("Computer action completed.", instrumentation)
+        self.assertIn("Enable this feature for this phone in the Omarchy plugin permissions.", instrumentation)
+        self.assertIn("NativeStrings.fileTransferError(permission)", instrumentation)
+        self.assertIn("nativeEnglishStrings true", smoke)
+        self.assertIn("stage=native_english_strings_passed", smoke)
+
     def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
             encoding="utf-8"

@@ -109,7 +109,41 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     throw new IllegalStateException("Native Android UI did not use the Russian Qt catalog: "
                             + translated);
                 }
+                if (!"Действие на компьютере выполнено.".equals(
+                        NativeStrings.featureMessage("Computer action completed."))) {
+                    throw new IllegalStateException("Russian UI lost a recognized feature success message.");
+                }
+                if (!"Разрешите эту функцию для телефона в настройках плагина Omarchy.".equals(
+                        NativeStrings.fileTransferError(
+                                "Enable this feature for this phone in the Omarchy plugin permissions."))) {
+                    throw new IllegalStateException("Russian file UI lost the plugin permission guidance.");
+                }
                 result.putString("stage", "native_qt_translations_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if (Boolean.parseBoolean(testArguments.getString("nativeEnglishStrings"))) {
+                Intent launch = context.getPackageManager().getLaunchIntentForPackage(
+                        context.getPackageName());
+                if (launch == null) {
+                    throw new IllegalStateException("OmaApp does not expose its normal launcher activity.");
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                context.startActivity(launch);
+                SystemClock.sleep(2_000L);
+                String success = "Computer action completed.";
+                String permission = "Enable this feature for this phone in the Omarchy plugin permissions.";
+                if (!success.equals(NativeStrings.featureMessage(success))
+                        || !permission.equals(NativeStrings.featureMessage(permission))
+                        || !permission.equals(NativeStrings.fileTransferError(permission))
+                        || !"Computer feature request failed (HTTP 403).".equals(
+                                NativeStrings.fileTransferError("Computer feature request failed (HTTP 403)."))
+                        || !"Computer file transfer failed. Check pairing and the network.".equals(
+                                NativeStrings.fileTransferError("unrecognized server detail"))) {
+                    throw new IllegalStateException("English Android UI did not preserve known native messages or contain unknown errors.");
+                }
+                result.putString("stage", "native_english_strings_passed");
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;

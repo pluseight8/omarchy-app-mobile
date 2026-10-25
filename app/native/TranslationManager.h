@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include <memory>
 
@@ -20,6 +21,9 @@ public:
 
     QString language() const;
     QString languagePreference() const;
+
+    static QString languageForSystemPreferences(const QStringList &uiLanguages,
+                                               const QString &systemLocaleName);
 
     Q_INVOKABLE bool setLanguage(const QString &preference);
 

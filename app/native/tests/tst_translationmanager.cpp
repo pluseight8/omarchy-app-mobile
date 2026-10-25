@@ -39,6 +39,22 @@ private slots:
                 || translations.language() == QStringLiteral("ru"));
     }
 
+    void selectsTheFirstSupportedSystemLanguageInPreferenceOrder()
+    {
+        QCOMPARE(TranslationManager::languageForSystemPreferences(
+                     {QStringLiteral("en-US"), QStringLiteral("ru-RU")}, QStringLiteral("ru_RU")),
+                 QStringLiteral("en"));
+        QCOMPARE(TranslationManager::languageForSystemPreferences(
+                     {QStringLiteral("de-DE"), QStringLiteral("ru-RU"), QStringLiteral("en-US")},
+                     QStringLiteral("en_US")),
+                 QStringLiteral("ru"));
+        QCOMPARE(TranslationManager::languageForSystemPreferences(
+                     {}, QStringLiteral("ru_RU")), QStringLiteral("ru"));
+        QCOMPARE(TranslationManager::languageForSystemPreferences(
+                     {QStringLiteral("de-DE")}, QStringLiteral("en_US")),
+                 QStringLiteral("en"));
+    }
+
     void switchesQmlAndPersistsPreference()
     {
         QSettings settings;

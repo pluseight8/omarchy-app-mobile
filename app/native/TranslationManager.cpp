@@ -38,12 +38,20 @@ QString TranslationManager::languagePreference() const
 
 QString TranslationManager::systemLanguage()
 {
-    const auto uiLanguages = QLocale::system().uiLanguages();
+    return languageForSystemPreferences(QLocale::system().uiLanguages(),
+                                       QLocale::system().name());
+}
+
+QString TranslationManager::languageForSystemPreferences(const QStringList &uiLanguages,
+                                                         const QString &systemLocaleName)
+{
     for (const QString &locale : uiLanguages) {
         if (locale.startsWith(QStringLiteral("ru"), Qt::CaseInsensitive))
             return QStringLiteral("ru");
+        if (locale.startsWith(QStringLiteral("en"), Qt::CaseInsensitive))
+            return QStringLiteral("en");
     }
-    return QLocale::system().name().startsWith(QStringLiteral("ru"), Qt::CaseInsensitive)
+    return systemLocaleName.startsWith(QStringLiteral("ru"), Qt::CaseInsensitive)
         ? QStringLiteral("ru")
         : QStringLiteral("en");
 }

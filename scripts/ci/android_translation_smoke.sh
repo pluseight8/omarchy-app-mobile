@@ -153,6 +153,10 @@ python3 scripts/ci/check_android_navigation_layout.py \
   Home Apps Devices Style Settings
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
+native_english_output="$(adb shell am instrument -w -e nativeEnglishStrings true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+printf '%s\n' "$native_english_output"
+grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
+  <<< "$native_english_output"
 
 # Exercise rapid locale changes without recreating the Activity. This catches
 # stale OWL labels and one-way translation bindings after several retranslate() calls.
