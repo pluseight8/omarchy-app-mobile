@@ -72,7 +72,6 @@ public final class PairingBridge {
     private static volatile boolean cancelRequested;
     private static long lastRefreshRequested;
     private static long lastDiscoveredRefresh;
-    private static boolean discoveredRetryQueued;
     private static List<String> queuedDiscoveryAddresses;
     private static int queuedDiscoveryPort;
     private static String queuedDiscoveryFingerprint;
@@ -321,9 +320,9 @@ public final class PairingBridge {
                 }
             } finally {
                 synchronized (OPERATION_LOCK) {
-                    operationRunning = false;
                     cancelRequested = false;
                 }
+                finishOperation(appContext);
             }
         });
     }
@@ -368,9 +367,7 @@ public final class PairingBridge {
                 setUiState(appContext, "offline", credentials.optString("hostName"),
                         "The paired computer is not reachable. Showing the last saved theme.");
             } finally {
-                synchronized (OPERATION_LOCK) {
-                    operationRunning = false;
-                }
+                finishOperation(appContext);
             }
         });
     }
@@ -404,9 +401,7 @@ public final class PairingBridge {
                 setUiState(appContext, "offline", credentials.optString("hostName"),
                         "The paired computer is not reachable. Showing the last saved theme.");
             } finally {
-                synchronized (OPERATION_LOCK) {
-                    operationRunning = false;
-                }
+                finishOperation(appContext);
             }
         });
     }
@@ -469,41 +464,24 @@ public final class PairingBridge {
             debugDiscoveryLog(appContext, "DNS-SD resolved the currently saved endpoint.");
             return;
         }
-        boolean queueRetry = false;
-        boolean startNetwork = false;
+        boolean queued = false;
         synchronized (OPERATION_LOCK) {
             long now = System.currentTimeMillis();
             if (operationRunning) {
                 queuedDiscoveryAddresses = new ArrayList<>(addresses);
                 queuedDiscoveryPort = port;
                 queuedDiscoveryFingerprint = advertisedFingerprint;
-                if (!discoveredRetryQueued) {
-                    discoveredRetryQueued = true;
-                    queueRetry = true;
-                }
+                queued = true;
             } else if (now - lastDiscoveredRefresh < 10_000L) {
                 debugDiscoveryLog(appContext, "Skipped duplicate DNS-SD reconnect within the retry window.");
                 return;
             } else {
                 operationRunning = true;
                 lastDiscoveredRefresh = now;
-                startNetwork = true;
             }
         }
-        if (queueRetry) {
+        if (queued) {
             debugDiscoveryLog(appContext, "Queued DNS-SD reconnect until the current network operation finishes.");
-            if (!MAIN.postDelayed(() -> retryQueuedDiscovery(appContext), 250L)) {
-                synchronized (OPERATION_LOCK) {
-                    discoveredRetryQueued = false;
-                    queuedDiscoveryAddresses = null;
-                    queuedDiscoveryFingerprint = null;
-                    queuedDiscoveryPort = 0;
-                }
-            }
-            return;
-        }
-        if (!startNetwork) {
-            // A retry was already posted. Keep only the newest resolved endpoint in its slot.
             return;
         }
         debugDiscoveryLog(appContext, "Checking a discovered endpoint with pinned TLS and token auth.");
@@ -544,18 +522,17 @@ public final class PairingBridge {
                     }
                 }
             } finally {
-                synchronized (OPERATION_LOCK) {
-                    operationRunning = false;
-                }
+                finishOperation(appContext);
             }
         });
     }
 
-    private static void retryQueuedDiscovery(Context context) {
+    private static void finishOperation(Context context) {
         List<String> addresses;
         String fingerprint;
         int port;
         synchronized (OPERATION_LOCK) {
+            operationRunning = false;
             addresses = queuedDiscoveryAddresses == null
                     ? Collections.emptyList() : new ArrayList<>(queuedDiscoveryAddresses);
             port = queuedDiscoveryPort;
@@ -563,9 +540,9 @@ public final class PairingBridge {
             queuedDiscoveryAddresses = null;
             queuedDiscoveryPort = 0;
             queuedDiscoveryFingerprint = null;
-            discoveredRetryQueued = false;
         }
         if (!addresses.isEmpty() && fingerprint != null) {
+            debugDiscoveryLog(context, "Retrying the queued DNS-SD endpoint after the network operation completed.");
             reconnectDiscovered(context, addresses, port, fingerprint);
         }
     }
@@ -710,15 +687,14 @@ public final class PairingBridge {
             try {
                 executeJson(credentials, "/v1/revoke", "POST", null, true);
                 PairingStore.clearCredential(appContext);
+                DeviceDiscovery.stop();
                 clearThemeCache(appContext);
                 setUiState(appContext, "unpaired", "", "");
             } catch (Exception error) {
                 setUiState(appContext, "offline", credentials.optString("hostName"),
                         "Could not revoke access while the computer is offline. Try again when it reconnects.");
             } finally {
-                synchronized (OPERATION_LOCK) {
-                    operationRunning = false;
-                }
+                finishOperation(appContext);
             }
         });
     }
@@ -738,22 +714,24 @@ public final class PairingBridge {
             operationRunning = true;
         }
         NETWORK.execute(() -> {
-            JSONObject credentials = PairingStore.readCredential(appContext);
-            boolean hostRevoked = credentials == null || !credentials.has("token");
-            if (credentials != null && credentials.has("token")) {
-                try {
-                    executeJson(credentials, "/v1/revoke", "POST", null, true);
-                    hostRevoked = true;
-                } catch (Exception ignored) {
-                    // Forget locally even if the host is offline; the widget can revoke its saved entry.
+            try {
+                JSONObject credentials = PairingStore.readCredential(appContext);
+                boolean hostRevoked = credentials == null || !credentials.has("token");
+                if (credentials != null && credentials.has("token")) {
+                    try {
+                        executeJson(credentials, "/v1/revoke", "POST", null, true);
+                        hostRevoked = true;
+                    } catch (Exception ignored) {
+                        // Forget locally even if the host is offline; the widget can revoke its saved entry.
+                    }
                 }
-            }
-            PairingStore.clearCredential(appContext);
-            clearThemeCache(appContext);
-            setUiState(appContext, "unpaired", "", hostRevoked ? ""
-                    : "The computer is offline. Remove this phone from its OmaApp widget to revoke its token.");
-            synchronized (OPERATION_LOCK) {
-                operationRunning = false;
+                PairingStore.clearCredential(appContext);
+                DeviceDiscovery.stop();
+                clearThemeCache(appContext);
+                setUiState(appContext, "unpaired", "", hostRevoked ? ""
+                        : "The computer is offline. Remove this phone from its OmaApp widget to revoke its token.");
+            } finally {
+                finishOperation(appContext);
             }
         });
     }

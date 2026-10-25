@@ -3,6 +3,15 @@ set -euo pipefail
 
 artifacts="${1:?usage: android_translation_smoke.sh ARTIFACT_DIRECTORY}"
 mkdir -p "$artifacts"
+adb logcat -c
+original_font_scale=""
+
+restore_android_font_scale() {
+  if [[ -n "$original_font_scale" ]]; then
+    adb shell settings put system font_scale "$original_font_scale" >/dev/null 2>&1 || true
+  fi
+}
+trap restore_android_font_scale EXIT
 
 dump_ui() {
   python3 scripts/ci/android_accessibility_dump.py \
@@ -145,6 +154,23 @@ python3 scripts/ci/check_android_navigation_layout.py \
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 
+# Exercise rapid locale changes without recreating the Activity. This catches
+# stale OWL labels and one-way translation bindings after several retranslate() calls.
+tap_scrolling_label 'Russian' down
+sleep 2
+dump_ui
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Язык'
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Часы Omarchy'
+tap_scrolling_label 'Английский' down
+sleep 2
+dump_ui
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Language'
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'English'
+
 # Haptics are explicitly opt-in, use Android's View API, and remain enabled
 # after Activity recreation. The emulator may not have a vibration motor, so
 # assert the native request reached the Android API instead of asserting a buzz.
@@ -166,6 +192,34 @@ find_scrolling_label 'Enable haptic feedback' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Enable haptic feedback'
 
+# Explicit QML pixelSize values must honor Android's system accessibility text
+# scale. Restart at a larger setting, then change back while OmaApp is alive.
+original_font_scale="$(adb shell settings get system font_scale | tr -d '\r')"
+if [[ ! "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  original_font_scale=1.0
+fi
+adb shell settings put system font_scale 1.4
+restart_app_for_persistence
+ensure_settings_tab 'Settings'
+find_scrolling_label 'Android accessibility text scale: 1.4×' down > /dev/null
+python3 scripts/ci/android_accessibility_assert_visible.py \
+  "$artifacts/translation-ui.xml" 'Android accessibility text scale: 1.4×'
+adb exec-out screencap -p > "$artifacts/settings-large-font.png"
+cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-large-font.xml"
+
+adb shell settings put system font_scale "$original_font_scale"
+adb shell am start -a android.settings.SETTINGS >/dev/null
+sleep 1
+adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
+sleep 2
+dump_ui
+ensure_settings_tab 'Settings'
+if grep -Fq 'Android accessibility text scale:' "$artifacts/translation-ui.xml"; then
+  printf 'The Android accessibility scale indicator remained after restoring system text scale.\n' >&2
+  exit 1
+fi
+original_font_scale=""
+
 # Returning from Android Settings invokes the Activity lifecycle callback and
 # refreshes the real PackageManager launcher list without a timer poll.
 adb logcat -c
@@ -178,3 +232,9 @@ test -n "$resumed_pid"
 adb logcat -d -v threadtime --pid="$resumed_pid" -t 3000 > "$artifacts/launcher-refresh-on-resume.log"
 grep -E 'OmaApp: enumerated [0-9]+ launcher activities' \
   "$artifacts/launcher-refresh-on-resume.log"
+
+adb logcat -d -v threadtime -t 30000 > "$artifacts/qml-diagnostics.log"
+if grep -F 'Binding loop detected' "$artifacts/qml-diagnostics.log"; then
+  printf 'A QML binding loop was reported during the Android UI smoke.\n' >&2
+  exit 1
+fi

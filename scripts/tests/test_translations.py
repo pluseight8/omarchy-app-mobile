@@ -17,7 +17,7 @@ class TranslationCatalogTests(unittest.TestCase):
         start = qml.index('text: qsTr("Language")')
         end = qml.index("RowLayout {", start)
         language_controls = qml[start:end]
-        self.assertEqual(language_controls.count("Accessible.name: text"), 2)
+        self.assertEqual(language_controls.count("Accessible.name: text"), 3)
 
     def test_language_choice_surface_does_not_self_bind_gradient_end(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
@@ -28,6 +28,53 @@ class TranslationCatalogTests(unittest.TestCase):
             "borderEnd: parent.checked ? Theme.accent : Theme.outline",
             qml,
         )
+
+    def test_accessibility_scale_reaches_every_shared_theme_font_size(self):
+        root = Path(__file__).resolve().parents[2]
+        theme = (root / "app/qml/Theme.qml").read_text(encoding="utf-8")
+        launcher = (root / "app/native/LauncherModel.h").read_text(encoding="utf-8")
+        bridge = (root / "app/android/src/app/omaapp/LauncherBridge.java").read_text(
+            encoding="utf-8"
+        )
+        qml = (root / "app/qml/Main.qml").read_text(encoding="utf-8")
+        smoke = (root / "scripts/ci/android_translation_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("property real systemFontScale: 1", theme)
+        self.assertIn("* systemFontScale", theme)
+        self.assertIn("Q_PROPERTY(qreal systemFontScale READ systemFontScale", launcher)
+        self.assertIn("getConfiguration().fontScale", bridge)
+        self.assertIn("Math.min(4.0f, scale)", bridge)
+        self.assertIn("qBound<qreal>(0.5, reportedFontScale, 4.0)", (
+            root / "app/native/LauncherModel.cpp"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("Theme.systemFontScale = launcher.systemFontScale", qml)
+        self.assertIn("Android accessibility text scale: %1×", qml)
+        self.assertIn("settings put system font_scale 1.4", smoke)
+        self.assertIn("settings-large-font.png", smoke)
+
+    def test_dialogs_with_wrapping_content_have_explicit_mobile_width(self):
+        qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
+            encoding="utf-8"
+        )
+        for dialog_id in ("forgetDialog", "deleteFolderDialog"):
+            with self.subTest(dialog=dialog_id):
+                start = qml.index(f"id: {dialog_id}")
+                end = qml.find("\n    Dialog {", start)
+                block = qml[start : end if end >= 0 else len(qml)]
+                self.assertIn("width: Math.min(window.width - 32, 420)", block)
+
+    def test_android_smoke_checks_repeated_locale_switching_and_qml_loops(self):
+        smoke = (
+            Path(__file__).resolve().parents[2]
+            / "scripts/ci/android_translation_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("tap_scrolling_label 'Russian' down", smoke)
+        self.assertIn("tap_scrolling_label 'Английский' down", smoke)
+        self.assertIn("adb logcat -c", smoke)
+        self.assertIn("adb logcat -d -v threadtime -t 30000", smoke)
+        self.assertIn("trap restore_android_font_scale EXIT", smoke)
+        self.assertIn("grep -F 'Binding loop detected'", smoke)
 
     def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(

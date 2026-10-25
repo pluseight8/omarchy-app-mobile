@@ -186,7 +186,6 @@ jobs:
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
           smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
           mkdir -p "$ANDROID_AVD_HOME" "$smoke_artifacts"
-          trap 'status=$?; failed_command="$BASH_COMMAND"; trap - ERR; { printf "Android smoke failed at: %s (exit %s)\n" "$failed_command" "$status"; printf "ADB devices:\n"; adb devices -l; if [[ -n "${emulator_pid:-}" ]]; then printf "Emulator process:\n"; ps -p "$emulator_pid" -o pid=,stat=,args=; fi; printf "Emulator log tail:\n"; tail -n 80 "$smoke_artifacts/emulator.log"; } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true; timeout 10s adb logcat -d -v threadtime -t 1000 > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true; if [[ -n "${app_pid:-}" ]]; then timeout 10s adb logcat -d -v threadtime --pid="$app_pid" > "$smoke_artifacts/app-failure-logcat.txt" 2>&1 || true; fi; cat "$smoke_artifacts/failure-diagnostics.txt" >&2; cat "$smoke_artifacts/failure-logcat.txt" >&2 2>/dev/null || true; if [[ -f "$smoke_artifacts/app-failure-logcat.txt" ]]; then cat "$smoke_artifacts/app-failure-logcat.txt" >&2; fi; exit "$status"' ERR
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | tee avds.txt
@@ -305,6 +304,18 @@ jobs:
               timeout 10s adb logcat -d -v threadtime --pid="$readiness_pid" \
                 > "$smoke_artifacts/home-readiness-logcat.txt" 2>&1 || true
             fi
+            readiness_boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            printf '%s\n' "$readiness_boot" > "$smoke_artifacts/home-readiness-boot-completed.txt"
+            printf '%s\n' "$readiness_pid" > "$smoke_artifacts/home-readiness-app-pid.txt"
+            timeout 10s adb shell dumpsys activity activities \
+              > "$smoke_artifacts/home-readiness-activities.txt" 2>&1 || true
+            timeout 10s adb shell dumpsys window windows \
+              > "$smoke_artifacts/home-readiness-windows.txt" 2>&1 || true
+            timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
+              > "$smoke_artifacts/home-readiness-all-logcat.txt" 2>&1 || true
+            python3 scripts/ci/classify_android_launch.py "$readiness_boot" "$readiness_pid" \
+              "$smoke_artifacts/home-readiness-all-logcat.txt" \
+              | tee "$smoke_artifacts/home-readiness-classification.txt" >&2
             python3 scripts/ci/android_accessibility_assert_checked.py "$output_xml" "$label"
           }
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"

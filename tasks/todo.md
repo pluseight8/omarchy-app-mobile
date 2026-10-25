@@ -6,6 +6,8 @@
 - [x] Refresh the launcher after protected Android package lifecycle broadcasts, coalesce broadcast bursts, and refresh on Activity resume; verify app discovery with an installed and removed Android launcher fixture.
 - [x] Add a test-only Android `AppWidgetHost` proof using system binding confirmation, a live `AppWidgetHostView`, a real provider click, and widget ID cleanup. Keep the Qt/QML layout limitation documented.
 - [x] Add plugin DNS-SD advertisement and foreground Android discovery of an already QR-trusted Omarchy host. Require the saved certificate pin and token before an endpoint address can change.
+- [x] Advertise active private IPv4 addresses on multi-interface hosts, refresh multicast memberships after address changes, use Android 14+ / Android 13 T extension 7+ NSD service-info updates with a legacy resolver fallback, and scope discovery callbacks to the current Activity generation.
+- [x] Queue the latest trusted DNS-SD candidate until active network work completes instead of polling the operation lock four times per second; stop discovery when trust is revoked or forgotten.
 - [x] Add opt-in system-respecting Android haptic feedback, persisted in launcher settings and backups, with emulator assertions for dispatch and restart persistence.
 - [x] Localize OWL catalog titles and descriptions, expose them to accessibility, refresh labels on language changes, and keep OWL and backup actions readable on phone-width layouts.
 - [x] Use concise Russian bottom-tab text with full accessible names.
@@ -13,6 +15,8 @@
 - [x] Expose OWL JSON-array entries through numeric Repeater models and indexed delegates, avoiding a silent empty QML renderer on Android.
 - [x] Test graceful cancellation of a plugin event long poll and a response write when the TLS client disconnects.
 - [x] Update English and Russian READMEs, changelog, task status, pairing guide, AppWidgetHost findings, and checked-in OpenGL/Vulkan emulator screenshots.
+- [x] Apply Android accessibility text scale to shared Qt/QML font and spacing helpers; cover larger text and repeated locale switching in the Android smoke; add phone-safe widths to wrapping dialogs that emitted binding-loop warnings.
+- [x] Retain boot, process, Activity, Window, Qt graphics, screenshot, hierarchy, and logcat evidence when emulator Home readiness times out.
 
 ## Remaining work and validation limits
 
@@ -24,9 +28,10 @@
 
 ## Local verification
 
-- `python3 -m unittest discover -s scripts/tests -q`: 115 tests pass.
-- `python3 scripts/ci/check_translations.py`: 291 Russian source strings validated.
-- Changed OWL QML passes `qmllint`; shell syntax checks and `git diff --check` pass. A local Qt Quick 6.11.2 regression confirmed a numeric Repeater model creates and indexes a delegate from parsed JSON.
-- CI [#220](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40130375435), [#221](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131445004), and [#222](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40131911857) found the installed Canvas sampler blank on both backends. CI [#223](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40132703086) isolated the missing Loader delegates. CI [#224](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40133379574) passed desktop, arm64, OpenGL, and Vulkan; each emulator smoke confirmed both OWL image nodes rendered on Home.
+- `python3 -m unittest discover -s scripts/tests -q`: 129 tests pass.
+- `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
+- Shell syntax checks and `git diff --check` pass. Qt `qmllint` and a full Android/desktop build are unavailable locally; CI #229 passed the previous PR revision on desktop, arm64, OpenGL, and Vulkan, and the new commit needs a fresh CI run.
+- CI #228 attempt 1 produced a transient black HOME screen. Its log showed OmaApp startup activity but did not confirm Qt graphics initialization; no Android fatal exception or ANR was present. The retry and CI #229 both passed OpenGL and Vulkan. Root cause remains unconfirmed; the HOME timeout now records diagnostics to distinguish emulator boot, process, Android, QML, graphics, and UI-readiness stages.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
+- Android DNS-SD remains verified with the test fixture and host-side Linux multicast tests only; it has not been exercised end to end with a live Omarchy host and phone.

@@ -47,6 +47,13 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: launcher
+        function onSystemFontScaleChanged() {
+            Theme.systemFontScale = launcher.systemFontScale
+        }
+    }
+
     function widgetThemeColor(value) {
         const color = Qt.color(value)
         function hexByte(channel) {
@@ -358,6 +365,7 @@ ApplicationWindow {
         id: forgetDialog
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
         title: qsTr("Forget this computer?")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: pairing.forget()
@@ -662,6 +670,7 @@ ApplicationWindow {
         id: deleteFolderDialog
         modal: true
         anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
         title: qsTr("Delete folder?")
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
@@ -864,6 +873,7 @@ ApplicationWindow {
 
     Component.onCompleted: {
         launcher.refresh()
+        Theme.systemFontScale = launcher.systemFontScale
         applySyncedTheme()
     }
 
@@ -3083,6 +3093,17 @@ ApplicationWindow {
                             Accessible.name: text
                             color: Theme.muted
                             font.pixelSize: Theme.fontSize(12)
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: launcher.systemFontScale > 1.01
+                            text: qsTr("Android accessibility text scale: %1×")
+                                  .arg(launcher.systemFontScale.toFixed(1))
+                            Accessible.name: text
+                            color: Theme.muted
+                            font.pixelSize: Theme.fontSize(11)
                             wrapMode: Text.WordWrap
                         }
 

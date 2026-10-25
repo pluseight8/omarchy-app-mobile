@@ -13,6 +13,7 @@ class LauncherModel : public QAbstractListModel
     Q_OBJECT
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(bool platformSupported READ platformSupported CONSTANT)
+    Q_PROPERTY(qreal systemFontScale READ systemFontScale NOTIFY systemFontScaleChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(QVariantList favorites READ favorites NOTIFY favoritesChanged)
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
@@ -41,6 +42,7 @@ public:
 
     int count() const;
     bool platformSupported() const;
+    qreal systemFontScale() const;
     QString filter() const;
     QVariantList favorites() const;
     QVariantList folders() const;
@@ -90,6 +92,7 @@ signals:
     void homeWidgetsChanged();
     void gesturesChanged();
     void hapticFeedbackEnabledChanged();
+    void systemFontScaleChanged();
 
 private:
     struct Entry {
@@ -117,6 +120,7 @@ private:
     bool m_hapticFeedbackEnabled = false;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;
+    qreal m_systemFontScale = 1.0;
 
     void rebuildVisibleRows();
     void saveFavorites();

@@ -732,9 +732,55 @@ def _advertised_ipv4() -> str:
     return ""
 
 
+def _advertised_ipv4_addresses() -> list[str]:
+    """Return reachable RFC1918 IPv4 candidates from all active interfaces."""
+    addresses: list[str] = []
+
+    def add(value: object) -> None:
+        if not isinstance(value, str) or value in addresses:
+            return
+        try:
+            parsed = ipaddress.ip_address(value)
+        except ValueError:
+            return
+        if parsed.version == 4 and any(parsed in network for network in PRIVATE_IPV4_NETWORKS):
+            addresses.append(str(parsed))
+
+    # Keep the address selected by the active route first for QR pairing and
+    # for systems where iproute2 is unavailable.
+    add(_advertised_ipv4())
+    if len(addresses) >= 8:
+        return addresses
+    try:
+        result = subprocess.run(
+            ["ip", "-j", "-4", "addr", "show", "up"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        interfaces = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return addresses
+    if not isinstance(interfaces, list):
+        return addresses
+    for interface in interfaces:
+        if not isinstance(interface, dict) or "UP" not in interface.get("flags", []):
+            continue
+        for info in interface.get("addr_info", []):
+            if not isinstance(info, dict) or info.get("family") != "inet" \
+                    or info.get("scope") != "global":
+                continue
+            add(info.get("local"))
+            if len(addresses) >= 8:
+                return addresses
+    return addresses
+
+
 MDNS_GROUP = "224.0.0.251"
 MDNS_PORT = 5353
 MDNS_SERVICE_TYPE = "_omaapp._tcp.local."
+MAX_MDNS_ADDRESSES = 8
 
 
 def _dns_name_wire(name: str) -> bytes:
@@ -803,10 +849,18 @@ def _mdns_questions_match(packet: bytes, instance_name: str, target_name: str) -
     return False
 
 
-def _mdns_announcement(instance_name: str, target_name: str, address: str,
+def _mdns_announcement(instance_name: str, target_name: str, address: str | list[str],
                        port: int, fingerprint: str, ttl: int = 120) -> bytes:
-    address_bytes = ipaddress.ip_address(address).packed
-    if len(address_bytes) != 4 or not 1 <= port <= 65535 or not 0 <= ttl <= 4500 \
+    raw_addresses = [address] if isinstance(address, str) else address
+    address_bytes: list[bytes] = []
+    for value in raw_addresses:
+        parsed = ipaddress.ip_address(value)
+        if parsed.version != 4:
+            raise ValueError("invalid OmaApp DNS-SD service data")
+        if parsed.packed not in address_bytes:
+            address_bytes.append(parsed.packed)
+    if not address_bytes or len(address_bytes) > MAX_MDNS_ADDRESSES \
+            or not 1 <= port <= 65535 or not 0 <= ttl <= 4500 \
             or not re.fullmatch(r"[a-f0-9]{64}", fingerprint):
         raise ValueError("invalid OmaApp DNS-SD service data")
 
@@ -820,15 +874,16 @@ def _mdns_announcement(instance_name: str, target_name: str, address: str,
     txt_fields = [f"fingerprint={fingerprint}".encode("ascii"), b"protocol=1"]
     txt_data = b"".join(bytes([len(field)]) + field for field in txt_fields)
     txt = record(instance_name, 16, txt_data)
-    address_record = record(target_name, 1, address_bytes)
-    header = struct.pack("!HHHHHH", 0, 0x8400, 0, 4, 0, 0)
-    return header + ptr + srv + txt + address_record
+    address_records = b"".join(record(target_name, 1, packed) for packed in address_bytes)
+    header = struct.pack("!HHHHHH", 0, 0x8400, 0, 3 + len(address_bytes), 0, 0)
+    return header + ptr + srv + txt + address_records
 
 
 class MdnsAdvertiser:
     """Small DNS-SD responder for the pinned OmaApp service; it advertises no credentials."""
 
-    def __init__(self, data_provider, *, multicast_group: str = MDNS_GROUP,
+    def __init__(self, data_provider, *, address_provider=None,
+                 multicast_group: str = MDNS_GROUP,
                  multicast_port: int = MDNS_PORT,
                  multicast_interface: str = "0.0.0.0"):
         group = ipaddress.ip_address(multicast_group)
@@ -837,6 +892,7 @@ class MdnsAdvertiser:
                 or interface.version != 4):
             raise ValueError("invalid OmaApp multicast destination")
         self.data_provider = data_provider
+        self.address_provider = address_provider or (lambda: [self.data_provider()[0]])
         self.multicast_group = str(group)
         self.multicast_port = multicast_port
         self.multicast_interface = str(interface)
@@ -847,26 +903,27 @@ class MdnsAdvertiser:
         self.target_name = ""
         self.last_packet = b""
         self.announce_lock = threading.Lock()
+        self.memberships: set[str] = set()
 
     def start(self) -> None:
         address, port, fingerprint = self.data_provider()
         suffix = fingerprint[:12]
         self.instance_name = f"OmaApp-{suffix}.{MDNS_SERVICE_TYPE}"
         self.target_name = f"omaapp-{suffix}.local."
+        addresses = self._current_addresses(address)
         self.last_packet = _mdns_announcement(
-            self.instance_name, self.target_name, address, port, fingerprint)
+            self.instance_name, self.target_name, addresses, port, fingerprint)
 
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         try:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("", self.multicast_port))
-            membership = (socket.inet_aton(self.multicast_group)
-                          + socket.inet_aton(self.multicast_interface))
-            listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+            self._refresh_memberships(listener, addresses)
             listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
             listener.settimeout(1.0)
         except OSError:
             listener.close()
+            self.memberships.clear()
             raise
         self.socket = listener
         self.thread = threading.Thread(target=self._serve, name="omaapp-mdns", daemon=True)
@@ -880,16 +937,76 @@ class MdnsAdvertiser:
                 return
             try:
                 address, port, fingerprint = self.data_provider()
+                addresses = self._current_addresses(address)
+                self._refresh_memberships(listener, addresses)
                 packet = _mdns_announcement(
-                    self.instance_name, self.target_name, address, port, fingerprint,
+                    self.instance_name, self.target_name, addresses, port, fingerprint,
                     ttl=0 if goodbye else 120)
                 if not goodbye:
                     self.last_packet = packet
-                listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
-                                    socket.inet_aton(address))
-                listener.sendto(packet, (self.multicast_group, self.multicast_port))
+                interfaces = [self.multicast_interface] if self.multicast_interface != "0.0.0.0" \
+                    else addresses
+                sent = 0
+                for interface in interfaces:
+                    try:
+                        listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                            socket.inet_aton(interface))
+                        listener.sendto(packet, (self.multicast_group, self.multicast_port))
+                        sent += 1
+                    except OSError:
+                        continue
+                if sent == 0:
+                    raise OSError("DNS-SD announcement failed on all active interfaces")
             except (OSError, ValueError):
                 return
+
+    def _current_addresses(self, fallback: str) -> list[str]:
+        try:
+            addresses = self.address_provider()
+        except (OSError, ValueError, TypeError):
+            addresses = []
+        if isinstance(addresses, str):
+            addresses = [addresses]
+        result = []
+        for address in addresses or []:
+            if not isinstance(address, str) or address in result:
+                continue
+            try:
+                parsed = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            if parsed.version == 4 and any(
+                parsed in network for network in PRIVATE_IPV4_NETWORKS
+            ):
+                result.append(str(parsed))
+            if len(result) >= MAX_MDNS_ADDRESSES:
+                break
+        if not result and fallback:
+            result = [fallback]
+        return result
+
+    def _refresh_memberships(self, listener: socket.socket, addresses: list[str]) -> None:
+        desired = {self.multicast_interface} if self.multicast_interface != "0.0.0.0" \
+            else set(addresses)
+        for interface in self.memberships - desired:
+            membership = socket.inet_aton(self.multicast_group) + socket.inet_aton(interface)
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, membership)
+            except OSError:
+                pass
+            self.memberships.discard(interface)
+        join_error: OSError | None = None
+        for interface in desired - self.memberships:
+            membership = socket.inet_aton(self.multicast_group) + socket.inet_aton(interface)
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+                self.memberships.add(interface)
+            except OSError as error:
+                join_error = error
+        if not self.memberships:
+            if join_error is not None:
+                raise join_error
+            raise OSError("no active IPv4 interface is available for DNS-SD")
 
     def _serve(self) -> None:
         next_announce = time.monotonic() + 60.0
@@ -919,6 +1036,7 @@ class MdnsAdvertiser:
                 listener.close()
             except OSError:
                 pass
+        self.memberships.clear()
         if self.thread is not None and self.thread.is_alive():
             self.thread.join(timeout=2)
 
@@ -1024,7 +1142,8 @@ class ServiceState:
             self.start_monitors()
             if self.bind == "0.0.0.0" and self.refresh_advertised_address():
                 try:
-                    self.mdns_advertiser = MdnsAdvertiser(self._mdns_data)
+                    self.mdns_advertiser = MdnsAdvertiser(
+                        self._mdns_data, address_provider=_advertised_ipv4_addresses)
                     self.mdns_advertiser.start()
                 except (OSError, ValueError) as error:
                     if self.mdns_advertiser is not None:

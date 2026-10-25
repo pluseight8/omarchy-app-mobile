@@ -171,6 +171,99 @@ class PairingServiceTests(unittest.TestCase):
         self.assertNotIn(b"pairSecret", packet)
         self.assertNotIn(b"token", packet)
 
+    def test_dns_sd_advertises_all_private_ipv4_addresses_on_active_interfaces(self):
+        ip_output = [
+            {"ifname": "enp1s0", "flags": ["UP", "LOWER_UP"], "addr_info": [
+                {"family": "inet", "scope": "global", "local": "192.168.1.30"},
+                {"family": "inet", "scope": "global", "local": "10.0.0.4"},
+            ]},
+            {"ifname": "wlan0", "flags": ["UP"], "addr_info": [
+                {"family": "inet", "scope": "global", "local": "172.20.4.5"},
+            ]},
+            {"ifname": "tun0", "flags": ["UP"], "addr_info": [
+                {"family": "inet", "scope": "global", "local": "100.64.0.2"},
+            ]},
+            {"ifname": "enp2s0", "flags": ["BROADCAST"], "addr_info": [
+                {"family": "inet", "scope": "global", "local": "10.0.0.6"},
+            ]},
+        ]
+        completed = service.subprocess.CompletedProcess(
+            ["ip"], 0, stdout=json.dumps(ip_output), stderr=""
+        )
+        with patch.object(service, "_advertised_ipv4", return_value="192.168.1.30"), \
+                patch.object(service.subprocess, "run", return_value=completed):
+            self.assertEqual(service._advertised_ipv4_addresses(),
+                             ["192.168.1.30", "10.0.0.4", "172.20.4.5"])
+
+    def test_mdns_advertiser_answers_with_multiple_a_records_over_loopback(self):
+        fingerprint = "d" * 64
+        instance = f"OmaApp-{fingerprint[:12]}.{service.MDNS_SERVICE_TYPE}"
+        target = f"omaapp-{fingerprint[:12]}.local."
+        group = "239.255.73.22"
+        receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        receiver.bind((group, 0))
+        port = receiver.getsockname()[1]
+        interface = "127.0.0.1"
+        receiver.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                             socket.inet_aton(group) + socket.inet_aton(interface))
+        receiver.settimeout(3)
+        advertiser = service.MdnsAdvertiser(
+            lambda: (interface, 44892, fingerprint),
+            address_provider=lambda: ["192.168.10.5", "10.1.0.5"],
+            multicast_group=group,
+            multicast_port=port,
+            multicast_interface=interface,
+        )
+        try:
+            advertiser.start()
+            packet, _ = receiver.recvfrom(4096)
+            answers = service.struct.unpack_from("!H", packet, 6)[0]
+            offset = 12
+            records = []
+            for _ in range(answers):
+                name, offset = service._dns_read_name(packet, offset)
+                record_type, _record_class, ttl, size = service.struct.unpack_from(
+                    "!HHIH", packet, offset
+                )
+                offset += 10
+                value = packet[offset:offset + size]
+                offset += size
+                records.append((name, record_type, ttl, value))
+            self.assertEqual([record[1] for record in records], [12, 33, 16, 1, 1])
+            self.assertEqual([record[3] for record in records[-2:]],
+                             [socket.inet_aton("192.168.10.5"), socket.inet_aton("10.1.0.5")])
+            self.assertEqual([record[0] for record in records[-2:]],
+                             [target.lower(), target.lower()])
+        finally:
+            advertiser.stop()
+            receiver.close()
+
+    def test_mdns_memberships_follow_address_changes(self):
+        class RecordingSocket:
+            def __init__(self):
+                self.options = []
+
+            def setsockopt(self, level, option, value):
+                self.options.append((level, option, socket.inet_ntoa(value[4:])))
+
+        advertiser = service.MdnsAdvertiser(
+            lambda: ("192.168.1.2", 44892, "e" * 64),
+            address_provider=lambda: [],
+        )
+        listener = RecordingSocket()
+        advertiser._refresh_memberships(listener, ["192.168.1.2", "10.0.0.2"])
+        advertiser._refresh_memberships(listener, ["10.0.0.2", "172.18.0.2"])
+        self.assertEqual(
+            listener.options,
+            [
+                (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "192.168.1.2"),
+                (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "10.0.0.2"),
+                (socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, "192.168.1.2"),
+                (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "172.18.0.2"),
+            ],
+        )
+
     def test_mdns_listener_matches_only_omaapp_service_questions(self):
         instance = "OmaApp-aabbccddeeff._omaapp._tcp.local."
         target = "omaapp-aabbccddeeff.local."

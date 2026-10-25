@@ -147,6 +147,10 @@
             <translation>Выберите число столбцов приложений на главном экране и в списке приложений.</translation>
         </message>
         <message>
+            <source>Android accessibility text scale: %1×</source>
+            <translation>Масштаб текста Android для доступности: %1×</translation>
+        </message>
+        <message>
             <source>Choose the app language. System default follows the phone language; English and Russian are available offline.</source>
             <translation>Выберите язык приложения. Системная настройка следует языку телефона; английский и русский доступны без подключения к сети.</translation>
         </message>

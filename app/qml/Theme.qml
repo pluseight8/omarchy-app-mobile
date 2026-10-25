@@ -25,12 +25,13 @@ QtObject {
     property real spacingScale: 1
     property bool spacingScaleWithFont: true
     property real fontBaseSize: 12
+    property real systemFontScale: 1
     property var fontOverrides: ({})
     property string fontFamily: "monospace"
 
     function space(designSize) {
         const fontScale = spacingScaleWithFont ? fontBaseSize / 12 : 1
-        return Math.max(0, Number(designSize) * spacingScale * fontScale)
+        return Math.max(0, Number(designSize) * spacingScale * fontScale * systemFontScale)
     }
 
     function fontSize(designSize) {
@@ -46,8 +47,8 @@ QtObject {
         const token = tokenBySize[String(designSize)]
         const override = token ? Number(fontOverrides[token]) : NaN
         if (Number.isFinite(override) && override > 0)
-            return Math.round(override)
-        return Math.max(1, Math.round(Number(designSize) * fontBaseSize / 12))
+            return Math.max(1, Math.round(override * systemFontScale))
+        return Math.max(1, Math.round(Number(designSize) * fontBaseSize / 12 * systemFontScale))
     }
     property real controlFillAlpha: 0.04
     property real selectedFillAlpha: 0.18

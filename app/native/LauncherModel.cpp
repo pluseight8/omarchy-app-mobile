@@ -143,6 +143,11 @@ bool LauncherModel::platformSupported() const
     return m_platformSupported;
 }
 
+qreal LauncherModel::systemFontScale() const
+{
+    return m_systemFontScale;
+}
+
 QString LauncherModel::filter() const
 {
     return m_filter;
@@ -803,6 +808,14 @@ void LauncherModel::refresh()
     qWarning().noquote() << "OmaApp startup: launcher refresh entered";
 #endif
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const jfloat reportedFontScale = QJniObject::callStaticMethod<jfloat>(
+        "app/omaapp/LauncherBridge", "systemFontScale",
+        "(Landroid/content/Context;)F", context.object<jobject>());
+    const qreal nextFontScale = qBound<qreal>(0.5, reportedFontScale, 4.0);
+    if (!qFuzzyCompare(m_systemFontScale, nextFontScale)) {
+        m_systemFontScale = nextFontScale;
+        emit systemFontScaleChanged();
+    }
     const QJniObject json = QJniObject::callStaticObjectMethod(
         "app/omaapp/LauncherBridge", "listLauncherApps",
         "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
