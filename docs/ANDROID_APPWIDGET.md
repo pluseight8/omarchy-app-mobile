@@ -23,11 +23,13 @@ between grid positions; holding it near either horizontal edge advances to the
 adjacent Home page so it can be dropped there. Placements snap to 24 dp and the
 host rejects overlaps. Accessible controls nudge a widget vertically or move it
 to another page. The last grid, page, or size change can be undone briefly, and
-removal asks for confirmation. Width and height controls honor provider
-minimums, and a visible native corner grip resizes both dimensions while
-leaving the rest of RemoteViews touchable. Resize changes update Android widget
-options. App icons and OWL widgets remain in their existing Home areas; they do
-not yet share one grid with Android widgets.
+removal asks for confirmation. Undo applies to edits made through QML position
+and size controls; the direct native resize grip does not yet participate in
+Undo. Width and height controls honor provider minimums, and a visible native
+corner grip resizes both dimensions while leaving the rest of RemoteViews
+touchable. Resize changes update Android widget options. App icons and OWL
+widgets remain in their existing Home areas; they do not yet share one grid
+with Android widgets.
 
 The OpenGL and Vulkan emulator smoke uses a separate test-only APK containing a
 real interactive `AppWidgetProvider` and configuration Activity. It binds via
@@ -43,6 +45,12 @@ the rebound widget. The smoke stores Home and placeholder screenshots as CI
 artifacts. The fixture package and signing key are generated only in CI;
 neither is part of the product APK or release workflow.
 
+After a cold emulator launch and an eight-second settling period, CI also saves
+`runtime-metrics.json` with ActivityManager launch timings, app PSS, process CPU,
+and the main/UI thread CPU sample from Android's thread-aware `top` output. These
+are reference measurements from a short idle sample, not performance budgets;
+they do not measure sustained load or frame pacing.
+
 The host uses Android's picker rather than silently invoking
 `bindAppWidgetIdIfAllowed`; choosing a provider there is the user's bind action.
 Persisted provider identity is checked against `AppWidgetManager` before
@@ -53,10 +61,11 @@ install it and approve a fresh binding in the Android picker.
 
 CI verification is emulator-only. Pixel/GrapheneOS behavior, provider
 compatibility beyond the CI fixture, rotation, live density changes, Android
-system gestures/insets, TalkBack focus, memory use, and frame performance still
-need physical-device or broader provider testing. Android-widget positions are
-saved in density-independent coordinates; migration after a display size change
-may require a manual move if a provider no longer fits the viewport.
+system gestures/insets, TalkBack focus, sustained memory use, and frame
+performance still need physical-device or broader provider testing.
+Android-widget positions are saved in density-independent coordinates;
+migration after a display size change may require a manual move if a provider no
+longer fits the viewport.
 
 Qt documents the Android integration options in [Qt for Android](https://doc.qt.io/qt-6/android.html)
 and [Qt Quick for Android](https://doc.qt.io/qt-6/qtquick-for-android.html).

@@ -31,6 +31,9 @@ case "$*" in
     ;;
   "shell dumpsys meminfo 4321") printf 'TOTAL PSS: 42,816 TOTAL RSS: 80,104\\n' ;;
   "shell dumpsys cpuinfo") printf '  0.2%% 4321/app.omaapp:remote\\n' ;;
+  "shell top -H -b -n 2 -d 1 -p 4321 -o pid,tid,%cpu,name")
+    printf 'PID TID %%CPU NAME\\n4321 4321 3.2%% app.omaapp\\n4321 4322 8.4%% RenderThread\\n4321 4321 1.5%% app.omaapp\\n'
+    ;;
   *) printf 'unexpected adb arguments: %s\\n' "$*" >&2; exit 2 ;;
 esac
 """,
@@ -63,18 +66,24 @@ esac
             self.assertEqual(report["idleSampleSecondsAfterLaunch"], 8)
             self.assertEqual(report["idleProcessResidentSetPssKb"], 42816)
             self.assertEqual(report["idleProcessCpuPercent"], 0.2)
+            self.assertEqual(report["uiThreadCpuPercent"], 1.5)
+            self.assertEqual(report["uiThreadSampleCount"], 2)
             self.assertEqual(report["appPid"], "4321")
 
     def test_runtime_measurements_are_uploaded_as_android_smoke_artifacts(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        documentation = (ROOT / "docs/ANDROID_APPWIDGET.md").read_text(encoding="utf-8")
         self.assertIn('bash scripts/ci/android_runtime_metrics.sh "$smoke_artifacts/runtime-metrics"', workflow)
         self.assertIn('path: ${{ github.workspace }}/ci-artifacts/android-smoke/', workflow)
+        self.assertIn("main/UI thread CPU sample", documentation)
 
     def test_runtime_report_fails_if_required_android_measurements_are_missing(self):
         script = (ROOT / "scripts/ci/android_runtime_metrics.sh").read_text(encoding="utf-8")
 
         self.assertIn('"coldStartTotalTimeMs"', script)
         self.assertIn('"idleProcessResidentSetPssKb"', script)
+        self.assertIn('"uiThreadCpuPercent"', script)
+        self.assertIn('top -H -b -n 2 -d 1', script)
         self.assertIn('if missing:', script)
         self.assertIn('"COLD"', script)
         self.assertIn('android.settings.SETTINGS', script)
