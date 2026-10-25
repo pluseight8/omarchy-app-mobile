@@ -30,10 +30,10 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 ## Current verification
 
 - Local suite: 129 Python tests pass. The Russian catalog checker validates 292 source strings; shell syntax checks and `git diff --check` pass. Local Qt `qmllint`, Android, and desktop builds are unavailable in this environment.
-- CI #228 attempt 1 showed a temporary black HOME screen. Its log showed the app startup marker but not confirmed Qt graphics initialization, with no Android fatal exception or ANR. The retry and [CI #229](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40138946664) both passed all four jobs: desktop, arm64, OpenGL and Vulkan. The cause remains unknown. A subsequent HOME timeout now records boot state, PID, Activity/Window dumps, screenshot, accessibility hierarchy, and all-buffer logcat, then classifies the observed startup stage.
+- CI #228 attempt 1 and OpenGL in docs-only CI #232 showed a temporary black HOME screen. The #232 Activity/process remained alive and Qt created an OpenGL context, but QML module loading did not log completion; no Android fatal/ANR appeared. This narrows the observed stall to QML component creation after RHI startup, but does not identify the root cause. The timeout now captures boot state, PID, Activity/Window dumps, screenshot, hierarchy, thread list, one bounded SIGQUIT thread snapshot, and all-buffer logcat, then classifies the observed stage.
 - Earlier CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Its renderer screenshots remain checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
-- CI #231 passed desktop, arm64, OpenGL, and Vulkan for the current code. Its predecessor #230 exposed an order-dependent set assertion, corrected in the follow-up commit. This workspace lacks CMake, Qt ShaderTools, a JDK, and an emulator, so no local APK build or Android emulator run is claimed. No Pixel 10 / GrapheneOS device is attached.
+- CI #231 passed desktop, arm64, OpenGL, and Vulkan for code commit 9e67ad6; CI #230 exposed an order-dependent test assertion, corrected there. Docs-only CI #232 passed desktop and arm64 but its OpenGL smoke hit the repeated black HOME condition; run #233 covers the updated diagnostics and current code.
 
 ## Remaining work
 
