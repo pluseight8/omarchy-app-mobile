@@ -9,6 +9,22 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppDiscoveryTests(unittest.TestCase):
+    def test_launcher_restart_waits_for_the_restored_home_surface(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        restart = smoke.index("adb shell am force-stop app.omaapp")
+        restored_home = smoke.index(
+            'select_home_when_needed "$smoke_artifacts/window-after-restart-navigation.xml"',
+            restart,
+        )
+        screenshot = smoke.index(
+            'adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"',
+            restored_home,
+        )
+        self.assertLess(restored_home, screenshot)
+        self.assertNotIn("OmaApp: cached launcher icon for ", smoke[restart:])
+
     def test_renderer_log_uses_the_pid_after_translation_smoke_restart(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         translation_smoke = workflow.index(
@@ -169,7 +185,15 @@ esac
         self.assertIn("Queued DNS-SD reconnect until the current network operation finishes.", bridge)
         self.assertIn("private static void finishOperation(Context context)", bridge)
         self.assertIn("Retrying the queued DNS-SD endpoint after the network operation completed.", bridge)
-        self.assertIn("reconnectDiscovered(context, addresses, port, fingerprint)", bridge)
+        self.assertIn("reconnectDiscovered(context, addresses, port, fingerprint, true)", bridge)
+        self.assertIn(
+            "shouldThrottleDiscoveredRefresh(now, lastDiscoveredRefresh, queuedRetry)",
+            bridge,
+        )
+        self.assertIn(
+            "return !queuedRetry && now - lastRefresh < 10_000L;",
+            bridge,
+        )
         self.assertNotIn("retryQueuedDiscovery", bridge)
         self.assertNotIn("discoveredRetryQueued", bridge)
         self.assertIn("queuedDiscoveryAddresses = new ArrayList<>(addresses)", bridge)
@@ -227,6 +251,7 @@ esac
         self.assertIn('"app.omaapp", "app.omaapp.OmaAppActivity"', nsd_activity)
         self.assertIn("DeviceDiscovery.start(context)", instrumentation)
         self.assertIn("JSONObject reconnected = runDnsSdReconnectSmoke(context", instrumentation)
+        self.assertIn("PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, true)", instrumentation)
         self.assertIn('testArguments.getString("expectedTheme", "")', instrumentation)
         self.assertIn("return awaitTheme(context, expectedTheme, 30_000L, false);", instrumentation)
         self.assertNotIn("awaitPluginRestartReconnect", instrumentation)

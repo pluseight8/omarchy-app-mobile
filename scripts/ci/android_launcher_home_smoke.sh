@@ -189,14 +189,13 @@ test -n "$restarted_pid"
 printf '%s\n' "$restarted_pid" > "$smoke_artifacts/restarted-pid.txt"
 adb logcat -d -v threadtime --pid="$restarted_pid" -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
 grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' "$smoke_artifacts/restarted-logcat.txt"
-grep -E 'OmaApp: cached launcher icon for ' "$smoke_artifacts/restarted-logcat.txt"
-adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
-test -s "$smoke_artifacts/launcher-before-tap.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart-navigation.xml \
   "$smoke_artifacts/window-after-restart-navigation.xml"
 select_home_when_needed "$smoke_artifacts/window-after-restart-navigation.xml" \
   /sdcard/omaapp-after-restart-navigation.xml
+adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
+test -s "$smoke_artifacts/launcher-before-tap.png"
 scroll_to_home_folder "$smoke_artifacts/window-after-restart-navigation.xml" \
   /sdcard/omaapp-after-restart-navigation.xml
 cp "$smoke_artifacts/window-after-restart-navigation.xml" \

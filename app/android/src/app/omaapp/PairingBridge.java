@@ -425,6 +425,12 @@ public final class PairingBridge {
     /** Tries each resolved private IPv4 address; multi-homed hosts may expose one unreachable route. */
     public static void reconnectDiscovered(Context context, List<String> candidateAddresses,
                                            int port, String advertisedFingerprint) {
+        reconnectDiscovered(context, candidateAddresses, port, advertisedFingerprint, false);
+    }
+
+    private static void reconnectDiscovered(Context context, List<String> candidateAddresses,
+                                            int port, String advertisedFingerprint,
+                                            boolean queuedRetry) {
         if (context == null || candidateAddresses == null || port < 1 || port > 65535
                 || advertisedFingerprint == null
                 || !advertisedFingerprint.matches("[a-fA-F0-9]{64}")) {
@@ -472,7 +478,7 @@ public final class PairingBridge {
                 queuedDiscoveryPort = port;
                 queuedDiscoveryFingerprint = advertisedFingerprint;
                 queued = true;
-            } else if (now - lastDiscoveredRefresh < 10_000L) {
+            } else if (shouldThrottleDiscoveredRefresh(now, lastDiscoveredRefresh, queuedRetry)) {
                 debugDiscoveryLog(appContext, "Skipped duplicate DNS-SD reconnect within the retry window.");
                 return;
             } else {
@@ -543,8 +549,13 @@ public final class PairingBridge {
         }
         if (!addresses.isEmpty() && fingerprint != null) {
             debugDiscoveryLog(context, "Retrying the queued DNS-SD endpoint after the network operation completed.");
-            reconnectDiscovered(context, addresses, port, fingerprint);
+            reconnectDiscovered(context, addresses, port, fingerprint, true);
         }
+    }
+
+    static boolean shouldThrottleDiscoveredRefresh(long now, long lastRefresh,
+                                                    boolean queuedRetry) {
+        return !queuedRetry && now - lastRefresh < 10_000L;
     }
 
     private static void debugDiscoveryLog(Context context, String message) {

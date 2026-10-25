@@ -208,6 +208,37 @@ jobs:
               wait "$emulator_pid" 2>/dev/null || true
             fi
           }
+          capture_smoke_failure() {
+            local exit_status=$?
+            local failed_command="$BASH_COMMAND"
+            trap - ERR
+            {
+              printf 'Android smoke failed at: %s (exit %s)\n' "$failed_command" "$exit_status"
+              printf 'ADB devices:\n'
+              adb devices -l
+              if [[ -n "${emulator_pid:-}" ]]; then
+                printf 'Emulator process:\n'
+                ps -p "$emulator_pid" -o pid=,stat=,args=
+              fi
+              printf 'Emulator log tail:\n'
+              tail -n 80 "$smoke_artifacts/emulator.log"
+              failure_pid="$(adb shell pidof app.omaapp 2>/dev/null | tr -d '\r')"
+              if [[ -n "$failure_pid" ]]; then
+                printf 'Android app threads:\n'
+                timeout 10s adb shell ps -T -p "$failure_pid"
+                printf 'Android native backtrace:\n'
+                timeout 15s adb shell debuggerd -b "$failure_pid"
+                printf 'Android Java backtrace:\n'
+                timeout 15s adb shell debuggerd -j "$failure_pid"
+                printf 'Android app logcat:\n'
+                timeout 10s adb logcat -d -v threadtime --pid="$failure_pid" -t 4000
+              fi
+            } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true
+            timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
+              > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true
+            return "$exit_status"
+          }
+          trap capture_smoke_failure ERR
           trap cleanup_emulator EXIT
           timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
@@ -314,12 +345,12 @@ jobs:
             if [[ -n "$readiness_pid" ]]; then
               timeout 10s adb shell ps -T -p "$readiness_pid" \
                 > "$smoke_artifacts/home-readiness-thread-list.txt" 2>&1 || true
-              # SIGQUIT asks ART for one bounded Java/native thread snapshot. It
-              # does not restart the process or hide a real startup failure.
-              adb shell kill -3 "$readiness_pid" >/dev/null 2>&1 || true
-              sleep 1
-              timeout 10s adb logcat -d -v threadtime --pid="$readiness_pid" \
-                > "$smoke_artifacts/home-readiness-thread-dump.txt" 2>&1 || true
+              # debuggerd asks Android for bounded snapshots of this live
+              # process. It does not restart or modify application state.
+              timeout 15s adb shell debuggerd -b "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-native-backtrace.txt" 2>&1 || true
+              timeout 15s adb shell debuggerd -j "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-java-backtrace.txt" 2>&1 || true
             fi
             timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
               > "$smoke_artifacts/home-readiness-all-logcat.txt" 2>&1 || true

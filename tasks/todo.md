@@ -28,10 +28,10 @@
 
 ## Local verification
 
-- `python3 -m unittest discover -s scripts/tests -q`: 129 tests pass.
+- `python3 -m unittest discover -s scripts/tests -q`: 130 tests pass.
 - `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
 - Shell syntax checks and git diff --check pass. Qt qmllint and a full Android/desktop build are unavailable locally. CI #231 passed desktop, arm64, OpenGL, and Vulkan for code commit 9e67ad6; CI #230's order-dependent assertion was fixed there.
-- CI #228 attempt 1 and OpenGL in docs-only CI #232 both captured a black HOME screen. In #232 the Activity/process remained alive and Qt created an OpenGL context, but QML module loading did not report completion and Android logged no fatal/ANR. The root cause remains unknown. Commit fc4aad4 distinguishes QML creation stalls after RHI startup and captures a one-shot thread dump; CI #233 is pending.
+- CI #231 and CI #233 passed desktop, arm64, OpenGL, and Vulkan. CI #232 showed a live Android process and created OpenGL context without a completed QML-load marker or fatal/ANR. CI #234 passed desktop/arm64 but both emulator jobs failed Home readiness: OpenGL had a Qt platform-plugin marker without a native-main marker; Vulkan failed a post-restart Home check. Cause remains unknown. The current change adds bounded native/Java backtraces, checks restored Home UI rather than icon-cache log timing, and covers queued DNS-SD retry throttling; its CI result is pending.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
 - Android DNS-SD remains verified with the test fixture and host-side Linux multicast tests only; it has not been exercised end to end with a live Omarchy host and phone.

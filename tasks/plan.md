@@ -29,11 +29,11 @@ OmaApp remains one Android APK plus one Omarchy plugin. The Android UI uses Qt Q
 
 ## Current verification
 
-- Local suite: 129 Python tests pass. The Russian catalog checker validates 292 source strings; shell syntax checks and `git diff --check` pass. Local Qt `qmllint`, Android, and desktop builds are unavailable in this environment.
-- CI #228 attempt 1 and OpenGL in docs-only CI #232 showed a temporary black HOME screen. The #232 Activity/process remained alive and Qt created an OpenGL context, but QML module loading did not log completion; no Android fatal/ANR appeared. This narrows the observed stall to QML component creation after RHI startup, but does not identify the root cause. The timeout now captures boot state, PID, Activity/Window dumps, screenshot, hierarchy, thread list, one bounded SIGQUIT thread snapshot, and all-buffer logcat, then classifies the observed stage.
+- Local suite: 130 Python tests pass. The Russian catalog checker validates 292 source strings; shell syntax checks and `git diff --check` pass. Local Qt `qmllint`, Android, and desktop builds are unavailable in this environment.
+- CI #228 attempt 1 and OpenGL CI #232 showed a temporary black HOME. In #232 the Activity/process remained alive and Qt created an OpenGL context, but QML module loading did not log completion; no Android fatal/ANR appeared. CI #234 had another OpenGL startup with a live process and a Qt platform-plugin marker but no native-main marker; its Vulkan job failed the post-restart Home check. The observed failures differ in stage and do not identify a root cause. CI now captures boot state, PID, Activity/Window dumps, screenshot, hierarchy, thread list, bounded native and Java backtraces, and all-buffer logcat, then classifies the observed stage.
 - Earlier CI #201 exercised launcher interactions, English/Russian UI, OWL store/editor and backup, pairing reconnect after plugin restart, permissions, and revocation. Its renderer screenshots remain checked in under `docs/screenshots/`.
 - The plugin was installed and restarted earlier in a real Omarchy 4.0.4 / Quickshell 0.3.1 session. This does not verify the Android DNS-SD change against a live Omarchy host.
-- CI #231 passed desktop, arm64, OpenGL, and Vulkan for code commit 9e67ad6; CI #230 exposed an order-dependent test assertion, corrected there. Docs-only CI #232 passed desktop and arm64 but its OpenGL smoke hit the repeated black HOME condition; run #233 covers the updated diagnostics and current code.
+- CI #231 passed desktop, arm64, OpenGL, and Vulkan for code commit 9e67ad6; CI #230 exposed an order-dependent test assertion, corrected there. CI #233 passed all four jobs for fc4aad4. CI #234 passed desktop and arm64 but both emulator jobs failed HOME readiness. The current change adds backtrace capture, validates restored Home UI rather than an icon-cache log, and fixes the queued DNS-SD retry throttle; its next CI run must confirm the result.
 
 ## Remaining work
 

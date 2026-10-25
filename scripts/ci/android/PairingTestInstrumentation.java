@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20327)
+Total output lines: 1622
+
 package app.omaapp;
 
 import android.app.Activity;
@@ -363,6 +366,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
     /** Exercises real Android NSD discovery/resolution and the saved TLS trust gate. */
     private JSONObject runDnsSdReconnectSmoke(Context context, int port, String fingerprint,
                                                String expectedTheme) throws Exception {
+        if (!PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, false)
+                || PairingBridge.shouldThrottleDiscoveredRefresh(10_500L, 10_000L, true)) {
+            throw new IllegalStateException(
+                    "A queued DNS-SD endpoint must bypass duplicate-announcement throttling.");
+        }
         if (port < 1 || port > 65535 || fingerprint == null
                 || !fingerprint.matches("[a-fA-F0-9]{64}")) {
             throw new IllegalArgumentException("A bounded CI DNS-SD endpoint is required.");
@@ -764,196 +772,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static boolean awaitLatchlessView(AtomicReference<AppWidgetHostView> view,
             AtomicReference<String> error, long timeoutMillis) {
         long deadline = SystemClock.uptimeMillis() + timeoutMillis;
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (view.get() != null || !error.get().isEmpty()) {
-                return view.get() != null;
-            }
-            SystemClock.sleep(50L);
-        }
-        return false;
-    }
-
-    private boolean awaitAccessibilityText(UiAutomation automation, String text, long timeoutMillis) {
-        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (accessibilityTreeContains(automation, text)) {
-                return true;
-            }
-            SystemClock.sleep(250L);
-        }
-        return false;
-    }
-
-    private static boolean accessibilityTreeContains(UiAutomation automation, String expected) {
-        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
-        if (root == null) {
-            return false;
-        }
-        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
-        pending.add(root);
-        try {
-            for (int index = 0; index < pending.size() && index < 512; index++) {
-                AccessibilityNodeInfo node = pending.get(index);
-                CharSequence nodeText = node.getText();
-                CharSequence nodeDescription = node.getContentDescription();
-                if ((nodeText != null && nodeText.toString().contains(expected))
-                        || (nodeDescription != null
-                                && nodeDescription.toString().contains(expected))) {
-                    return true;
-                }
-                for (int child = 0; child < node.getChildCount() && pending.size() < 512; child++) {
-                    AccessibilityNodeInfo childNode = node.getChild(child);
-                    if (childNode != null) {
-                        pending.add(childNode);
-                    }
-                }
-            }
-            return false;
-        } finally {
-            for (AccessibilityNodeInfo node : pending) {
-                node.recycle();
-            }
-        }
-    }
-
-    private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
-        for (String label : new String[] {
-                "Allow", "Add", "Add widget", "Create", "Create widget",
-                "Разрешить", "Добавить", "Создать", "Создать виджет"}) {
-            if (clickAccessibleControl(automation, label)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static String describeInteractiveWindows(UiAutomation automation) {
-        List<AccessibilityWindowInfo> windows = automation.getWindows();
-        if (windows == null || windows.isEmpty()) {
-            return "no interactive windows";
-        }
-        StringBuilder summary = new StringBuilder();
-        try {
-            for (AccessibilityWindowInfo window : windows) {
-                AccessibilityNodeInfo root = window.getRoot();
-                if (root == null) {
-                    continue;
-                }
-                ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
-                pending.add(root);
-                try {
-                    for (int index = 0; index < pending.size() && index < 512; index++) {
-                        AccessibilityNodeInfo node = pending.get(index);
-                        CharSequence text = node.getText();
-                        CharSequence description = node.getContentDescription();
-                        if ((text != null || description != null) && summary.length() < 1800) {
-                            summary.append(node.getClassName()).append(':');
-                            if (text != null) {
-                                summary.append(text);
-                            }
-                            if (description != null) {
-                                summary.append('|').append(description);
-                            }
-                            summary.append(';');
-                        }
-                        for (int child = 0; child < node.getChildCount()
-                                && pending.size() < 512; child++) {
-                            AccessibilityNodeInfo childNode = node.getChild(child);
-                            if (childNode != null) {
-                                pending.add(childNode);
-                            }
-                        }
-                    }
-                } finally {
-                    for (AccessibilityNodeInfo node : pending) {
-                        node.recycle();
-                    }
-                }
-                if (summary.length() >= 1800) {
-                    break;
-                }
-            }
-        } finally {
-            for (AccessibilityWindowInfo window : windows) {
-                window.recycle();
-            }
-        }
-        return summary.length() == 0 ? "no labeled nodes" : summary.toString();
-    }
-
-    private static void runOwlRuntimeSmoke() throws Exception {
-        String clockSource = "widget \"CI clock\" {\n"
-                + "  meta { owl: 1 }\n"
-                + "  source now = clock every 1s\n"
-                + "  size: 2x1\n"
-                + "  background: surface\n"
-                + "  Column {\n"
-                + "    Text { text: fmtTime(now, \"HH:mm\"); style: huge; color: accent }\n"
-                + "    Canvas { width: 96; height: 32; circle(width / 2, height / 2, 6, fill: accent) }\n"
-                + "  }\n"
-                + "}\n";
-        JSONObject theme = new JSONObject()
-                .put("foreground", "#cacccc")
-                .put("background", "#101315")
-                .put("accent", "#a7c080")
-                .put("surface", "#202326");
-        JSONObject rendered = new JSONObject(OwlBridge.render(clockSource, 320.0, 156.0,
-                theme.toString()));
-        if (rendered.has("error") || !"CI clock".equals(rendered.optString("name"))) {
-            throw new IllegalStateException("The embedded OWL clock did not compile and render: "
-                    + rendered.optString("error"));
-        }
-        JSONArray nodes = rendered.optJSONArray("nodes");
-        if (nodes == null || nodes.length() != 1
-                || !"Column".equals(nodes.optJSONObject(0).optString("type"))) {
-            throw new IllegalStateException("OWL layout nodes were not returned to the launcher.");
-        }
-        JSONArray children = nodes.optJSONObject(0).optJSONArray("children");
-        if (children == null || children.length() != 2
-                || !"Text".equals(children.optJSONObject(0).optString("type"))
-                || !"Canvas".equals(children.optJSONObject(1).optString("type"))) {
-            throw new IllegalStateException("OWL text and canvas nodes were not rendered.");
-        }
-        JSONArray drawing = children.optJSONObject(1).optJSONArray("children");
-        if (drawing == null || drawing.length() != 1
-                || !"circle".equals(drawing.optJSONObject(0).optString("op"))) {
-            throw new IllegalStateException("OWL canvas drawing commands were not evaluated.");
-        }
-        JSONArray circleArgs = drawing.optJSONObject(0).optJSONArray("args");
-        if (circleArgs == null || circleArgs.length() != 3
-                || circleArgs.optDouble(0, Double.NaN) != 48.0
-                || circleArgs.optDouble(1, Double.NaN) != 16.0
-                || circleArgs.optDouble(2, Double.NaN) != 6.0) {
-            throw new IllegalStateException("OWL canvas width and height were not evaluated in its local scope.");
-        }
-        JSONObject unsafe = new JSONObject(OwlBridge.render(
-                "widget \"network\" { source data = http(\"https://example.invalid\") every 30s "
-                        + "Text { text: data } }", 320.0, 156.0, theme.toString()));
-        if (!unsafe.has("error")) {
-            throw new IllegalStateException("The offline OWL runtime accepted a network source.");
-        }
-        JSONObject explosiveValue = new JSONObject(OwlBridge.render(
-                "widget \"serialization budget\" { meta { owl: 11 } "
-                        + "Text { text: reduce(range(30), (a, x) => [a, a], [1]) } }",
-                320.0, 156.0, theme.toString()));
-        if (!explosiveValue.optString("error").contains("serialization budget")) {
-            throw new IllegalStateException("OWL recursive values escaped the bounded JSON serializer: "
-                    + explosiveValue.optString("error"));
-        }
-        String boxSource = "widget \"CI box\" {\n"
-                + "  meta { owl: 1 }\n"
-                + "  size: 2x1\n"
-                + "  Box { align: bottomEnd; width: 64; height: 32; Text { text: \"Overlay\" } }\n"
-                + "}\n";
-        JSONObject box = new JSONObject(OwlBridge.render(boxSource, 320.0, 156.0, theme.toString()));
-        JSONArray boxNodes = box.optJSONArray("nodes");
-        if (box.has("error") || boxNodes == null || boxNodes.length() != 1
-                || !"Box".equals(boxNodes.optJSONObject(0).optString("type"))
-                || !"bottomEnd".equals(boxNodes.optJSONObject(0).optJSONObject("props").optString("align"))) {
-            throw new IllegalStateException("OWL Box alignment and overlay layout did not compile.");
-        }
-
-        String png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg==";
+        while (SystemCloc…2327 tokens truncated…D76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg==";
         String assetWidget = "widget \"CI asset\" {\n"
                 + "  meta { owl: 11 }\n"
                 + "  asset badge = base64\"" + png + "\"\n"

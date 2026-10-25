@@ -23,6 +23,30 @@ class AndroidLaunchDiagnosticsTests(unittest.TestCase):
             "qml_component_load_failure",
         )
 
+    def test_distinguishes_android_plugin_start_from_native_entrypoint(self):
+        self.assertEqual(
+            classify("1", "123", "Qt platform plugin started"),
+            "qt_android_native_entrypoint_not_observed",
+        )
+        self.assertEqual(
+            classify(
+                "1", "123", "Qt platform plugin started\nCreating QRhi with backend OpenGL"
+            ),
+            "qt_android_native_entrypoint_not_observed",
+        )
+        self.assertEqual(
+            classify(
+                "1", "123", "OmaApp startup: native main entered"
+            ),
+            "qt_qguiapplication_initialization_stalled",
+        )
+        self.assertEqual(
+            classify(
+                "1", "123", "OmaApp startup: QGuiApplication ready"
+            ),
+            "qt_native_startup_before_qml_load",
+        )
+
     def test_distinguishes_qt_graphics_startup_from_ui_readiness(self):
         self.assertEqual(
             classify("1", "123", "OmaApp startup: launcher refresh entered"),
@@ -62,12 +86,16 @@ class AndroidLaunchDiagnosticsTests(unittest.TestCase):
             "home-readiness-activities.txt",
             "home-readiness-windows.txt",
             "home-readiness-all-logcat.txt",
-            "home-readiness-thread-dump.txt",
+            "home-readiness-native-backtrace.txt",
+            "home-readiness-java-backtrace.txt",
             "home-readiness-thread-list.txt",
             "home-readiness-classification.txt",
         ):
             with self.subTest(artifact=artifact):
                 self.assertIn(artifact, workflow)
+        self.assertIn("timeout 15s adb shell debuggerd -b", workflow)
+        self.assertIn("timeout 15s adb shell debuggerd -j", workflow)
+        self.assertIn("trap capture_smoke_failure ERR", workflow)
 
 
 if __name__ == "__main__":

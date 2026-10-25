@@ -26,10 +26,23 @@ def classify(boot_completed: str, app_pid: str, logcat: str) -> str:
     qml_load_returned = "OmaApp startup: QML module load returned" in logcat
     event_loop_entered = "OmaApp startup: entering event loop" in logcat
     graphics_marker = "OmaApp initialized Qt Quick graphics API:" in logcat
+    native_main_entered = "OmaApp startup: native main entered" in logcat
+    gui_application_ready = "OmaApp startup: QGuiApplication ready" in logcat
+    android_platform_started = "Qt platform plugin started" in logcat
     rhi_started = re.search(
         r"Creating QRhi with backend|Created QRhi |Created OpenGL context",
         logcat,
     ) is not None
+
+    # Qt's Android Java activity can load the platform plugin before the
+    # application's native main function starts. Distinguish that from a QML
+    # component stall: in this case QML has not begun loading at all.
+    if android_platform_started and not native_main_entered:
+        return "qt_android_native_entrypoint_not_observed"
+    if native_main_entered and not gui_application_ready:
+        return "qt_qguiapplication_initialization_stalled"
+    if gui_application_ready and not qml_load_started:
+        return "qt_native_startup_before_qml_load"
 
     # The diagnostic signal is connected immediately after QML construction.
     # A runner can hang while the component tree is still being instantiated,
