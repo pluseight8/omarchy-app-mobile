@@ -46,7 +46,14 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn(
             "private static void runOwlRuntimeSmoke() throws Exception", instrumentation
         )
-        self.assertNotIn("tokens truncated", instrumentation)
+        for artifact in (
+            "Warning: truncated output",
+            "Total output lines:",
+            "tokens truncated",
+            "Output exceeded available model context",
+        ):
+            with self.subTest(artifact=artifact):
+                self.assertNotIn(artifact, instrumentation)
         self.assertIn("node.getContentDescription()", instrumentation)
         self.assertIn("nodeText != null && label.contentEquals(nodeText)", instrumentation)
         self.assertIn(

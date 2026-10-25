@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20327)
-Total output lines: 1622
-
 package app.omaapp;
 
 import android.app.Activity;
