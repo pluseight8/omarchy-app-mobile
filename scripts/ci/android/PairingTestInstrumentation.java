@@ -129,10 +129,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 context.startActivity(launch);
                 waitForIdleSync();
-                String translated = "Computer files";
-                for (int attempt = 0; attempt < 40 && "Computer files".equals(translated); ++attempt) {
-                    translated = NativeStrings.get("Computer files");
-                    if ("Computer files".equals(translated)) {
+                String translated = null;
+                for (int attempt = 0; attempt < 40
+                        && !"Файлы компьютера".equals(translated); ++attempt) {
+                    translated = nativeStringsOnApplicationThread(
+                            () -> NativeStrings.get("Computer files"));
+                    if (!"Файлы компьютера".equals(translated)) {
                         SystemClock.sleep(250L);
                     }
                 }
@@ -141,12 +143,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
                             + translated);
                 }
                 if (!"Действие на компьютере выполнено.".equals(
-                        NativeStrings.featureMessage("Computer action completed."))) {
+                        nativeStringsOnApplicationThread(
+                                () -> NativeStrings.featureMessage("Computer action completed.")))) {
                     throw new IllegalStateException("Russian UI lost a recognized feature success message.");
                 }
                 if (!"Разрешите эту функцию для телефона в настройках плагина Omarchy.".equals(
-                        NativeStrings.fileTransferError(
-                                "Enable this feature for this phone in the Omarchy plugin permissions."))) {
+                        nativeStringsOnApplicationThread(() -> NativeStrings.fileTransferError(
+                                "Enable this feature for this phone in the Omarchy plugin permissions.")))) {
                     throw new IllegalStateException("Russian file UI lost the plugin permission guidance.");
                 }
                 result.putString("stage", "native_qt_translations_passed");
@@ -165,13 +168,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 SystemClock.sleep(2_000L);
                 String success = "Computer action completed.";
                 String permission = "Enable this feature for this phone in the Omarchy plugin permissions.";
-                if (!success.equals(NativeStrings.featureMessage(success))
-                        || !permission.equals(NativeStrings.featureMessage(permission))
-                        || !permission.equals(NativeStrings.fileTransferError(permission))
+                if (!success.equals(nativeStringsOnApplicationThread(
+                            () -> NativeStrings.featureMessage(success)))
+                        || !permission.equals(nativeStringsOnApplicationThread(
+                            () -> NativeStrings.featureMessage(permission)))
+                        || !permission.equals(nativeStringsOnApplicationThread(
+                            () -> NativeStrings.fileTransferError(permission)))
                         || !"Computer feature request failed (HTTP 403).".equals(
-                                NativeStrings.fileTransferError("Computer feature request failed (HTTP 403)."))
+                            nativeStringsOnApplicationThread(() -> NativeStrings.fileTransferError(
+                                "Computer feature request failed (HTTP 403).")))
                         || !"Computer file transfer failed. Check pairing and the network.".equals(
-                                NativeStrings.fileTransferError("unrecognized server detail"))) {
+                            nativeStringsOnApplicationThread(() -> NativeStrings.fileTransferError(
+                                "unrecognized server detail")))) {
                     throw new IllegalStateException("English Android UI did not preserve known native messages or contain unknown errors.");
                 }
                 result.putString("stage", "native_english_strings_passed");
@@ -2461,6 +2469,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static void awaitAction(Context context) throws Exception {
         awaitFeatureMessage(context, "Sending command to the computer…", 2_000L);
         awaitFeatureMessage(context, "Computer action completed.", 15_000L);
+    }
+
+    private String nativeStringsOnApplicationThread(NativeStringsCall call) {
+        AtomicReference<String> result = new AtomicReference<>();
+        AtomicReference<UnsatisfiedLinkError> libraryError = new AtomicReference<>();
+        runOnMainSync(() -> {
+            try {
+                result.set(call.invoke());
+            } catch (UnsatisfiedLinkError error) {
+                libraryError.set(error);
+            }
+        });
+        return libraryError.get() == null ? result.get() : null;
+    }
+
+    @FunctionalInterface
+    private interface NativeStringsCall {
+        String invoke();
     }
 
     private void reportStage(String stage) {

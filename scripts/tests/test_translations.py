@@ -119,6 +119,26 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn("nativeEnglishStrings true", smoke)
         self.assertIn("stage=native_english_strings_passed", smoke)
 
+    def test_native_catalog_checks_execute_jni_on_the_application_main_thread(self):
+        instrumentation = (
+            Path(__file__).resolve().parents[2]
+            / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("private String nativeStringsOnApplicationThread(", instrumentation)
+        self.assertIn("runOnMainSync(() ->", instrumentation)
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.get\(",
+        )
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.featureMessage\(",
+        )
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.fileTransferError\(",
+        )
+
     def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
             encoding="utf-8"
