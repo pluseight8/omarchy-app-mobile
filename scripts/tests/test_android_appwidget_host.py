@@ -107,6 +107,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
 
     def test_android_widget_grid_uses_page_local_width_and_offers_undo(self):
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        native = (ROOT / "app/native/main.cpp").read_text(encoding="utf-8")
         start = qml.index("function placeAndroidWidgetTo(")
         end = qml.index("function moveAndroidWidgetTo(", start)
         place_function = qml[start:end]
@@ -120,6 +121,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("function updateAndroidWidgetDragPage(scenePosition)", qml)
         self.assertIn("androidWidgetPageDragTimer", qml)
         self.assertIn("centroid.scenePosition", qml)
+        self.assertIn('QT_TRANSLATE_NOOP("Main", "Resize Android widget")', native)
+        self.assertIn('QT_TRANSLATE_NOOP("Main", "Widget size was not changed.")', native)
 
     def test_integration_smoke_checks_old_widget_schema_and_survives_slow_qml_startup(self):
         instrumentation = (

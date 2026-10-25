@@ -129,7 +129,9 @@ int main(int argc, char *argv[])
         QT_TRANSLATE_NOOP("Main", "Computer rejected the file request (HTTP %1)."),
         QT_TRANSLATE_NOOP("Main", "Android could not open the selected destination."),
         QT_TRANSLATE_NOOP("Main", "Saved %1 to the selected phone location."),
-        QT_TRANSLATE_NOOP("Main", "Computer file transfer failed. Check pairing and the network.")
+        QT_TRANSLATE_NOOP("Main", "Computer file transfer failed. Check pairing and the network."),
+        QT_TRANSLATE_NOOP("Main", "Resize Android widget"),
+        QT_TRANSLATE_NOOP("Main", "Widget size was not changed.")
     };
     Q_UNUSED(androidUiStrings);
 
