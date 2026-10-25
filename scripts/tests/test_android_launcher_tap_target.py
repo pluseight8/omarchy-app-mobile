@@ -73,16 +73,22 @@ class AndroidLauncherTapTargetTests(unittest.TestCase):
         )
         self.assertIn("android_accessibility_assert_checked.py \"$accessibility_xml\" 'Home'", reselect)
 
-    def test_owl_editor_store_scrolls_down_from_settings_top_in_the_gutter(self):
+    def test_owl_editor_create_action_is_available_at_the_top_of_settings(self):
         smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
             encoding="utf-8"
         )
-        editor_store = smoke.split("# Re-entering Settings starts near the top", 1)[1]
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        settings_header = qml.split("id: settingsColumn", 1)[1].split(
+            "HyprlandSurface {", 1
+        )[0]
+        editor_store = smoke.split("new_widget_target=\"\"", 1)[1]
         editor_store = editor_store.split("if [[ -z \"$new_widget_target\" ]]", 1)[0]
 
+        self.assertIn('Accessible.name: qsTr("Create an OWL widget")', settings_header)
+        self.assertIn("onClicked: createOwlWidget()", settings_header)
         self.assertIn("'Create an OWL widget'", editor_store)
-        self.assertIn("adb shell input swipe 32 720 32 300 650", editor_store)
-        self.assertNotIn("adb shell input swipe 205 300 205 720", editor_store)
+        self.assertIn("widget-editor-create-action-missing.png", editor_store)
+        self.assertNotIn("input swipe", editor_store)
 
 
 if __name__ == "__main__":

@@ -299,20 +299,14 @@ read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1
 new_widget_target=""
-# Re-entering Settings starts near the top; scroll down to reach the OWL store
-# action. Keep the gesture in the left gutter so it cannot activate a control.
-for attempt in {1..10}; do
-  python3 scripts/ci/android_accessibility_dump.py \
-    /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
-  if new_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-    "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
-    break
-  fi
-  adb shell input swipe 32 720 32 300 650
-  sleep 1
-done
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
+if ! new_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
+  adb exec-out screencap -p > "$smoke_artifacts/widget-editor-create-action-missing.png"
+fi
 if [[ -z "$new_widget_target" ]]; then
-  printf 'Could not find the local OWL widget editor action.\n' >&2
+  printf 'The OWL widget editor action was not visible at the top of Settings.\n' >&2
   exit 1
 fi
 read -r new_widget_x new_widget_y <<< "$new_widget_target"

@@ -2674,6 +2674,12 @@ ApplicationWindow {
                         font.pixelSize: Theme.fontSize(14)
                         wrapMode: Text.WordWrap
                     }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: qsTr("New")
+                        Accessible.name: qsTr("Create an OWL widget")
+                        onClicked: createOwlWidget()
+                    }
                 }
 
                 HyprlandSurface {
@@ -2901,11 +2907,6 @@ ApplicationWindow {
                                 color: Theme.foreground
                                 font.pixelSize: Theme.fontSize(17)
                                 font.weight: Font.DemiBold
-                            }
-                            Button {
-                                text: qsTr("New")
-                                Accessible.name: qsTr("Create an OWL widget")
-                                onClicked: createOwlWidget()
                             }
                         }
 
