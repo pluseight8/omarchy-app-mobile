@@ -901,7 +901,9 @@ class MdnsAdvertiser:
         self.thread: threading.Thread | None = None
         self.instance_name = ""
         self.target_name = ""
-        self.last_packet = b""
+        self.last_addresses: list[str] = []
+        self.last_port = 0
+        self.last_fingerprint = ""
         self.announce_lock = threading.Lock()
         self.memberships: set[str] = set()
 
@@ -910,9 +912,10 @@ class MdnsAdvertiser:
         suffix = fingerprint[:12]
         self.instance_name = f"OmaApp-{suffix}.{MDNS_SERVICE_TYPE}"
         self.target_name = f"omaapp-{suffix}.local."
-        addresses = self._current_addresses(address)
-        self.last_packet = _mdns_announcement(
-            self.instance_name, self.target_name, addresses, port, fingerprint)
+        addresses = self._current_addresses()
+        # Do not seed DNS-SD with an old route-selected IP when no active
+        # private IPv4 interface is available.
+        _mdns_announcement(self.instance_name, self.target_name, addresses, port, fingerprint)
 
         listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         try:
@@ -935,32 +938,56 @@ class MdnsAdvertiser:
             listener = self.socket
             if listener is None:
                 return
+            if goodbye:
+                self._send_announcement(listener, self.last_addresses, self.last_port,
+                                        self.last_fingerprint, ttl=0)
+                self.last_addresses = []
+                self.last_port = 0
+                self.last_fingerprint = ""
+                return
             try:
-                address, port, fingerprint = self.data_provider()
-                addresses = self._current_addresses(address)
+                _address, port, fingerprint = self.data_provider()
+                addresses = self._current_addresses()
+                changed = (set(addresses) != set(self.last_addresses)
+                           or port != self.last_port
+                           or fingerprint != self.last_fingerprint)
+                if self.last_addresses and changed:
+                    # Expire the previous RRset before joining the new routes,
+                    # including when all active interfaces have disappeared.
+                    self._send_announcement(listener, self.last_addresses, self.last_port,
+                                            self.last_fingerprint, ttl=0)
+                    self.last_addresses = []
+                    self.last_port = 0
+                    self.last_fingerprint = ""
                 self._refresh_memberships(listener, addresses)
-                packet = _mdns_announcement(
-                    self.instance_name, self.target_name, addresses, port, fingerprint,
-                    ttl=0 if goodbye else 120)
-                if not goodbye:
-                    self.last_packet = packet
-                interfaces = [self.multicast_interface] if self.multicast_interface != "0.0.0.0" \
-                    else addresses
-                sent = 0
-                for interface in interfaces:
-                    try:
-                        listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
-                                            socket.inet_aton(interface))
-                        listener.sendto(packet, (self.multicast_group, self.multicast_port))
-                        sent += 1
-                    except OSError:
-                        continue
-                if sent == 0:
-                    raise OSError("DNS-SD announcement failed on all active interfaces")
+                self._send_announcement(listener, addresses, port, fingerprint, ttl=120)
+                self.last_addresses = list(addresses)
+                self.last_port = port
+                self.last_fingerprint = fingerprint
             except (OSError, ValueError):
                 return
 
-    def _current_addresses(self, fallback: str) -> list[str]:
+    def _send_announcement(self, listener: socket.socket, addresses: list[str],
+                           port: int, fingerprint: str, *, ttl: int) -> None:
+        if not addresses or port < 1 or not fingerprint:
+            return
+        packet = _mdns_announcement(self.instance_name, self.target_name, addresses,
+                                    port, fingerprint, ttl=ttl)
+        interfaces = [self.multicast_interface] if self.multicast_interface != "0.0.0.0" \
+            else addresses
+        sent = 0
+        for interface in interfaces:
+            try:
+                listener.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                                    socket.inet_aton(interface))
+                listener.sendto(packet, (self.multicast_group, self.multicast_port))
+                sent += 1
+            except OSError:
+                continue
+        if sent == 0 and ttl != 0:
+            raise OSError("DNS-SD announcement failed on all active interfaces")
+
+    def _current_addresses(self) -> list[str]:
         try:
             addresses = self.address_provider()
         except (OSError, ValueError, TypeError):
@@ -981,8 +1008,6 @@ class MdnsAdvertiser:
                 result.append(str(parsed))
             if len(result) >= MAX_MDNS_ADDRESSES:
                 break
-        if not result and fallback:
-            result = [fallback]
         return result
 
     def _refresh_memberships(self, listener: socket.socket, addresses: list[str]) -> None:

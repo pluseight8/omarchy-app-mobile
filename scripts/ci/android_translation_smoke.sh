@@ -153,10 +153,25 @@ python3 scripts/ci/check_android_navigation_layout.py \
   Home Apps Devices Style Settings
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
+locale_process_before_instrument="$(adb shell pidof app.omaapp | tr -d '\r')"
+test -n "$locale_process_before_instrument"
 native_english_output="$(adb shell am instrument -w -e nativeEnglishStrings true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$native_english_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
   <<< "$native_english_output"
+
+# Instrumentation can leave Android Settings in the foreground. Return to the
+# existing launcher Activity without force-stopping it, so the next language
+# switch genuinely exercises live QML retranslation in the same process.
+adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
+sleep 2
+locale_process_after_instrument="$(adb shell pidof app.omaapp | tr -d '\r')"
+if [[ "$locale_process_after_instrument" != "$locale_process_before_instrument" ]]; then
+  printf 'Native string instrumentation restarted OmaApp before the live locale-switch check.\n' >&2
+  exit 1
+fi
+dump_ui
+ensure_settings_tab 'Settings'
 
 # Exercise rapid locale changes without recreating the Activity. This catches
 # stale OWL labels and one-way translation bindings after several retranslate() calls.

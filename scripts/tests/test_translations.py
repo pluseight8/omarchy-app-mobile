@@ -75,6 +75,17 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn("adb logcat -d -v threadtime -t 30000", smoke)
         self.assertIn("trap restore_android_font_scale EXIT", smoke)
         self.assertIn("grep -F 'Binding loop detected'", smoke)
+        english_stage = smoke.split("native_english_output=", 1)[1].split(
+            "# Exercise rapid locale changes", 1
+        )[0]
+        self.assertIn("locale_process_before_instrument", english_stage)
+        self.assertIn("locale_process_after_instrument", english_stage)
+        self.assertIn("adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity", english_stage)
+        self.assertIn("ensure_settings_tab 'Settings'", english_stage)
+        self.assertIn(
+            '"$locale_process_after_instrument" != "$locale_process_before_instrument"',
+            english_stage,
+        )
 
     def test_native_android_messages_survive_both_english_and_russian(self):
         root = Path(__file__).resolve().parents[2]

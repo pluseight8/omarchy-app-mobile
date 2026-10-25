@@ -208,9 +208,10 @@ class PairingServiceTests(unittest.TestCase):
         receiver.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
                              socket.inet_aton(group) + socket.inet_aton(interface))
         receiver.settimeout(3)
+        address_state = {"values": ["192.168.10.5", "10.1.0.5"]}
         advertiser = service.MdnsAdvertiser(
             lambda: (interface, 44892, fingerprint),
-            address_provider=lambda: ["192.168.10.5", "10.1.0.5"],
+            address_provider=lambda: address_state["values"],
             multicast_group=group,
             multicast_port=port,
             multicast_interface=interface,
@@ -235,6 +236,48 @@ class PairingServiceTests(unittest.TestCase):
                              [socket.inet_aton("192.168.10.5"), socket.inet_aton("10.1.0.5")])
             self.assertEqual([record[0] for record in records[-2:]],
                              [target.lower(), target.lower()])
+
+            def receive_records():
+                response, _ = receiver.recvfrom(4096)
+                answer_count = service.struct.unpack_from("!H", response, 6)[0]
+                cursor = 12
+                parsed = []
+                for _ in range(answer_count):
+                    name, cursor = service._dns_read_name(response, cursor)
+                    record_type, _record_class, ttl, size = service.struct.unpack_from(
+                        "!HHIH", response, cursor
+                    )
+                    cursor += 10
+                    value = response[cursor:cursor + size]
+                    cursor += size
+                    parsed.append((name, record_type, ttl, value))
+                return parsed
+
+            # A changed interface address must expire the old RRset before
+            # advertising the replacement; losing all addresses must expire
+            # the current RRset without falling back to a stale address.
+            address_state["values"] = ["172.20.4.5"]
+            advertiser.announce()
+            old_address_goodbye = receive_records()
+            replacement = receive_records()
+            self.assertEqual([record[2] for record in old_address_goodbye], [0] * 5)
+            self.assertEqual(old_address_goodbye[-2][3], socket.inet_aton("192.168.10.5"))
+            self.assertEqual(old_address_goodbye[-1][3], socket.inet_aton("10.1.0.5"))
+            self.assertEqual([record[2] for record in replacement], [120] * 4)
+            self.assertEqual(replacement[-1][3], socket.inet_aton("172.20.4.5"))
+
+            address_state["values"] = []
+            advertiser.announce()
+            no_interface_goodbye = receive_records()
+            self.assertEqual([record[2] for record in no_interface_goodbye], [0] * 4)
+            self.assertEqual(no_interface_goodbye[-1][3], socket.inet_aton("172.20.4.5"))
+            self.assertEqual(advertiser.last_addresses, [])
+
+            address_state["values"] = ["10.0.0.8"]
+            advertiser.announce()
+            recovered = receive_records()
+            self.assertEqual([record[2] for record in recovered], [120] * 4)
+            self.assertEqual(recovered[-1][3], socket.inet_aton("10.0.0.8"))
         finally:
             advertiser.stop()
             receiver.close()
@@ -307,6 +350,7 @@ class PairingServiceTests(unittest.TestCase):
 
         advertiser = service.MdnsAdvertiser(
             lambda: (interface, 44892, fingerprint),
+            address_provider=lambda: ["192.168.42.20"],
             multicast_group=group,
             multicast_port=port,
             multicast_interface=interface,
