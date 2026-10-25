@@ -305,8 +305,22 @@ jobs:
           adb shell dumpsys activity activities > activities.txt
           adb shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME > resolved-home.txt 2>&1 || true
           adb shell dumpsys window windows > windows.txt
-          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
-          test -n "$app_pid"
+          wait_for_app_pid() {
+            local app_pid=''
+            # On a cold boot, `am start -W` can return before ActivityManager
+            # has completed the Zygote process start for the selected HOME app.
+            for attempt in {1..10}; do
+              app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+              if [[ -n "$app_pid" ]]; then
+                printf '%s\n' "$app_pid"
+                return 0
+              fi
+              sleep 1
+            done
+            printf 'OmaApp process did not start within 10 seconds after HOME selection.\n' >&2
+            return 1
+          }
+          app_pid="$(wait_for_app_pid)"
           printf '%s\n' "$app_pid" > app-pid.txt
           wait_for_checked_tab() {
             local label="$1"

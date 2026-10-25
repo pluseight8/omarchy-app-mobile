@@ -96,6 +96,9 @@ class AndroidLaunchDiagnosticsTests(unittest.TestCase):
         self.assertIn("timeout 15s adb shell debuggerd -b", workflow)
         self.assertIn("timeout 15s adb shell debuggerd -j", workflow)
         self.assertIn("trap capture_smoke_failure ERR", workflow)
+        self.assertIn("wait_for_app_pid() {", workflow)
+        self.assertIn("for attempt in {1..10}; do", workflow)
+        self.assertIn("OmaApp process did not start within 10 seconds after HOME selection.", workflow)
 
 
 if __name__ == "__main__":
