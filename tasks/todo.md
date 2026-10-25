@@ -17,21 +17,25 @@
 - [x] Update English and Russian READMEs, changelog, task status, pairing guide, AppWidgetHost findings, and checked-in OpenGL/Vulkan emulator screenshots.
 - [x] Apply Android accessibility text scale to shared Qt/QML font and spacing helpers; cover larger text and repeated locale switching in the Android smoke; add phone-safe widths to wrapping dialogs that emitted binding-loop warnings.
 - [x] Retain boot, process, Activity, Window, Qt graphics, screenshot, hierarchy, and logcat evidence when emulator Home readiness times out.
+- [x] Run English and Russian Android native-string checks only after selecting the corresponding locale; check persistence after instrumentation process teardown.
+- [x] Refresh backend-specific Settings visual baselines for the visible OWL creation action while preserving the 1.5% difference threshold.
 
 ## Remaining work and validation limits
 
-- [x] Pass CI after switching OWL delegates to indexed numeric models: desktop, arm64 APK, OpenGL, Vulkan, rendered OWL assets, loader regression, and confirmed process-death checks.
+- [ ] Pass a full CI run after the translation-order fix and refreshed Settings baselines, including pairing/reconnect, AppWidgetHost, and later smoke steps.
 - [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
 - [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
 - [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
-- [ ] Review and merge the current PR; publish an Alpha pre-release only with the owner's permanent signing secrets.
+- [ ] Resolve the fixed review threads and leave PR #16 open and Ready for Review after the complete CI run; keep it unmerged here.
+- [ ] Open the separate draft PR for production Android AppWidgetHost work after PR #16's review gate is clean.
+- [ ] Publish an Alpha pre-release only with the owner's permanent signing secrets.
 
 ## Local verification
 
-- `python3 -m unittest discover -s scripts/tests -q`: 131 tests pass.
+- `python3 -m unittest discover -s scripts/tests -q`: 133 tests pass.
 - `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
-- Shell syntax checks and git diff --check pass. Qt qmllint and a full Android/desktop build are unavailable locally. CI #231 passed desktop, arm64, OpenGL, and Vulkan for code commit 9e67ad6; CI #230's order-dependent assertion was fixed there.
-- CI #231 and CI #233 passed desktop, arm64, OpenGL, and Vulkan. CI #232 and CI #234 showed Home readiness failures without a proven root cause. CI #235 passed arm64 but the emulator builds failed compiling truncated CI instrumentation; Desktop failed an AppWidgetHost test that expected a missing accessibility helper. CI #236 passed Desktop but both emulator builds caught a second output-header artifact in the same fixture. The helpers and OWL smoke are restored; tests check bounded content-free accessibility traversal and reject output artifacts. A new full CI run remains required.
+- Shell syntax checks, `git diff --check`, and visual comparison of CI #250 OpenGL/Vulkan captures against the refreshed baselines pass. Qt qmllint and a full Android/desktop build are unavailable locally.
+- CI #250 (https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40192392591) passed Desktop and arm64. Both emulator backends reached the Home UI and passed launcher, Russian/English native translation, persistence, app-discovery, and haptics checks; the run then failed only because its Settings screenshot still used the pre-relocation baseline. The current changes refresh that expected screenshot for each backend without relaxing the threshold; the follow-up CI is pending. CI #249's OpenGL readiness failure happened before native main/QML and had no crash/ANR evidence; both backends launched the UI in #250, so the earlier cause remains unconfirmed.
 - This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
 - No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
-- Android DNS-SD remains verified with the test fixture and host-side Linux multicast tests only; it has not been exercised end to end with a live Omarchy host and phone.
+- Android DNS-SD remains verified with the Android NSD fixture and host-side Linux multicast packet tests only; it has not been exercised end to end over physical Wi-Fi with a live Omarchy host and phone.
