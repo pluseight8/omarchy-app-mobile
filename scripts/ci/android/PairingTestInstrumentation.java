@@ -485,7 +485,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     }
                     SystemClock.sleep(200L);
                 } while (SystemClock.uptimeMillis() < unchangedDeadline);
-                }
             } finally {
                 stopDnsSdFixture(context);
                 wrongCertificateProxy.close();
