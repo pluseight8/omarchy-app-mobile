@@ -130,6 +130,15 @@ def main() -> int:
             check=True, capture_output=True, text=True, timeout=15,
         )
         print("Installed Android instrumentation: " + listed.stdout.strip(), flush=True)
+        if dns_sd_port:
+            subprocess.run(["adb", "shell", "am", "force-stop", "app.omaapp"],
+                           check=True, timeout=15)
+            stopped = subprocess.run(
+                ["adb", "shell", "pidof", "app.omaapp"],
+                check=False, capture_output=True, text=True, timeout=15,
+            )
+            if stopped.stdout.strip():
+                raise RuntimeError("OmaApp remained alive after the DNS-SD restart check force-stop.")
         print("Starting Android pairing instrumentation.", flush=True)
         process = subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
