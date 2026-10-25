@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.appwidget.AppWidgetManager;
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.Button;
 
 /** Test-only configuration screen that follows the platform AppWidgetHost result contract. */
@@ -25,10 +26,13 @@ public final class CiWidgetConfigureActivity extends Activity {
         Button configure = new Button(this);
         configure.setText("CI_WIDGET_CONFIGURE");
         setContentView(configure);
-        configure.setOnClickListener(view -> {
-            setResult(Activity.RESULT_OK, new Intent()
-                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId));
-            finish();
+        configure.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                setResult(Activity.RESULT_OK, new Intent()
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId));
+                finish();
+            }
         });
     }
 }
