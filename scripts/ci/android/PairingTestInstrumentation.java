@@ -12,6 +12,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.Rect;
@@ -755,6 +756,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
+        try {
+            context.getPackageManager().getApplicationInfo(expectedProvider.getPackageName(), 0);
+        } catch (PackageManager.NameNotFoundException error) {
+            throw new IllegalStateException("The CI Android widget provider is hidden from OmaApp; "
+                    + "check its package-visibility declaration.", error);
+        }
+        reportStage("android_widget_host_provider_visible");
         Intent launch = new Intent(context, OmaAppActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         context.startActivity(launch);

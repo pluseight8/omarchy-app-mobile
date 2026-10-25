@@ -1,4 +1,5 @@
 from pathlib import Path
+import xml.etree.ElementTree as ET
 import unittest
 
 
@@ -6,6 +7,22 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppWidgetHostTests(unittest.TestCase):
+    def test_widget_provider_visibility_is_scoped_to_widget_update_receivers(self):
+        manifest_path = ROOT / "app/android/AndroidManifest.xml"
+        manifest = ET.parse(manifest_path).getroot()
+        android_name = "{http://schemas.android.com/apk/res/android}name"
+        queries = manifest.find("queries")
+        self.assertIsNotNone(queries)
+
+        queried_actions = {
+            action.get(android_name)
+            for action in queries.findall("intent/action")
+        }
+        self.assertIn("android.appwidget.action.APPWIDGET_UPDATE", queried_actions)
+        self.assertNotIn("android.permission.QUERY_ALL_PACKAGES", {
+            element.get(android_name) for element in manifest.findall("uses-permission")
+        })
+
     def test_instrumentation_falls_back_to_a_touch_for_qt_accessibility_controls(self):
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
@@ -149,6 +166,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("CI_WIDGET_ACTION", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED_TWICE", instrumentation)
+        self.assertIn('getApplicationInfo(expectedProvider.getPackageName(), 0)', instrumentation)
+        self.assertIn('reportStage("android_widget_host_provider_visible")', instrumentation)
         self.assertIn("recreateOmaAppActivity", instrumentation)
         self.assertIn("currentActivityForInstrumentation", instrumentation)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)

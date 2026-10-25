@@ -596,7 +596,6 @@ public final class AndroidWidgetHost {
             clip.setVisibility(View.GONE);
             overlay.addView(clip, new FrameLayout.LayoutParams(1, 1));
             AppWidgetHostView view = host.createView(context, widgetId, info);
-            view.setAppWidget(widgetId, info);
             view.setVisibility(View.GONE);
             clip.addView(view, new FrameLayout.LayoutParams(1, 1));
             clips.put(widgetId, clip);
