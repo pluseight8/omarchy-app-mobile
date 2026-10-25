@@ -47,7 +47,7 @@ public final class AndroidWidgetHost {
     private static final float MAX_SIZE_DP = 3000f;
 
     private static WeakReference<OmaAppActivity> activityRef = new WeakReference<>(null);
-    private static AppWidgetHost host;
+    private static OmaAppWidgetHost host;
     private static FrameLayout overlay;
     private static boolean listening;
     private static int pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;

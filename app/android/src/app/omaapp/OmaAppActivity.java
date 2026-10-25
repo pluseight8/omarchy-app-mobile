@@ -10,7 +10,7 @@ public final class OmaAppActivity extends QtActivity {
     private static native void notifyNativeAndroidWidgetsChanged();
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         AndroidWidgetHost.restoreInstanceState(savedInstanceState);
         AndroidWidgetHost.attach(this);
