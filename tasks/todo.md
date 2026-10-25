@@ -1,41 +1,41 @@
-# OmaApp task list
+# OmaApp task status
 
-## Android launcher
+## Completed in this development iteration
 
-- [x] Expose Android launcher activities and launch the selected app through `PackageManager`.
-- [x] Register OmaApp as a selectable Android HOME app.
-- [x] Add the in-app QR scanner and runtime-only camera permission.
-- [x] Keep the desktop preview honest: it does not invent an installed-app list.
-- [x] Build an arm64 debug APK in GitHub Actions (`2630521`; artifact `OmaApp-ci-debug-arm64`).
-- [x] Add an x86_64 emulator smoke check for APK install, app enumeration, launching an app, and selecting OmaApp as HOME.
-- [x] Build the pairing/theme-sync implementation for arm64 and desktop in GitHub Actions (`2630521`).
-- [x] Add lazy-loaded Android app icons, persistent pinned launcher activities, and refresh control; local C++ compile, QML lint/format, and plugin tests pass.
-- [x] Review emulator run `39490160786`: APK installation, HOME selection, 8-app enumeration, icon caching, pin persistence across process restart, app launch, and return to HOME all passed before pairing smoke.
-- [x] Add persisted app folders with create, rename, add/remove installed apps, and delete actions; local Qt model tests and QML lint pass.
-- [x] Verify folder creation, app membership, and persistence after restart in the [Android emulator smoke job](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [x] Verify CI TLS pairing, theme/geometry/wallpaper sync, live update, reconnect, and revocation in [emulator run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [ ] Repeat install/launcher/pairing checks on GrapheneOS or another physical Android device.
+- [x] Add offline English/Russian Qt Linguist catalogs, Android system-language detection, a persistent Settings selector, localized native messages, and CI checks for missing or unfinished translations.
+- [x] Refresh the launcher after protected Android package lifecycle broadcasts, coalesce broadcast bursts, and refresh on Activity resume; verify app discovery with an installed and removed Android launcher fixture.
+- [x] Add a test-only Android `AppWidgetHost` proof using system binding confirmation, a live `AppWidgetHostView`, a real provider click, and widget ID cleanup. Keep the Qt/QML layout limitation documented.
+- [x] Add plugin DNS-SD advertisement and foreground Android discovery of an already QR-trusted Omarchy host. Require the saved certificate pin and token before an endpoint address can change.
+- [x] Advertise active private IPv4 addresses on multi-interface hosts, refresh multicast memberships after address changes, use Android 14+ / Android 13 T extension 7+ NSD service-info updates with a legacy resolver fallback, and scope discovery callbacks to the current Activity generation.
+- [x] Queue the latest trusted DNS-SD candidate until active network work completes instead of polling the operation lock four times per second; stop discovery when trust is revoked or forgotten.
+- [x] Add opt-in system-respecting Android haptic feedback, persisted in launcher settings and backups, with emulator assertions for dispatch and restart persistence.
+- [x] Localize OWL catalog titles and descriptions, expose them to accessibility, refresh labels on language changes, and keep OWL and backup actions readable on phone-width layouts.
+- [x] Use concise Russian bottom-tab text with full accessible names.
+- [x] Guard OWL renderer bindings during QML Loader initialization, and refresh widgets when their model arrives or they become visible again.
+- [x] Expose OWL JSON-array entries through numeric Repeater models and indexed delegates, avoiding a silent empty QML renderer on Android.
+- [x] Test graceful cancellation of a plugin event long poll and a response write when the TLS client disconnects.
+- [x] Update English and Russian READMEs, changelog, task status, pairing guide, AppWidgetHost findings, and checked-in OpenGL/Vulkan emulator screenshots.
+- [x] Apply Android accessibility text scale to shared Qt/QML font and spacing helpers; cover larger text and repeated locale switching in the Android smoke; add phone-safe widths to wrapping dialogs that emitted binding-loop warnings.
+- [x] Retain boot, process, Activity, Window, Qt graphics, screenshot, hierarchy, and logcat evidence when emulator Home readiness times out.
+- [x] Run English and Russian Android native-string checks only after selecting the corresponding locale; check persistence after instrumentation process teardown.
+- [x] Refresh backend-specific Settings visual baselines for the visible OWL creation action while preserving the 1.5% difference threshold.
 
-## Secure Omarchy pairing and live theme sync
+## Remaining work and validation limits
 
-- [x] Keep the HTTPS helper and QR encoder inside the one Omarchy plugin package.
-- [x] Add short-lived QR pairing, certificate pinning, two-sided approval, per-device tokens, encrypted Android storage, and revocation.
-- [x] Add token-authenticated re-pairing after the computer's local address changes.
-- [x] Read current Omarchy theme files and Hyprland values through `hyprctl -j getoption`.
-- [x] Sync supported colors, active border gradient, wallpaper, border width, rounding, rounding power, and spacing; retain the last snapshot offline.
-- [x] Add HTTPS protocol tests for approval, rejection, expiry, reconnect, limits, theme parsing, authentication, and revocation.
-- [x] Run all available local repository checks after this change; Python tests, plugin validation, shell syntax, QML lint, Python compilation, and whitespace checks pass.
-- [x] Verify desktop, arm64 build, and x86_64 Android emulator jobs in [GitHub Actions run 44](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/39610588557).
-- [ ] Test real phone ↔ Omarchy exchange and observe theme refresh after changing a theme.
+- [x] Pass a full CI run after the translation-order fix and refreshed Settings baselines. CI #251 passed Desktop, Android arm64, and Android OpenGL/Vulkan smoke jobs.
+- [ ] Test Android NSD discovery, IP changes, reconnect, and wrong-certificate rejection end to end against a live Omarchy host.
+- [ ] Integrate ordinary Android widgets into saved Home layout only after a supported native-to-QML placement and lifecycle bridge is designed and tested. The current `AppWidgetHost` overlay is only a proof of concept.
+- [ ] Test installation, HOME selection, app discovery, camera QR scan, TLS pairing, theme sync, clipboard/files, offline mode, battery use, and UI performance on a physical Pixel 10 with GrapheneOS.
+- [x] Resolve both addressed PR #16 review threads and leave the PR open and Ready for Review after CI #251; maintainers still need to review it before merge.
+- [x] Open separate draft PR #17 for the AppWidgetHost proof. Production Android widget placement remains out of scope for this proof.
+- [ ] Publish an Alpha pre-release only with the owner's permanent signing secrets.
 
-## Remaining product work
+## Local verification
 
-- [ ] Port Omalauncher home pages, configurable gestures, OWL widgets, editor, shortcuts, and settings, keeping required notices.
-- [ ] Add visual comparisons for the Hyprland shader's gradients, transforms, and color handling.
-- [ ] Add permissioned clipboard, file, media, notification, workspace, terminal, desktop, and command features in reviewed slices.
-- [ ] Configure the owner's release-signing secrets; publish and verify the first signed Pre-release and update-over-install.
-
-## Environment limits at this checkpoint
-
-- This workspace has no CMake, JDK, Android SDK, emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed. GitHub Actions run 44 passed the emulator smoke test.
-- Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.
+- `python3 -m unittest discover -s scripts/tests -q`: 133 tests pass.
+- `python3 scripts/ci/check_translations.py`: 292 Russian source strings validated.
+- Shell syntax checks, `git diff --check`, and visual comparison of CI #251 OpenGL/Vulkan captures against the refreshed baselines pass. Qt qmllint and a full Android/desktop build are unavailable locally.
+- CI [#251](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934) passed all four jobs: Desktop, Android arm64, and Android x86_64 smoke on OpenGL and Vulkan. It published the [arm64 debug APK](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598838389), [Vulkan smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12599650182), and [OpenGL smoke captures](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934/artifacts/12598844391). The APK is not production-signed. CI #249's OpenGL readiness failure happened before native main/QML and had no crash or ANR evidence; both backends launched in #250, so the earlier cause remains unconfirmed.
+- This workspace lacks CMake, Qt ShaderTools, and the Android/JDK toolchain. No local APK, full CMake build, or emulator run is claimed.
+- No physical phone is attached. Pixel 10 / GrapheneOS compatibility and battery behavior remain unverified.
+- Android DNS-SD remains verified with the Android NSD fixture and host-side Linux multicast packet tests only; it has not been exercised end to end over physical Wi-Fi with a live Omarchy host and phone.

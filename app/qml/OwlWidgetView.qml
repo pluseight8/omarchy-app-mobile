@@ -10,6 +10,7 @@ Item {
     required property string themeJson
     property int itemIndex: -1
     property bool useSourceText: false
+    property bool active: true
     property string sourceText: ""
     property var document: ({})
     property string renderError: ""
@@ -42,6 +43,14 @@ Item {
             rendered = JSON.parse(response)
         } catch (error) {
             rendered = { error: qsTr("OWL preview could not be rendered.") }
+        }
+        if (omaappQmlDiagnostics) {
+            const renderedNodes = rendered.nodes
+            console.warn("OmaApp OWL refresh:", root.widgetId,
+                         "active", root.active,
+                         "size", root.width, "x", root.height,
+                         "nodes", Array.isArray(renderedNodes) ? renderedNodes.length : -1,
+                         "error", Boolean(rendered.error))
         }
         document = rendered
         renderError = rendered.error || ""
@@ -122,10 +131,10 @@ Item {
                 spacing: Theme.space(8)
 
                 Repeater {
-                    model: root.document.nodes || []
-                    delegate: OwlNode {
-                        required property var modelData
-                        nodeData: modelData
+                    model: Array.isArray(root.document.nodes) ? root.document.nodes.length : 0
+                    delegate: OwlNodeLoader {
+                        required property int index
+                        nodeData: root.document.nodes[index]
                         widgetRoot: root
                         Layout.fillWidth: true
                     }
@@ -168,6 +177,11 @@ Item {
 
     onWidthChanged: refresh()
     onHeightChanged: refresh()
+    onOwlModelChanged: refresh()
+    onActiveChanged: {
+        if (active)
+            refresh()
+    }
     onWidgetIdChanged: refresh()
     onThemeJsonChanged: refresh()
     onSourceTextChanged: refresh()

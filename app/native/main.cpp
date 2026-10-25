@@ -3,16 +3,56 @@
 #include "shared/geometry/HyprlandGeometry.h"
 #include "shared/geometry/HyprlandSurfaceItem.h"
 #include "OwlModel.h"
+#include "TranslationManager.h"
 
 #include <QDebug>
 #include <QFile>
 #include <QGuiApplication>
+#include <QQmlContext>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QQuickStyle>
+#include <QMetaObject>
+#include <QPointer>
 #include <QStringList>
 #include <QtQml/qqml.h>
+
+#ifdef Q_OS_ANDROID
+#include <jni.h>
+#endif
+
+#ifdef Q_OS_ANDROID
+namespace {
+QPointer<LauncherModel> launcherModel;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_omaapp_OmaAppActivity_refreshLauncherApps(JNIEnv *, jclass)
+{
+    if (launcherModel)
+        QMetaObject::invokeMethod(launcherModel.data(), "refresh", Qt::QueuedConnection);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_app_omaapp_NativeStrings_translate(JNIEnv *environment, jclass, jstring source)
+{
+    if (source == nullptr)
+        return environment->NewStringUTF("");
+
+    const jchar *characters = environment->GetStringChars(source, nullptr);
+    if (characters == nullptr)
+        return nullptr;
+    const QString sourceText(reinterpret_cast<const QChar *>(characters),
+                             environment->GetStringLength(source));
+    environment->ReleaseStringChars(source, characters);
+
+    const QByteArray sourceUtf8 = sourceText.toUtf8();
+    const QString translated = QCoreApplication::translate("Main", sourceUtf8.constData());
+    return environment->NewString(reinterpret_cast<const jchar *>(translated.utf16()),
+                                  translated.size());
+}
+#endif
 
 namespace {
 
@@ -67,6 +107,32 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("OmaApp"));
     app.setOrganizationName(QStringLiteral("OmaApp"));
 
+    static constexpr const char *androidUiStrings[] = {
+        QT_TRANSLATE_NOOP("Main", "Scan the temporary OmaApp pairing QR code"),
+        QT_TRANSLATE_NOOP("Main", "Cancel"),
+        QT_TRANSLATE_NOOP("Main", "QR scanned. Return to OmaApp to review the computer."),
+        QT_TRANSLATE_NOOP("Main", "Could not securely store the pairing code. Please scan again."),
+        QT_TRANSLATE_NOOP("Main", "Camera permission is needed to scan the pairing QR code."),
+        QT_TRANSLATE_NOOP("Main", "Files · %1"),
+        QT_TRANSLATE_NOOP("Main", "Files move through your pinned local connection. The computer saves uploads in Downloads/OmaApp."),
+        QT_TRANSLATE_NOOP("Main", "Send a file to computer"),
+        QT_TRANSLATE_NOOP("Main", "Save a computer file to phone"),
+        QT_TRANSLATE_NOOP("Main", "Enable Send files to phone or Receive files from phone in the Omarchy plugin."),
+        QT_TRANSLATE_NOOP("Main", "Close"),
+        QT_TRANSLATE_NOOP("Main", "Loading files shared from the computer…"),
+        QT_TRANSLATE_NOOP("Main", "No files are shared from Downloads/OmaApp on this computer."),
+        QT_TRANSLATE_NOOP("Main", "Choose a file to save to the phone."),
+        QT_TRANSLATE_NOOP("Main", "Computer files"),
+        QT_TRANSLATE_NOOP("Main", "Choose a named file between 1 byte and 100 MiB."),
+        QT_TRANSLATE_NOOP("Main", "Sending %1…"),
+        QT_TRANSLATE_NOOP("Main", "Saving %1 to the selected location…"),
+        QT_TRANSLATE_NOOP("Main", "Computer rejected the file request (HTTP %1)."),
+        QT_TRANSLATE_NOOP("Main", "Android could not open the selected destination."),
+        QT_TRANSLATE_NOOP("Main", "Saved %1 to the selected phone location."),
+        QT_TRANSLATE_NOOP("Main", "Computer file transfer failed. Check pairing and the network.")
+    };
+    Q_UNUSED(androidUiStrings);
+
     HyprlandGeometry geometry;
     qmlRegisterType<LauncherModel>("OmaApp.Native", 1, 0, "LauncherModel");
     qmlRegisterType<PairingModel>("OmaApp.Native", 1, 0, "PairingModel");
@@ -75,8 +141,13 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("OmaApp.Native", 1, 0, "Geometry", &geometry);
 
     QQmlApplicationEngine engine;
+    TranslationManager translations(&engine);
+    engine.rootContext()->setContextProperty(QStringLiteral("appTranslations"), &translations);
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
+    engine.rootContext()->setContextProperty(QStringLiteral("omaappQmlDiagnostics"), true);
     qWarning().noquote() << "OmaApp startup: loading QML module";
+#else
+    engine.rootContext()->setContextProperty(QStringLiteral("omaappQmlDiagnostics"), false);
 #endif
     QObject::connect(
         &engine,
@@ -86,8 +157,13 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
     engine.loadFromModule("OmaApp", "Main");
     if (!engine.rootObjects().isEmpty()) {
-        engine.rootObjects().constFirst()->setProperty(
-            "openSourceNoticesText", openSourceNotices());
+        QObject *root = engine.rootObjects().constFirst();
+        root->setProperty("openSourceNoticesText", openSourceNotices());
+#ifdef Q_OS_ANDROID
+        launcherModel = root->findChild<LauncherModel *>(QStringLiteral("omaappLauncherModel"));
+        if (!launcherModel)
+            qWarning() << "OmaApp could not attach Android launcher lifecycle refresh";
+#endif
     }
 
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)

@@ -9,7 +9,19 @@ Loader {
     property var widgetRoot
     property bool configured: false
 
+    function logNodeState(phase) {
+        if (!omaappQmlDiagnostics)
+            return
+        const type = nodeData && typeof nodeData === "object" ? String(nodeData.type || "") : "unset"
+        console.warn("OmaApp OWL loader:", phase, type,
+                     "configured", configured,
+                     "data", nodeData !== undefined && nodeData !== null,
+                     "renderer", widgetRoot !== undefined && widgetRoot !== null,
+                     "status", status, "item", item !== null)
+    }
+
     function loadNode() {
+        logNodeState("request")
         // QML var properties start as null. Wait for both required bindings so
         // an early Repeater creation cannot instantiate an OwlNode with a null
         // renderer before the delegate's bindings have propagated.
@@ -22,6 +34,7 @@ Loader {
         })
     }
 
+    onStatusChanged: logNodeState("status")
     Component.onCompleted: {
         configured = true
         loadNode()

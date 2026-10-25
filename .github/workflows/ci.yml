@@ -36,6 +36,8 @@ jobs:
       - name: Configure, build, and test
         run: |
           cmake -S . -B build/desktop -GNinja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build/desktop --target update_translations
+          python3 scripts/ci/check_translations.py
           cmake --build build/desktop --parallel 2
           ctest --test-dir build/desktop --output-on-failure
 
@@ -50,7 +52,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
 
       - name: Check shell scripts
-        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh
+        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh scripts/ci/android_translation_smoke.sh scripts/ci/android_runtime_metrics.sh scripts/ci/build_android_launcher_fixture.sh scripts/ci/android_app_discovery_smoke.sh
 
   android-arm64:
     name: Android arm64 build
@@ -174,6 +176,7 @@ jobs:
           python3 scripts/ci/prepare_android_pairing_smoke.py
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
+          bash scripts/ci/build_android_launcher_fixture.sh build/android-launcher-fixture/launcher-fixture.apk
 
       - name: Boot emulator, install OmaApp, and select it as HOME
         timeout-minutes: 20
@@ -183,7 +186,6 @@ jobs:
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
           smoke_artifacts="$GITHUB_WORKSPACE/ci-artifacts/android-smoke"
           mkdir -p "$ANDROID_AVD_HOME" "$smoke_artifacts"
-          trap 'status=$?; failed_command="$BASH_COMMAND"; trap - ERR; { printf "Android smoke failed at: %s (exit %s)\n" "$failed_command" "$status"; printf "ADB devices:\n"; adb devices -l; if [[ -n "${emulator_pid:-}" ]]; then printf "Emulator process:\n"; ps -p "$emulator_pid" -o pid=,stat=,args=; fi; printf "Emulator log tail:\n"; tail -n 80 "$smoke_artifacts/emulator.log"; } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true; timeout 10s adb logcat -d -v threadtime -t 1000 > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true; if [[ -n "${app_pid:-}" ]]; then timeout 10s adb logcat -d -v threadtime --pid="$app_pid" > "$smoke_artifacts/app-failure-logcat.txt" 2>&1 || true; fi; cat "$smoke_artifacts/failure-diagnostics.txt" >&2; cat "$smoke_artifacts/failure-logcat.txt" >&2 2>/dev/null || true; if [[ -f "$smoke_artifacts/app-failure-logcat.txt" ]]; then cat "$smoke_artifacts/app-failure-logcat.txt" >&2; fi; exit "$status"' ERR
           printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             --force --name omaapp-smoke --package 'system-images;android-36;google_apis;x86_64' --device pixel_2
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" list avd | tee avds.txt
@@ -206,6 +208,37 @@ jobs:
               wait "$emulator_pid" 2>/dev/null || true
             fi
           }
+          capture_smoke_failure() {
+            local exit_status=$?
+            local failed_command="$BASH_COMMAND"
+            trap - ERR
+            {
+              printf 'Android smoke failed at: %s (exit %s)\n' "$failed_command" "$exit_status"
+              printf 'ADB devices:\n'
+              adb devices -l
+              if [[ -n "${emulator_pid:-}" ]]; then
+                printf 'Emulator process:\n'
+                ps -p "$emulator_pid" -o pid=,stat=,args=
+              fi
+              printf 'Emulator log tail:\n'
+              tail -n 80 "$smoke_artifacts/emulator.log"
+              failure_pid="$(adb shell pidof app.omaapp 2>/dev/null | tr -d '\r')"
+              if [[ -n "$failure_pid" ]]; then
+                printf 'Android app threads:\n'
+                timeout 10s adb shell ps -T -p "$failure_pid"
+                printf 'Android native backtrace:\n'
+                timeout 15s adb shell debuggerd -b "$failure_pid"
+                printf 'Android Java backtrace:\n'
+                timeout 15s adb shell debuggerd -j "$failure_pid"
+                printf 'Android app logcat:\n'
+                timeout 10s adb logcat -d -v threadtime --pid="$failure_pid" -t 4000
+              fi
+            } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true
+            timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
+              > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true
+            return "$exit_status"
+          }
+          trap capture_smoke_failure ERR
           trap cleanup_emulator EXIT
           timeout 600s adb wait-for-device
           for attempt in $(seq 1 120); do
@@ -221,14 +254,73 @@ jobs:
           test -n "$apk"
           adb install "$apk"
           adb logcat -c
+          # Qt's Android accessibility bridge attaches its virtual QML tree
+          # only while AccessibilityManager reports accessibility enabled.
+          # Keep it enabled for shell-driven UIAutomator snapshots below.
+          accessibility_service='app.omaapp/.CiAccessibilityService'
+          available_accessibility_services=''
+          for attempt in {1..20}; do
+            available_accessibility_services="$(adb shell cmd package query-services --components --user 0 -a android.accessibilityservice.AccessibilityService | tr -d '\r')"
+            if grep -Fq 'CiAccessibilityService' <<< "$available_accessibility_services"; then
+              break
+            fi
+            sleep 0.5
+          done
+          printf 'Available accessibility services: %s\n' "$available_accessibility_services"
+          if ! grep -Fq 'CiAccessibilityService' <<< "$available_accessibility_services"; then
+            adb shell dumpsys package app.omaapp
+            exit 1
+          fi
+          # Android 13+ blocks accessibility for restricted sideloads until the
+          # user trusts the app. This allowance is test-only: the service is
+          # injected into this throwaway emulator APK, never the product APK.
+          enabled_accessibility_services=''
+          accessibility_enabled=''
+          for attempt in {1..20}; do
+            # Package restriction initialization can clear the secure setting
+            # just after install. Reapply the test-only AppOp and setting until
+            # Android reports the service as enabled.
+            adb shell cmd appops set --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS allow
+            adb shell settings put secure enabled_accessibility_services "$accessibility_service"
+            adb shell settings put secure accessibility_enabled 1
+            enabled_accessibility_services="$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')"
+            accessibility_enabled="$(adb shell settings get secure accessibility_enabled | tr -d '\r')"
+            if [[ ":${enabled_accessibility_services}:" == *":${accessibility_service}:"* \
+              && "$accessibility_enabled" == "1" ]]; then
+              break
+            fi
+            sleep 0.5
+          done
+          adb shell cmd appops get --user 0 app.omaapp ACCESS_RESTRICTED_SETTINGS
+          printf 'Enabled accessibility services: %s\n' "$enabled_accessibility_services"
+          printf 'Accessibility enabled: %s\n' "$accessibility_enabled"
+          if [[ ":${enabled_accessibility_services}:" != *":${accessibility_service}:"* ]]; then
+            adb shell dumpsys accessibility
+            exit 1
+          fi
+          test "$accessibility_enabled" = "1"
           adb shell cmd role add-role-holder --user 0 android.app.role.HOME app.omaapp
           adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME
           adb shell dumpsys role > role.txt
           adb shell dumpsys activity activities > activities.txt
           adb shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME > resolved-home.txt 2>&1 || true
           adb shell dumpsys window windows > windows.txt
-          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
-          test -n "$app_pid"
+          wait_for_app_pid() {
+            local app_pid=''
+            # On a cold boot, `am start -W` can return before ActivityManager
+            # has completed the Zygote process start for the selected HOME app.
+            for attempt in {1..10}; do
+              app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+              if [[ -n "$app_pid" ]]; then
+                printf '%s\n' "$app_pid"
+                return 0
+              fi
+              sleep 1
+            done
+            printf 'OmaApp process did not start within 10 seconds after HOME selection.\n' >&2
+            return 1
+          }
+          app_pid="$(wait_for_app_pid)"
           printf '%s\n' "$app_pid" > app-pid.txt
           wait_for_checked_tab() {
             local label="$1"
@@ -251,6 +343,34 @@ jobs:
             done
             printf 'Timed out waiting for Android UI tab %s; latest hierarchy is %s\n' \
               "$label" "$output_xml" >&2
+            adb exec-out screencap -p > "${output_xml%.xml}-failed.png" 2>/dev/null || true
+            readiness_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+            if [[ -n "$readiness_pid" ]]; then
+              timeout 10s adb logcat -d -v threadtime --pid="$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-logcat.txt" 2>&1 || true
+            fi
+            readiness_boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            printf '%s\n' "$readiness_boot" > "$smoke_artifacts/home-readiness-boot-completed.txt"
+            printf '%s\n' "$readiness_pid" > "$smoke_artifacts/home-readiness-app-pid.txt"
+            timeout 10s adb shell dumpsys activity activities \
+              > "$smoke_artifacts/home-readiness-activities.txt" 2>&1 || true
+            timeout 10s adb shell dumpsys window windows \
+              > "$smoke_artifacts/home-readiness-windows.txt" 2>&1 || true
+            if [[ -n "$readiness_pid" ]]; then
+              timeout 10s adb shell ps -T -p "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-thread-list.txt" 2>&1 || true
+              # debuggerd asks Android for bounded snapshots of this live
+              # process. It does not restart or modify application state.
+              timeout 15s adb shell debuggerd -b "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-native-backtrace.txt" 2>&1 || true
+              timeout 15s adb shell debuggerd -j "$readiness_pid" \
+                > "$smoke_artifacts/home-readiness-java-backtrace.txt" 2>&1 || true
+            fi
+            timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
+              > "$smoke_artifacts/home-readiness-all-logcat.txt" 2>&1 || true
+            python3 scripts/ci/classify_android_launch.py "$readiness_boot" "$readiness_pid" \
+              "$smoke_artifacts/home-readiness-all-logcat.txt" \
+              | tee "$smoke_artifacts/home-readiness-classification.txt" >&2
             python3 scripts/ci/android_accessibility_assert_checked.py "$output_xml" "$label"
           }
           cp role.txt activities.txt resolved-home.txt windows.txt app-pid.txt "$smoke_artifacts/"
@@ -263,9 +383,15 @@ jobs:
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
-              # Keep startup diagnostics after QML is ready; the scenegraph
-              # assertion below verifies the renderer selected for this run.
-              adb logcat -d -v threadtime -t 10000 > "$smoke_artifacts/startup-logcat.txt"
+              # Capture the first Qt scenegraph initialization before later
+              # lifecycle smokes clear logcat and relaunch the activity. Filter
+              # by OmaApp's PID so emulator system chatter cannot evict the RHI line.
+              startup_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+              test -n "$startup_pid"
+              adb logcat -d -v threadtime --pid="$startup_pid" -t 10000 \
+                > "$smoke_artifacts/startup-logcat.txt"
+              grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' \
+                "$smoke_artifacts/startup-logcat.txt"
               if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/startup-logcat.txt"; then
                 exit 1
               fi
@@ -312,13 +438,32 @@ jobs:
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
             fi
             if [[ "$screen" == "settings" ]]; then
-              # The OWL-store smoke scrolls Settings to add the Canvas sampler.
-              # Return to its stable top before comparing the Settings baseline.
-              adb shell input swipe 205 250 205 760 450
-              adb shell input swipe 205 250 205 760 450
-              sleep 1
-              python3 scripts/ci/android_accessibility_dump.py \
-                /sdcard/omaapp-visual-settings-top.xml "$visual_artifacts/settings.xml"
+              # The OWL-store smoke scrolls Settings. Use its visible top
+              # button as an anchor and verify the position before capturing;
+              # a fixed number of swipes can leave a misleading screenshot.
+              settings_at_top=false
+              for attempt in {1..8}; do
+                scroll_action="$(python3 scripts/ci/settings_scroll_state.py \
+                  "$visual_artifacts/settings.xml")"
+                if [[ "$scroll_action" == "ready" ]]; then
+                  settings_at_top=true
+                  break
+                elif [[ "$scroll_action" == "down" ]]; then
+                  adb shell input swipe 205 250 205 760 450
+                elif [[ "$scroll_action" == "up" ]]; then
+                  adb shell input swipe 205 760 205 250 450
+                else
+                  printf 'Unknown Settings scroll state: %s\n' "$scroll_action" >&2
+                  exit 1
+                fi
+                sleep 0.5
+                python3 scripts/ci/android_accessibility_dump.py \
+                  /sdcard/omaapp-visual-settings-top.xml "$visual_artifacts/settings.xml"
+              done
+              if [[ "$settings_at_top" != true ]]; then
+                printf 'Settings did not return to the baseline top within 8 swipes.\n' >&2
+                exit 1
+              fi
             fi
             adb exec-out screencap -p > "$visual_artifacts/$screen.png"
             if [[ "$screen" == "apps" ]]; then
@@ -374,9 +519,15 @@ jobs:
             "$smoke_artifacts/window-returned-to-apps.xml" 'Apps'
           python3 scripts/ci/android_accessibility_tap_target.py \
             "$smoke_artifacts/window-returned-to-apps.xml" 'Create folder' >/dev/null
+          bash scripts/ci/android_translation_smoke.sh "$smoke_artifacts/translations"
+          bash scripts/ci/android_app_discovery_smoke.sh \
+            build/android-launcher-fixture/launcher-fixture.apk "$smoke_artifacts/app-discovery"
+          # The translation smoke force-stops and relaunches OmaApp. Refresh
+          # the PID before collecting renderer diagnostics for that process.
+          app_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
+          test -n "$app_pid"
           # Retain logs from after the style screen has exercised the surface shader.
           adb logcat -d -v threadtime --pid="$app_pid" -t 10000 > "$smoke_artifacts/renderer-logcat.txt"
-          grep -F 'OmaApp initialized Qt Quick graphics API: ${{ matrix.rhi_backend }}' "$smoke_artifacts/renderer-logcat.txt"
           if grep -F 'Failed to build graphics pipeline state' "$smoke_artifacts/renderer-logcat.txt"; then
             exit 1
           fi
@@ -395,11 +546,13 @@ jobs:
           final_pid="$(adb shell pidof app.omaapp | tr -d '\r')"
           adb logcat -d -v threadtime --pid="$final_pid" -t 10000 > "$smoke_artifacts/final-logcat.txt"
           grep -E 'OmaApp: enumerated [1-9][0-9]* launcher activities' "$smoke_artifacts/final-logcat.txt"
-          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed|ReferenceError:|Detected recursive rearrange|Failed to build graphics pipeline state' "$smoke_artifacts/final-logcat.txt"; then
+          if grep -E 'FATAL EXCEPTION|QQmlApplicationEngine failed to load component|module .* is not installed|ReferenceError:|OwlNode\.qml:.*TypeError:|Detected recursive rearrange|Failed to build graphics pipeline state' "$smoke_artifacts/final-logcat.txt"; then
             exit 1
           fi
           adb shell pm clear app.omaapp
+          adb install build/android-launcher-fixture/launcher-fixture.apk
           python3 scripts/ci/android_pairing_smoke.py
+          adb uninstall app.omaapp.launcherfixture
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
             --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
             --verify-style-surface --require-gradient --gradient-angle 37
@@ -407,6 +560,13 @@ jobs:
             --baselines tests/visual_baselines/android-paired --screens style \
             --expected-size 618 1338 --allow-missing-baseline --verify-style-surface \
             --require-gradient --gradient-angle 37
+          widget_output="$(timeout 90s adb shell am instrument -w -e appWidgetHost true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+          printf '%s\n' "$widget_output"
+          grep -F 'INSTRUMENTATION_STATUS: stage=app_widget_host_overlay_and_touch_passed' <<< "$widget_output"
+          adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-host-poc.png \
+            "$smoke_artifacts/appwidget-host-poc.png"
+          test -s "$smoke_artifacts/appwidget-host-poc.png"
+          bash scripts/ci/android_runtime_metrics.sh "$smoke_artifacts/runtime-metrics"
           trap - ERR
 
       - name: Upload Android smoke screenshots

@@ -8,10 +8,13 @@ ROOT = Path(__file__).resolve().parents[2]
 class WidgetQmlGraphTests(unittest.TestCase):
     def test_recursive_owl_nodes_are_loaded_dynamically(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
         loader_qml = (ROOT / "app/qml/OwlNodeLoader.qml").read_text(encoding="utf-8")
 
         self.assertNotIn("delegate: OwlNode {", node_qml)
         self.assertNotIn("                OwlNode {", node_qml)
+        self.assertNotIn("delegate: OwlNode {", widget_qml)
+        self.assertIn("delegate: OwlNodeLoader {", widget_qml)
         self.assertIn("OwlNodeLoader {", node_qml)
         self.assertIn('setSource(Qt.resolvedUrl("OwlNode.qml")', loader_qml)
 
@@ -21,10 +24,60 @@ class WidgetQmlGraphTests(unittest.TestCase):
         self.assertIn("nodeData === null", loader_qml)
         self.assertIn("widgetRoot === null", loader_qml)
 
+    def test_widget_refreshes_when_model_arrives_or_home_page_becomes_active(self):
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        main_qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+
+        self.assertIn("onOwlModelChanged: refresh()", widget_qml)
+        self.assertIn("onActiveChanged:", widget_qml)
+        self.assertIn("if (active)\n            refresh()", widget_qml)
+        self.assertIn("active: window.selectedPage === 0", main_qml)
+
+    def test_owl_runtime_diagnostics_are_test_build_only_and_omit_widget_source(self):
+        main_cpp = (ROOT / "app/native/main.cpp").read_text(encoding="utf-8")
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        loader_qml = (ROOT / "app/qml/OwlNodeLoader.qml").read_text(encoding="utf-8")
+
+        self.assertIn('setContextProperty(QStringLiteral("omaappQmlDiagnostics"), true)', main_cpp)
+        self.assertIn('setContextProperty(QStringLiteral("omaappQmlDiagnostics"), false)', main_cpp)
+        self.assertIn('"nodes", Array.isArray(renderedNodes) ? renderedNodes.length : -1', widget_qml)
+        self.assertIn('"error", Boolean(rendered.error)', widget_qml)
+        self.assertNotIn('rendered.source', widget_qml)
+        self.assertIn('console.warn("OmaApp OWL loader:", phase, type', loader_qml)
+
+    def test_owl_node_bindings_tolerate_loader_initialization(self):
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn('typeof renderer.scalar === "function"', node_qml)
+        self.assertIn('typeof renderer.colorValue === "function"', node_qml)
+        self.assertIn('typeof renderer.imageSource === "function"', node_qml)
+        self.assertIn('typeof renderer.paintValue === "function"', node_qml)
+        self.assertIn('nodeData && typeof nodeData === "object"', node_qml)
+        self.assertNotIn("widgetRoot.scalar(", node_qml)
+        self.assertNotIn("widgetRoot.colorValue(", node_qml)
+        self.assertNotIn("widgetRoot.imageSource(", node_qml)
+        self.assertNotIn("widgetRoot.paintValue(", node_qml)
+
+    def test_android_smoke_fails_on_owl_null_binding_errors(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn(r"OwlNode\.qml:.*TypeError:", workflow)
+
     def test_box_only_instantiates_its_own_children(self):
         node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
 
-        self.assertIn('model: node.nodeType === "Box" ? node.nodeChildren : []', node_qml)
+        self.assertIn('model: node.nodeType === "Box" ? node.nodeChildren.length : 0', node_qml)
+        self.assertIn("nodeData: node.nodeChildren[alignedChild.index]", node_qml)
+
+    def test_owl_repeaters_index_json_arrays_with_numeric_models(self):
+        widget_qml = (ROOT / "app/qml/OwlWidgetView.qml").read_text(encoding="utf-8")
+        node_qml = (ROOT / "app/qml/OwlNode.qml").read_text(encoding="utf-8")
+
+        self.assertIn("Array.isArray(root.document.nodes) ? root.document.nodes.length : 0", widget_qml)
+        self.assertIn("nodeData: root.document.nodes[index]", widget_qml)
+        self.assertEqual(node_qml.count("required property int index"), 5)
+        self.assertEqual(node_qml.count("nodeData: node.nodeChildren[index]"), 4)
+        self.assertNotIn("model: node.nodeChildren : []", node_qml)
 
     def test_home_media_controls_use_the_plugin_permission_key(self):
         main_qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")

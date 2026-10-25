@@ -2,10 +2,24 @@
 
 ## Unreleased
 
-- Added the first Qt Quick launcher shell and Android package template.
-- Added Android launcher-app enumeration and launch through a Java bridge.
-- Added a Qt ShaderEffect for Hyprland-derived rounded surfaces, inner masks, and gradient borders.
-- Added the first Omarchy status-widget package and installer.
-- Added desktop and Android CI workflows with release signing gated on repository secrets.
+- Added English and Russian Qt Linguist catalogs, system-language detection, an in-app language selector, and a CI check for missing translations.
+- Refresh launcher activities after protected Android package install, replace, and removal events; exercise the behavior by installing and removing an Android launcher fixture in emulator CI.
+- Add a CI-only proof of concept for binding and hosting a real Android AppWidget over the Qt activity. User-managed widgets are not yet part of persisted Home layouts.
+- Add DNS-SD discovery for the already QR-trusted Omarchy plugin. Endpoint changes require the pinned TLS certificate and the saved device token; retry remains available when multicast discovery is blocked.
+- Extend plugin packet tests for DNS-SD records, malformed queries, record expiry, and the absence of pairing credentials in advertisements.
+- Add optional Android haptic feedback for Home app launches and editing actions. It uses `View.performHapticFeedback`, is disabled by default, follows system touch-feedback settings, and is persisted in launcher settings and layout backups.
+- Localize built-in OWL widget names and descriptions, expose those labels to accessibility, refresh the widget store when the app language changes, and clear stale translated status messages. Stack OWL actions and backup controls at phone width so translated labels and titles stay readable.
+- Use compact Russian labels in the phone tab bar while retaining the full accessible page names. Add a regression test for a TLS client that closes while an HTTP response is being written; cancelled feature and event requests no longer emit server tracebacks.
+- Load root OWL nodes through the same guarded dynamic loader as nested nodes, so the renderer is not evaluated before its model bindings are ready. Android smoke treats OWL null-binding errors as failures.
+- Make every OWL node renderer lookup tolerate the brief null state reported by Android QML initialization, including Canvas paint, color, image, and scalar helpers; malformed or not-yet-bound node data now uses safe local fallbacks while bindings settle.
+- Keep the Android DNS-SD fixture and TLS forwarder alive through the first theme read from the post-restart endpoint. This tests discovery and pinned TLS fetch in one instrumentation process instead of reconnecting to an endpoint after its test server had already closed.
+- Verify locale and haptic preferences after a confirmed Android process death, save startup screenshots and PID-filtered logs when Home is not accessible, and publish cold-start/PSS/idle-CPU metrics only after confirming a cold launch.
+- Keep DNS-SD discovery generation-scoped across Activity lifecycle changes, unregister service-info callbacks on stop, use Android 14+ and Android 13 T extension 7+ service-info updates with a legacy fallback, and stop retrying busy network work every 250 ms. The plugin now advertises up to eight active RFC1918 IPv4 addresses and refreshes multicast memberships after interface changes; Android still accepts an address only after pinned TLS and token verification.
+- Scale shared QML typography and spacing with Android's reported accessibility text scale, give the two wrapping-content dialogs explicit phone-safe widths, and smoke-test repeated locale changes, large text, and QML binding-loop logs.
+- Drain the newest queued DNS-SD endpoint after active network work without dropping it in the duplicate-announcement throttle; keep throttling unqueued repeats and cover the queued path in the Android smoke.
+- Serialize DNS-SD service callback registration and result delivery with lifecycle stop, closing a race where a late callback could escape generation cleanup.
+- On HOME readiness timeout, retain the accessibility screenshot/hierarchy, Activity/Window dumps, thread list, bounded Android native and Java backtraces, and full logcat. Classify Android boot/crash, Qt Android startup, QML load, and later UI-readiness stages separately without inferring a root cause from a black screen.
+- Run Android native string checks after explicitly selecting their matching app language, then verify each language persists across instrumentation teardown and process restart.
+- Refresh both Android Settings visual baselines for the relocated OWL creation action without relaxing the 1.5% visual regression threshold.
 
-Pairing, remote features, Omalauncher migration, Android device verification, and a release APK are not included yet.
+The local suite passes 133 Python tests and validates 292 Russian UI strings. CI [#251](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40193718934) passed all four jobs: desktop build and checks, Android arm64 APK build, and Android x86_64 smoke on OpenGL and Vulkan. The run published a debug APK and backend-specific smoke artifacts; these are CI artifacts, not a production-signed release. CI #249's OpenGL attempt timed out before the native main/QML markers, with no crash or ANR; both backends reached the UI in #250, but the earlier startup cause remains unknown. Physical Pixel/GrapheneOS testing remains outstanding. This environment lacks CMake, Qt ShaderTools, and the Android/JDK toolchain for local full builds.

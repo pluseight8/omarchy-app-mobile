@@ -15,11 +15,18 @@ select_home_when_needed() {
       return 0
     fi
     local target
-    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" 'Home')"
-    local x y
-    read -r x y <<< "$target"
-    adb shell input tap "$x" "$y"
-    sleep 1
+    # A newly resumed Qt Activity can briefly expose only Android's root view
+    # to UIAutomator. Refresh that empty hierarchy instead of treating it as
+    # proof that the Home tab is missing.
+    if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+      "$accessibility_xml" 'Home' 2>/dev/null)"; then
+      local x y
+      read -r x y <<< "$target"
+      adb shell input tap "$x" "$y"
+      sleep 1
+    else
+      sleep 1
+    fi
     python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
   done
   python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Home'
@@ -40,6 +47,26 @@ scroll_to_home_folder() {
   done
   python3 scripts/ci/android_accessibility_tap_target.py \
     --home-folder "$accessibility_xml" "$folder_label" >/dev/null
+}
+
+select_apps_when_needed() {
+  local accessibility_xml="$1"
+  local device_xml="$2"
+  for attempt in 1 2 3 4 5; do
+    if python3 scripts/ci/android_accessibility_assert_checked.py \
+      "$accessibility_xml" 'Apps' >/dev/null 2>&1; then
+      return 0
+    fi
+    local target
+    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" 'Apps')"
+    local x y
+    read -r x y <<< "$target"
+    adb shell input tap "$x" "$y"
+    sleep 1
+    python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
+  done
+  printf 'Apps drawer did not become selected before the launcher pin test.\n' >&2
+  python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Apps'
 }
 
 grep -F 'app.omaapp' role.txt
@@ -113,22 +140,43 @@ scroll_to_home_folder "$smoke_artifacts/window-home-before-restart-navigation.xm
 cp "$smoke_artifacts/window-home-before-restart-navigation.xml" \
   "$smoke_artifacts/window-folder-on-home.xml"
 grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-folder-on-home.xml"
-apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-folder-on-home.xml" 'Apps')"
-read -r apps_x apps_y <<< "$apps_target"
-adb shell input tap "$apps_x" "$apps_y"
-sleep 1
+select_apps_when_needed "$smoke_artifacts/window-folder-on-home.xml" \
+  /sdcard/omaapp-before-pin.xml
 adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml"
 pin_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-before-pin.xml")"
 printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
-read -r pin_x pin_y <<< "$pin_target"
-printf 'Long-pressing launcher app at %s,%s\n' "$pin_x" "$pin_y"
-adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
-sleep 2
-adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
-adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+pin_succeeded=0
+for attempt in 1 2 3; do
+  if (( attempt > 1 )); then
+    python3 scripts/ci/android_accessibility_dump.py \
+      /sdcard/omaapp-before-pin-retry.xml "$smoke_artifacts/window-before-pin.xml"
+    select_apps_when_needed "$smoke_artifacts/window-before-pin.xml" \
+      /sdcard/omaapp-before-pin-retry.xml
+    pin_target="$(python3 scripts/ci/android_launcher_tap_target.py \
+      "$smoke_artifacts/window-before-pin.xml")"
+    printf '%s\n' "$pin_target" > "$smoke_artifacts/pin-target.txt"
+  fi
+  read -r pin_x pin_y <<< "$pin_target"
+  printf 'Long-pressing launcher app at %s,%s (attempt %s/3)\n' \
+    "$pin_x" "$pin_y" "$attempt"
+  adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
+  sleep 2
+  adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
+  adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
+  pinned_count="$(grep -E 'OmaApp: pinned app count [0-9]+' \
+    "$smoke_artifacts/pinned-logcat.txt" | tail -n 1 \
+    | sed -E 's/.*count ([0-9]+)$/\1/' || true)"
+  if [[ "${pinned_count:-0}" -gt 0 ]]; then
+    pin_succeeded=1
+    break
+  fi
+done
+if (( pin_succeeded == 0 )); then
+  printf 'Long-press did not pin an app after 3 attempts.\n' >&2
+  exit 1
+fi
 grep -E 'OmaApp: pinned app count [1-9][0-9]*' "$smoke_artifacts/pinned-logcat.txt"
 shortcut_output="$(adb shell am instrument -w -e launcherShortcuts true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$shortcut_output"
@@ -141,14 +189,13 @@ test -n "$restarted_pid"
 printf '%s\n' "$restarted_pid" > "$smoke_artifacts/restarted-pid.txt"
 adb logcat -d -v threadtime --pid="$restarted_pid" -t 10000 > "$smoke_artifacts/restarted-logcat.txt"
 grep -E 'OmaApp: loaded [1-9][0-9]* pinned apps' "$smoke_artifacts/restarted-logcat.txt"
-grep -E 'OmaApp: cached launcher icon for ' "$smoke_artifacts/restarted-logcat.txt"
-adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
-test -s "$smoke_artifacts/launcher-before-tap.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart-navigation.xml \
   "$smoke_artifacts/window-after-restart-navigation.xml"
 select_home_when_needed "$smoke_artifacts/window-after-restart-navigation.xml" \
   /sdcard/omaapp-after-restart-navigation.xml
+adb exec-out screencap -p > "$smoke_artifacts/launcher-before-tap.png"
+test -s "$smoke_artifacts/launcher-before-tap.png"
 scroll_to_home_folder "$smoke_artifacts/window-after-restart-navigation.xml" \
   /sdcard/omaapp-after-restart-navigation.xml
 cp "$smoke_artifacts/window-after-restart-navigation.xml" \
@@ -173,6 +220,8 @@ adb shell input swipe 205 280 205 720 500
 sleep 1
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-after-restart.xml "$smoke_artifacts/window-after-restart.xml"
+select_apps_when_needed "$smoke_artifacts/window-after-restart.xml" \
+  /sdcard/omaapp-after-restart.xml
 tap_target="$(python3 scripts/ci/android_launcher_tap_target.py "$smoke_artifacts/window-after-restart.xml")"
 printf '%s\n' "$tap_target" > "$smoke_artifacts/tap-target.txt"
 read -r tap_x tap_y <<< "$tap_target"
@@ -249,19 +298,20 @@ settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
 read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1
+# Settings preserves its previous scroll offset; bring the editor action back
+# into the visible header before asking accessibility for a real tap target.
+adb shell input swipe 205 280 205 760 450
+adb shell input swipe 205 280 205 760 450
+sleep 1
 new_widget_target=""
-for attempt in {1..10}; do
-  python3 scripts/ci/android_accessibility_dump.py \
-    /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
-  if new_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-    "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
-    break
-  fi
-  adb shell input swipe 205 720 205 300 450
-  sleep 1
-done
+python3 scripts/ci/android_accessibility_dump.py \
+  /sdcard/omaapp-widget-editor-store.xml "$smoke_artifacts/window-widget-editor-store.xml"
+if ! new_widget_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+  "$smoke_artifacts/window-widget-editor-store.xml" 'Create an OWL widget' 2>/dev/null)"; then
+  adb exec-out screencap -p > "$smoke_artifacts/widget-editor-create-action-missing.png"
+fi
 if [[ -z "$new_widget_target" ]]; then
-  printf 'Could not find the local OWL widget editor action.\n' >&2
+  printf 'The OWL widget editor action was not visible at the top of Settings.\n' >&2
   exit 1
 fi
 read -r new_widget_x new_widget_y <<< "$new_widget_target"

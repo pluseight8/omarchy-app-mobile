@@ -62,10 +62,19 @@ QVariantList OwlModel::widgetStore() const
     QVariantList result;
     result.reserve(s_builtins.size());
     for (const BuiltinWidget &widget : s_builtins) {
+        QString name = widget.name;
+        QString description = widget.description;
+        if (widget.id == QStringLiteral("clock")) {
+            name = tr("Omarchy clock");
+            description = tr("A local clock and date, rendered with the OWL text and layout nodes.");
+        } else if (widget.id == QStringLiteral("canvas")) {
+            name = tr("Canvas sampler");
+            description = tr("A small live canvas using OWL shapes, expressions, and Omarchy colors.");
+        }
         result.append(QVariantMap{
             {QStringLiteral("id"), widget.id},
-            {QStringLiteral("name"), widget.name},
-            {QStringLiteral("description"), widget.description},
+            {QStringLiteral("name"), name},
+            {QStringLiteral("description"), description},
             {QStringLiteral("installed"), installed.contains(widget.id)},
             {QStringLiteral("editable"), false},
         });
@@ -78,13 +87,18 @@ QVariantList OwlModel::widgetStore() const
             continue;
         result.append(QVariantMap{
             {QStringLiteral("id"), id},
-            {QStringLiteral("name"), customName(it.value().toString(), QStringLiteral("Custom widget"))},
-            {QStringLiteral("description"), QStringLiteral("Saved on this device; available offline.")},
+            {QStringLiteral("name"), customName(it.value().toString(), tr("Custom widget"))},
+            {QStringLiteral("description"), tr("Saved on this device; available offline.")},
             {QStringLiteral("installed"), installed.contains(id)},
             {QStringLiteral("editable"), true},
         });
     }
     return result;
+}
+
+void OwlModel::refreshLocalizedText()
+{
+    emit widgetsChanged();
 }
 
 QVariantList OwlModel::installedWidgets() const

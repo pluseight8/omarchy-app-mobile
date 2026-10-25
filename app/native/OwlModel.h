@@ -16,6 +16,7 @@ public:
 
     QVariantList widgetStore() const;
     QVariantList installedWidgets() const;
+    Q_INVOKABLE void refreshLocalizedText();
 
     Q_INVOKABLE QString source(const QString &widgetId) const;
     Q_INVOKABLE QString renderWidget(const QString &widgetId, qreal width, qreal height,
