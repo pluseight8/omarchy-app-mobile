@@ -228,6 +228,7 @@ esac
         self.assertIn('Path(temporary) / "wrong-tls-identity"', smoke)
         self.assertIn("wrongCertPort < 1", instrumentation)
         self.assertIn("wrongCertificateProxy.getForwardedConnectionCount()", instrumentation)
+        self.assertIn("wrongCertificateProxy.getActiveConnectionCount()", instrumentation)
         self.assertIn(
             "A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.",
             instrumentation,
@@ -317,6 +318,8 @@ esac
         )
         self.assertIn("dns_sd_port=state.port", pairing_smoke)
         self.assertIn("dns_sd_wrong_cert_port=wrong_tls_state.port", pairing_smoke)
+        self.assertIn("wrong_tls_state.devices = dict(state.devices)", pairing_smoke)
+        self.assertIn("wrong_tls_state.save_devices()", pairing_smoke)
         self.assertIn('patch.object(service.MdnsAdvertiser, "start"', pairing_smoke)
         self.assertIn("restarted_state.port == old_port", pairing_smoke)
         self.assertIn('expected_theme="CI_AfterRestart",\n                        dns_sd_port=state.port', pairing_smoke)

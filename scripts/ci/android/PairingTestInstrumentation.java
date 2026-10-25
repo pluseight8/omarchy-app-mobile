@@ -466,15 +466,25 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         fingerprint);
                 long deadline = SystemClock.uptimeMillis() + 6_000L;
                 while (SystemClock.uptimeMillis() < deadline
-                        && wrongCertificateProxy.getForwardedConnectionCount() == 0) {
+                        && (wrongCertificateProxy.getForwardedConnectionCount() == 0
+                        || wrongCertificateProxy.getActiveConnectionCount() != 0)) {
                     SystemClock.sleep(200L);
                 }
                 if (wrongCertificateProxy.getForwardedConnectionCount() == 0) {
                     throw new IllegalStateException("Android did not attempt TLS against the spoofed DNS-SD endpoint.");
                 }
-                JSONObject stillSaved = PairingStore.readCredential(context);
-                if (stillSaved == null || !originalUrl.equals(stillSaved.optString("serverUrl", ""))) {
-                    throw new IllegalStateException("A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.");
+                if (wrongCertificateProxy.getActiveConnectionCount() != 0) {
+                    throw new IllegalStateException("TLS against the spoofed DNS-SD endpoint did not finish within its bounded window.");
+                }
+                long unchangedDeadline = SystemClock.uptimeMillis() + 2_000L;
+                do {
+                    JSONObject stillSaved = PairingStore.readCredential(context);
+                    if (stillSaved == null || !originalUrl.equals(
+                            stillSaved.optString("serverUrl", ""))) {
+                        throw new IllegalStateException("A matching DNS-SD hint with a wrong TLS certificate changed the saved endpoint.");
+                    }
+                    SystemClock.sleep(200L);
+                } while (SystemClock.uptimeMillis() < unchangedDeadline);
                 }
             } finally {
                 stopDnsSdFixture(context);
@@ -569,6 +579,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         private volatile Socket upstreamSocket;
         private final java.util.concurrent.atomic.AtomicInteger forwardedConnectionCount =
                 new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicInteger activeConnectionCount =
+                new java.util.concurrent.atomic.AtomicInteger();
         private Thread acceptThread;
 
         TestTlsProxy(int targetPort) throws Exception {
@@ -594,6 +606,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
             return forwardedConnectionCount.get();
         }
 
+        int getActiveConnectionCount() {
+            return activeConnectionCount.get();
+        }
+
         void start() {
             acceptThread = new Thread(this::acceptConnections, "OmaApp CI TLS forwarder");
             acceptThread.setDaemon(true);
@@ -604,6 +620,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             while (!closed) {
                 try {
                     Socket client = server.accept();
+                    activeConnectionCount.incrementAndGet();
                     clientSocket = client;
                     Thread connection = new Thread(() -> forward(client),
                             "OmaApp CI TLS forwarder connection");
@@ -654,6 +671,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     upstreamSocket = null;
                 }
                 clientSocket = null;
+                activeConnectionCount.decrementAndGet();
             }
         }
 

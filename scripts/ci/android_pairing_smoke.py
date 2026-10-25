@@ -552,9 +552,12 @@ else:
                 )
                 try:
                     # A second live TLS service has a different self-signed certificate but
-                    # advertises the paired host's trusted DNS-SD name and TXT fingerprint.
+                    # accepts the same paired token while advertising the trusted DNS-SD
+                    # name and TXT fingerprint. Only the pinned certificate may reject it.
                     with patch.object(service.MdnsAdvertiser, "start", lambda _self: None):
                         wrong_tls_state.start_server()
+                    wrong_tls_state.devices = dict(state.devices)
+                    wrong_tls_state.save_devices()
                     run_android_instrumentation(
                         state, "", expected_theme="CI_AfterRestart",
                         dns_sd_port=state.port,
