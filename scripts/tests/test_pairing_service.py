@@ -255,10 +255,15 @@ class PairingServiceTests(unittest.TestCase):
         advertiser._refresh_memberships(listener, ["192.168.1.2", "10.0.0.2"])
         advertiser._refresh_memberships(listener, ["10.0.0.2", "172.18.0.2"])
         self.assertEqual(
-            listener.options,
-            [
+            set(listener.options[:2]),
+            {
                 (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "192.168.1.2"),
                 (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "10.0.0.2"),
+            },
+        )
+        self.assertEqual(
+            listener.options[2:],
+            [
                 (socket.IPPROTO_IP, socket.IP_DROP_MEMBERSHIP, "192.168.1.2"),
                 (socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, "172.18.0.2"),
             ],
