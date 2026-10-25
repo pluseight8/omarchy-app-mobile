@@ -72,6 +72,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static final String TAG = "OmaAppPairingSmoke";
     private static final long PAIRING_TIMEOUT_MILLIS = 60_000L;
     private static final long REVOCATION_TIMEOUT_MILLIS = 20_000L;
+    private static final int MAX_ACCESSIBILITY_NODES = 512;
+    private static final int MAX_ACCESSIBILITY_WINDOWS = 16;
+    private static final int MAX_APPWIDGET_DIAGNOSTIC_CHARS = 1_799;
     private Bundle testArguments = new Bundle();
 
     @Override
@@ -681,34 +684,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static boolean clickAccessibleControl(UiAutomation automation, String label) {
-        ArrayList<AccessibilityNodeInfo> pending = new ArrayList<>();
-        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
-        if (activeRoot != null) {
-            pending.add(activeRoot);
-        }
-        List<AccessibilityWindowInfo> windows = automation.getWindows();
-        if (windows != null) {
-            try {
-                for (AccessibilityWindowInfo window : windows) {
-                    AccessibilityNodeInfo windowRoot = window.getRoot();
-                    if (windowRoot != null && pending.size() < 512) {
-                        pending.add(windowRoot);
-                    } else if (windowRoot != null) {
-                        windowRoot.recycle();
-                    }
-                }
-            } finally {
-                for (AccessibilityWindowInfo window : windows) {
-                    window.recycle();
-                }
-            }
-        }
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
         if (pending.isEmpty()) {
             return false;
         }
         boolean clicked = false;
         try {
-            for (int index = 0; index < pending.size() && index < 512; index++) {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
                 AccessibilityNodeInfo node = pending.get(index);
                 CharSequence nodeText = node.getText();
                 CharSequence nodeDescription = node.getContentDescription();
@@ -742,7 +724,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         break;
                     }
                 }
-                for (int child = 0; child < node.getChildCount() && pending.size() < 512; child++) {
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
                     AccessibilityNodeInfo childNode = node.getChild(child);
                     if (childNode != null) {
                         pending.add(childNode);
@@ -757,6 +740,123 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return clicked;
     }
 
+    private static ArrayList<AccessibilityNodeInfo> accessibilityRoots(UiAutomation automation) {
+        ArrayList<AccessibilityNodeInfo> roots = new ArrayList<>();
+        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
+        if (activeRoot != null) {
+            roots.add(activeRoot);
+        }
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows != null) {
+            try {
+                int count = 0;
+                for (AccessibilityWindowInfo window : windows) {
+                    if (count++ >= MAX_ACCESSIBILITY_WINDOWS) {
+                        break;
+                    }
+                    AccessibilityNodeInfo windowRoot = window.getRoot();
+                    if (windowRoot != null && roots.size() < MAX_ACCESSIBILITY_WINDOWS + 1) {
+                        roots.add(windowRoot);
+                    } else if (windowRoot != null) {
+                        windowRoot.recycle();
+                    }
+                }
+            } finally {
+                for (AccessibilityWindowInfo window : windows) {
+                    window.recycle();
+                }
+            }
+        }
+        return roots;
+    }
+
+    private static boolean awaitAccessibilityText(UiAutomation automation, String text,
+            long timeoutMillis) {
+        if (text == null || text.isEmpty() || text.length() > 256 || timeoutMillis < 0) {
+            return false;
+        }
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        do {
+            if (accessibilityTreeContains(automation, text)) {
+                return true;
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                break;
+            }
+            SystemClock.sleep(250L);
+        } while (true);
+        return false;
+    }
+
+    private static boolean accessibilityTreeContains(UiAutomation automation, String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                if ((nodeText != null && nodeText.toString().contains(expected))
+                        || (nodeDescription != null
+                                && nodeDescription.toString().contains(expected))) {
+                    found = true;
+                    break;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
+    }
+
+    private static String describeInteractiveWindows(UiAutomation automation) {
+        StringBuilder summary = new StringBuilder("windows=");
+        List<AccessibilityWindowInfo> windows = automation.getWindows();
+        if (windows == null) {
+            return "windows=unavailable";
+        }
+        try {
+            int count = 0;
+            for (AccessibilityWindowInfo window : windows) {
+                if (count >= MAX_ACCESSIBILITY_WINDOWS) {
+                    summary.append("; …");
+                    break;
+                }
+                Rect bounds = new Rect();
+                window.getBoundsInScreen(bounds);
+                String entry = (count == 0 ? "" : "; ")
+                        + "id=" + window.getId()
+                        + ",type=" + window.getType()
+                        + ",active=" + window.isActive()
+                        + ",focused=" + window.isFocused()
+                        + ",bounds=" + bounds.flattenToString();
+                if (summary.length() + entry.length() > MAX_APPWIDGET_DIAGNOSTIC_CHARS) {
+                    summary.append("…");
+                    break;
+                }
+                summary.append(entry);
+                count++;
+            }
+        } finally {
+            for (AccessibilityWindowInfo window : windows) {
+                window.recycle();
+            }
+        }
+        return summary.toString();
+    }
+
     private static boolean awaitAccessibleControlClick(UiAutomation automation, String label,
             long timeoutMillis) {
         long deadline = SystemClock.uptimeMillis() + timeoutMillis;
@@ -769,10 +869,90 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return false;
     }
 
-    private static boolean awaitLatchlessView(AtomicReference<AppWidgetHostView> view,
-            AtomicReference<String> error, long timeoutMillis) {
-        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
-        while (SystemCloc…2327 tokens truncated…D76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg==";
+    private static boolean clickWidgetBindConfirmation(UiAutomation automation) {
+        for (String label : new String[] {
+                "Allow", "Add", "Add widget", "Create", "Create widget",
+                "Разрешить", "Добавить", "Создать", "Создать виджет"}) {
+            if (clickAccessibleControl(automation, label)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void runOwlRuntimeSmoke() throws Exception {
+        String clockSource = "widget \"CI clock\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  source now = clock every 1s\n"
+                + "  size: 2x1\n"
+                + "  background: surface\n"
+                + "  Column {\n"
+                + "    Text { text: fmtTime(now, \"HH:mm\"); style: huge; color: accent }\n"
+                + "    Canvas { width: 96; height: 32; circle(width / 2, height / 2, 6, fill: accent) }\n"
+                + "  }\n"
+                + "}\n";
+        JSONObject theme = new JSONObject()
+                .put("foreground", "#cacccc")
+                .put("background", "#101315")
+                .put("accent", "#a7c080")
+                .put("surface", "#202326");
+        JSONObject rendered = new JSONObject(OwlBridge.render(clockSource, 320.0, 156.0,
+                theme.toString()));
+        if (rendered.has("error") || !"CI clock".equals(rendered.optString("name"))) {
+            throw new IllegalStateException("The embedded OWL clock did not compile and render: "
+                    + rendered.optString("error"));
+        }
+        JSONArray nodes = rendered.optJSONArray("nodes");
+        if (nodes == null || nodes.length() != 1
+                || !"Column".equals(nodes.optJSONObject(0).optString("type"))) {
+            throw new IllegalStateException("OWL layout nodes were not returned to the launcher.");
+        }
+        JSONArray children = nodes.optJSONObject(0).optJSONArray("children");
+        if (children == null || children.length() != 2
+                || !"Text".equals(children.optJSONObject(0).optString("type"))
+                || !"Canvas".equals(children.optJSONObject(1).optString("type"))) {
+            throw new IllegalStateException("OWL text and canvas nodes were not rendered.");
+        }
+        JSONArray drawing = children.optJSONObject(1).optJSONArray("children");
+        if (drawing == null || drawing.length() != 1
+                || !"circle".equals(drawing.optJSONObject(0).optString("op"))) {
+            throw new IllegalStateException("OWL canvas drawing commands were not evaluated.");
+        }
+        JSONArray circleArgs = drawing.optJSONObject(0).optJSONArray("args");
+        if (circleArgs == null || circleArgs.length() != 3
+                || circleArgs.optDouble(0, Double.NaN) != 48.0
+                || circleArgs.optDouble(1, Double.NaN) != 16.0
+                || circleArgs.optDouble(2, Double.NaN) != 6.0) {
+            throw new IllegalStateException("OWL canvas width and height were not evaluated in its local scope.");
+        }
+        JSONObject unsafe = new JSONObject(OwlBridge.render(
+                "widget \"network\" { source data = http(\"https://example.invalid\") every 30s "
+                        + "Text { text: data } }", 320.0, 156.0, theme.toString()));
+        if (!unsafe.has("error")) {
+            throw new IllegalStateException("The offline OWL runtime accepted a network source.");
+        }
+        JSONObject explosiveValue = new JSONObject(OwlBridge.render(
+                "widget \"serialization budget\" { meta { owl: 11 } "
+                        + "Text { text: reduce(range(30), (a, x) => [a, a], [1]) } }",
+                320.0, 156.0, theme.toString()));
+        if (!explosiveValue.optString("error").contains("serialization budget")) {
+            throw new IllegalStateException("OWL recursive values escaped the bounded JSON serializer: "
+                    + explosiveValue.optString("error"));
+        }
+        String boxSource = "widget \"CI box\" {\n"
+                + "  meta { owl: 1 }\n"
+                + "  size: 2x1\n"
+                + "  Box { align: bottomEnd; width: 64; height: 32; Text { text: \"Overlay\" } }\n"
+                + "}\n";
+        JSONObject box = new JSONObject(OwlBridge.render(boxSource, 320.0, 156.0, theme.toString()));
+        JSONArray boxNodes = box.optJSONArray("nodes");
+        if (box.has("error") || boxNodes == null || boxNodes.length() != 1
+                || !"Box".equals(boxNodes.optJSONObject(0).optString("type"))
+                || !"bottomEnd".equals(boxNodes.optJSONObject(0).optJSONObject("props").optString("align"))) {
+            throw new IllegalStateException("OWL Box alignment and overlay layout did not compile.");
+        }
+
+        String png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAoElEQVQY04WPLQ+CUABFD34kOpVR3jS5Z6Mp+WUcP4Riohn4IQzyy2KjgSYdBkbVTFKnxZe56Wz37G4XRmIZyE7JAkgBBWggjjbJzTLl+/W56rymKu/4gUCFktl8upz8B1JdNAznJ4f1iqF5oPMGIDWCqo4tkecCEHkuVdkCKCNofyvIup4vkHU9fiAAtBFitZPY0mFfX7ClgwolQDz64gcxODgdIU6pCQAAAABJRU5ErkJggg==";
         String assetWidget = "widget \"CI asset\" {\n"
                 + "  meta { owl: 11 }\n"
                 + "  asset badge = base64\"" + png + "\"\n"
@@ -855,6 +1035,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The offline OWL image renderer accepted a non-image asset.");
         }
         Log.i(TAG, "Embedded OWL compiler, offline clock, canvas/image assets, Flow/Grid/Ring/Sparkline/Spacer, and network rejection passed.");
+    }
+
+    private static boolean awaitLatchlessView(AtomicReference<AppWidgetHostView> view,
+            AtomicReference<String> error, long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (view.get() != null || !error.get().isEmpty()) {
+                return view.get() != null;
+            }
+            SystemClock.sleep(50L);
+        }
+        return false;
     }
 
     private static void runFileTransferStateSmoke() {

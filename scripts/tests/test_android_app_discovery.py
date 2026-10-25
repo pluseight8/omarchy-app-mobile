@@ -172,6 +172,16 @@ esac
         )
         self.assertIn("NsdManager.ServiceInfoCallback", discovery)
         self.assertIn("registerServiceInfoCallback(service, Runnable::run, callback)", discovery)
+        self.assertIn(
+            "private static synchronized void registerServiceUpdates(", discovery
+        )
+        self.assertIn(
+            "private static synchronized void handleResolved(", discovery
+        )
+        self.assertIn(
+            "if (!isCurrent(discoveryGeneration)) {\n            RESOLVING.remove(key);",
+            discovery,
+        )
         self.assertIn("Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE", discovery)
         self.assertIn("SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) >= 7", discovery)
         self.assertIn("supportsServiceInfoUpdates()", discovery)

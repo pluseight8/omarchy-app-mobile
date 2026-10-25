@@ -41,6 +41,12 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("new Instrumentation.ActivityMonitor(", instrumentation)
         self.assertIn("waitForActivityWithTimeout(15_000L)", instrumentation)
         self.assertNotIn("startActivitySync(", instrumentation)
+        self.assertIn("private static boolean awaitLatchlessView(", instrumentation)
+        self.assertIn("private static boolean clickWidgetBindConfirmation(", instrumentation)
+        self.assertIn(
+            "private static void runOwlRuntimeSmoke() throws Exception", instrumentation
+        )
+        self.assertNotIn("tokens truncated", instrumentation)
         self.assertIn("node.getContentDescription()", instrumentation)
         self.assertIn("nodeText != null && label.contentEquals(nodeText)", instrumentation)
         self.assertIn(
@@ -50,9 +56,19 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn(
             'awaitAccessibleControlClick(automation, "Home", 8_000L)', instrumentation
         )
+        self.assertIn(
+            "private static boolean awaitAccessibilityText(UiAutomation automation",
+            instrumentation,
+        )
         self.assertIn("accessibilityTreeContains(automation, text)", instrumentation)
+        self.assertIn(
+            "private static boolean accessibilityTreeContains(UiAutomation automation",
+            instrumentation,
+        )
         self.assertIn("nodeText.toString().contains(expected)", instrumentation)
         self.assertIn("nodeDescription.toString().contains(expected)", instrumentation)
+        self.assertIn("MAX_ACCESSIBILITY_NODES = 512", instrumentation)
+        self.assertIn("text.length() > 256", instrumentation)
         self.assertIn('reportAppWidgetStage("activity_starting")', instrumentation)
         self.assertIn('reportAppWidgetStage("touch_received")', instrumentation)
         confirmation = instrumentation[
@@ -93,7 +109,21 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         )
         self.assertIn("automation.setServiceInfo(serviceInfo)", instrumentation)
         self.assertIn("describeInteractiveWindows(automation)", instrumentation)
-        self.assertIn("summary.length() < 1800", instrumentation)
+        self.assertIn(
+            "private static String describeInteractiveWindows(UiAutomation automation)",
+            instrumentation,
+        )
+        self.assertIn("MAX_ACCESSIBILITY_WINDOWS = 16", instrumentation)
+        self.assertIn("MAX_APPWIDGET_DIAGNOSTIC_CHARS = 1_799", instrumentation)
+        self.assertIn("window.getBoundsInScreen(bounds)", instrumentation)
+        self.assertIn("window.recycle()", instrumentation)
+        self.assertIn("node.recycle()", instrumentation)
+        window_diagnostics = instrumentation[
+            instrumentation.index("private static String describeInteractiveWindows") :
+            instrumentation.index("private static boolean awaitAccessibleControlClick")
+        ]
+        self.assertNotIn("node.getText()", window_diagnostics)
+        self.assertNotIn("node.getContentDescription()", window_diagnostics)
         self.assertNotIn("findAccessibilityNodeInfosByText", confirmation)
         self.assertIn(
             "timeout 90s adb shell am instrument -w -e appWidgetHost true", workflow

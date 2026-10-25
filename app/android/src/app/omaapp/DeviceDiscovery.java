@@ -115,9 +115,16 @@ public final class DeviceDiscovery {
         stopInternal(true);
     }
 
-    private static void registerServiceUpdates(NsdManager discoveryManager, Context context,
-                                               NsdServiceInfo service, String key,
-                                               long discoveryGeneration) {
+    // Serialize registration with stop() so an old callback cannot be installed after cleanup.
+    private static synchronized void registerServiceUpdates(NsdManager discoveryManager,
+                                                            Context context,
+                                                            NsdServiceInfo service,
+                                                            String key,
+                                                            long discoveryGeneration) {
+        if (!isCurrent(discoveryGeneration)) {
+            RESOLVING.remove(key);
+            return;
+        }
         NsdManager.ServiceInfoCallback callback = new NsdManager.ServiceInfoCallback() {
             @Override
             public void onServiceUpdated(NsdServiceInfo updated) {
@@ -161,8 +168,9 @@ public final class DeviceDiscovery {
         }
     }
 
-    private static void handleResolved(Context context, long discoveryGeneration,
-                                       NsdServiceInfo resolved) {
+    // Serialize result delivery with stop() so stale generations cannot launch new reconnects.
+    private static synchronized void handleResolved(Context context, long discoveryGeneration,
+                                                    NsdServiceInfo resolved) {
         if (!isCurrent(discoveryGeneration) || resolved == null) {
             return;
         }
