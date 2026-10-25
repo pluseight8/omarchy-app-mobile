@@ -2,7 +2,7 @@
 
 ## Product shape
 
-OmaApp has two installable components: an Android APK and one Omarchy plugin. The Android host uses Qt Quick, C++, and QML. The plugin runs inside Omarchy's Quickshell process and owns its Python HTTPS helper. The app does not include a separate companion service, a Linux guest, PRoot, or a Wayland compositor.
+OmaApp has one Android APK and one Omarchy plugin. The Android host uses Qt Quick, C++, QML, and its native Android bridge. The plugin runs inside Omarchy's Quickshell process and owns its Python HTTPS helper. The app does not include a separate companion app or service, a Linux guest, PRoot, or a Wayland compositor.
 
 The Android launcher and arm64 debug packaging already exist. Direct QR pairing and live theme sync are implemented. The launcher has lazy Android app icons, app search, a pinned dock, local folders, adjustable grid columns, and swipe navigation. Source implementation, CI build, emulator smoke test, and physical-device test are separate checkpoints; a completed item below does not imply device validation unless it says so.
 
@@ -70,6 +70,30 @@ The pairing implementation is committed, and focused Python protocol tests pass 
 - [ ] Configure and verify the four owner-managed GitHub signing secrets.
 - [ ] Publish `OmaApp-vX.Y.Z-arm64-v8a.apk` as a Pre-release, install it, and verify update-over-install with the same signing key.
 - [ ] Complete license-notice, accessibility, security, and compatibility reviews before calling the release ready.
+
+### 6. Android AppWidgetHost integration
+
+- [x] Keep the first native Android widget path inside the existing OmaApp APK and Quickshell plugin architecture.
+- [x] Launch Android's system picker and provider configuration flow; do not bind providers without the user's picker choice.
+- [x] Restore persisted provider IDs through one stable `AppWidgetHost` and release cancelled, stale, and deleted IDs.
+- [x] Align interactive `AppWidgetHostView` children with first-page Qt Quick Home slots, convert dp bounds, and clip them to the scroll/page viewport.
+- [ ] Verify the real test provider through picker selection, RemoteViews click, force-stop/relaunch, and ID release in OpenGL and Vulkan emulator jobs.
+- [ ] Add drag/reorder, resize handles, per-page positions, and layout backup/restore as separately reviewable follow-up work.
+- [ ] Measure Home performance and check gestures, accessibility, orientation/insets, and GrapheneOS with a physical device.
+- [ ] Measure widget memory and frame cost across display densities, rotation, and the emulator's available refresh rates.
+
+### 7. Safe connection feature follow-ups
+
+Keep each capability independently permissioned on the Omarchy plugin, bounded in the protocol, revocable per paired phone, and covered by host integration plus Android end-to-end tests.
+
+- [ ] Android-to-Omarchy notification forwarding: require the user's Android Notification Access grant and an independent per-device host permission; define app/category filtering and redact notification text from logs.
+- [ ] Multiple trusted computers: replace the single saved credential record with versioned per-host Keystore entries and a device picker; preserve separate tokens, TLS pins, permissions, reconnect queues, and revocation per host.
+- [ ] File transfer queue: build on the existing picker-based transfers with a bounded queue, byte progress, cancellation, resumability policy, and explicit destination/result states.
+- [ ] MPRIS controls: improve the existing feature UI with player selection and truthful action/metadata state; keep its existing independent permission and protocol allowlist.
+- [ ] Quick Actions: expose user-selected IDs from the existing allowlisted command catalog; do not accept command text or shell syntax from the phone, and retain a separate command grant.
+- [ ] Phone battery status on Omarchy: add an explicit phone-to-host status permission, a rate-limited schema with coarse charge/charging state, and clear deletion/expiry behavior when the phone disconnects.
+
+Remote desktop and terminal access are deferred until these smaller capabilities and their security reviews are complete.
 
 ## Constraints
 

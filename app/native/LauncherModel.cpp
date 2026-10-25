@@ -6,11 +6,15 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaObject>
+#include <QPointer>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSettings>
 #include <QUuid>
 #include <QVariant>
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -23,6 +27,7 @@ const QStringList homeWidgetIds{QStringLiteral("clock"), QStringLiteral("compute
                                 QStringLiteral("media")};
 const QStringList gestureIds{QStringLiteral("homeSwipe"), QStringLiteral("sectionSwipe"),
                              QStringLiteral("longPressPin"), QStringLiteral("longPressEdit")};
+QPointer<LauncherModel> androidWidgetModel;
 
 QString favoriteKey(const QString &packageName, const QString &activityName)
 {
@@ -47,6 +52,7 @@ bool validFolderName(const QString &name)
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
+#include <jni.h>
 #endif
 
 LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
@@ -56,6 +62,7 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
 #endif
 #ifdef Q_OS_ANDROID
     m_platformSupported = true;
+    androidWidgetModel = this;
 #endif
     QSettings settings;
     m_favoritePackages = settings.value(QStringLiteral("launcher/favorites")).toStringList();
@@ -87,10 +94,21 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
             m_gestures.insert(gestureId, saved.value().toBool());
     }
     loadFolders();
+#ifdef Q_OS_ANDROID
+    refreshAndroidWidgets();
+#endif
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
     qWarning().noquote() << "OmaApp startup: LauncherModel construction returned";
+#endif
+}
+
+LauncherModel::~LauncherModel()
+{
+#ifdef Q_OS_ANDROID
+    if (androidWidgetModel == this)
+        androidWidgetModel.clear();
 #endif
 }
 
@@ -202,6 +220,11 @@ QVariantMap LauncherModel::homeWidgets() const
     return m_homeWidgets;
 }
 
+QVariantList LauncherModel::androidWidgets() const
+{
+    return m_androidWidgets;
+}
+
 QVariantMap LauncherModel::gestures() const
 {
     return m_gestures;
@@ -260,6 +283,118 @@ QVariantList LauncherModel::homePageApps(int page) const
         });
     }
     return result;
+}
+
+void LauncherModel::refreshAndroidWidgets()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject json = QJniObject::callStaticObjectMethod(
+        "app/omaapp/AndroidWidgetHost", "listWidgets",
+        "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+    const QJsonDocument document = QJsonDocument::fromJson(json.toString().toUtf8());
+    QVariantList widgets;
+    QSet<int> knownIds;
+    if (document.isArray()) {
+        for (const QJsonValue &value : document.array()) {
+            if (!value.isObject() || widgets.size() >= 8)
+                continue;
+            const QJsonObject object = value.toObject();
+            const int id = object.value(QStringLiteral("id")).toInt(-1);
+            const QString provider = object.value(QStringLiteral("provider")).toString();
+            const QString name = object.value(QStringLiteral("label")).toString();
+            const int page = object.value(QStringLiteral("page")).toInt(-1);
+            const int order = object.value(QStringLiteral("order")).toInt(-1);
+            const int minWidth = object.value(QStringLiteral("minWidthDp")).toInt(-1);
+            const int minHeight = object.value(QStringLiteral("minHeightDp")).toInt(-1);
+            if (id <= 0 || knownIds.contains(id) || provider.isEmpty() || provider.size() > 512
+                || name.isEmpty() || name.size() > 160 || page != 0 || order < 0 || order >= 8
+                || minWidth < 1 || minWidth > 1200 || minHeight < 1 || minHeight > 1200) {
+                continue;
+            }
+            knownIds.insert(id);
+            widgets.append(QVariantMap{
+                {QStringLiteral("id"), id},
+                {QStringLiteral("provider"), provider},
+                {QStringLiteral("name"), name},
+                {QStringLiteral("page"), page},
+                {QStringLiteral("order"), order},
+                {QStringLiteral("minWidthDp"), minWidth},
+                {QStringLiteral("minHeightDp"), minHeight},
+            });
+        }
+    }
+    std::sort(widgets.begin(), widgets.end(), [](const QVariant &left, const QVariant &right) {
+        return left.toMap().value(QStringLiteral("order")).toInt()
+               < right.toMap().value(QStringLiteral("order")).toInt();
+    });
+    if (m_androidWidgets != widgets)
+        m_androidWidgets = std::move(widgets);
+    emit androidWidgetsChanged();
+#endif
+}
+
+bool LauncherModel::addAndroidWidget()
+{
+#ifdef Q_OS_ANDROID
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "requestWidgetPicker", "()Z");
+#else
+    return false;
+#endif
+}
+
+bool LauncherModel::removeAndroidWidget(int widgetId)
+{
+#ifdef Q_OS_ANDROID
+    if (widgetId <= 0)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "removeWidget",
+        "(Landroid/content/Context;I)Z", context.object<jobject>(),
+        static_cast<jint>(widgetId));
+#else
+    Q_UNUSED(widgetId)
+    return false;
+#endif
+}
+
+void LauncherModel::setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
+                                          qreal width, qreal height, qreal clipX, qreal clipY,
+                                          qreal clipWidth, qreal clipHeight, bool visible)
+{
+#ifdef Q_OS_ANDROID
+    if (widgetId <= 0 || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width)
+        || !std::isfinite(height) || !std::isfinite(clipX) || !std::isfinite(clipY)
+        || !std::isfinite(clipWidth) || !std::isfinite(clipHeight)
+        || std::abs(x) > 10000.0 || std::abs(y) > 10000.0
+        || std::abs(clipX) > 10000.0 || std::abs(clipY) > 10000.0
+        || width < 0.0 || width > 3000.0 || height < 0.0 || height > 3000.0
+        || clipWidth < 0.0 || clipWidth > 3000.0 || clipHeight < 0.0 || clipHeight > 3000.0) {
+        return;
+    }
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/AndroidWidgetHost", "updateFrame",
+        "(Landroid/content/Context;IFFFFFFFFZ)V", context.object<jobject>(),
+        static_cast<jint>(widgetId), static_cast<jfloat>(x), static_cast<jfloat>(y),
+        static_cast<jfloat>(width), static_cast<jfloat>(height),
+        static_cast<jfloat>(clipX), static_cast<jfloat>(clipY),
+        static_cast<jfloat>(clipWidth), static_cast<jfloat>(clipHeight),
+        static_cast<jboolean>(visible));
+#else
+    Q_UNUSED(widgetId)
+    Q_UNUSED(x)
+    Q_UNUSED(y)
+    Q_UNUSED(width)
+    Q_UNUSED(height)
+    Q_UNUSED(clipX)
+    Q_UNUSED(clipY)
+    Q_UNUSED(clipWidth)
+    Q_UNUSED(clipHeight)
+    Q_UNUSED(visible)
+#endif
 }
 
 bool LauncherModel::setFavoritePage(const QString &packageName, const QString &activityName, int page)
@@ -1054,6 +1189,20 @@ void LauncherModel::syncDynamicShortcuts() const
                              .arg(published);
 #endif
 }
+
+#ifdef Q_OS_ANDROID
+extern "C" JNIEXPORT void JNICALL
+Java_app_omaapp_OmaAppActivity_notifyNativeAndroidWidgetsChanged(JNIEnv *, jclass)
+{
+    const QPointer<LauncherModel> model = androidWidgetModel;
+    if (!model)
+        return;
+    QMetaObject::invokeMethod(model.data(), [model] {
+        if (model)
+            model->refreshAndroidWidgets();
+    }, Qt::QueuedConnection);
+}
+#endif
 
 void LauncherModel::rebuildVisibleRows()
 {

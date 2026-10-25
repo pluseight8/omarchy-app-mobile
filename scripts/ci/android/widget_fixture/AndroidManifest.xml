@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="app.omaapp.widgetfixture">
+    <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36" />
+    <application android:label="OmaApp Widget Fixture" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:name=".CiWidgetConfigureActivity"
+            android:exported="true" />
+        <receiver
+            android:name=".CiInteractiveWidgetProvider"
+            android:exported="true"
+            android:label="@string/ci_widget_title"
+            android:permission="android.permission.BIND_APPWIDGET">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ci_interactive_widget_info" />
+        </receiver>
+    </application>
+</manifest>

@@ -35,7 +35,12 @@ ApplicationWindow {
     property string layoutMessage: ""
     property string editingWidgetId: ""
     property string widgetMessage: ""
+    property string androidWidgetMessage: ""
     property string openSourceNoticesText: ""
+    readonly property bool androidWidgetModalVisible: forgetDialog.visible || homeAppDialog.visible
+        || createFolderDialog.visible || folderDialog.visible || addFolderAppsDialog.visible
+        || deleteFolderDialog.visible || restoreLayoutDialog.visible || owlEditorDialog.visible
+        || openSourceNoticesDialog.visible
 
     function widgetThemeColor(value) {
         const color = Qt.color(value)
@@ -888,10 +893,13 @@ ApplicationWindow {
 
                 delegate: Item {
                     required property int index
+                    id: homePagePage
+                    property int pageIndex: index
                     width: homePageView.width
                     height: homePageView.height
 
                     Flickable {
+                        id: homePageFlickable
                         anchors.fill: parent
                         contentWidth: width
                         contentHeight: homeContent.implicitHeight
@@ -1087,6 +1095,167 @@ ApplicationWindow {
                                                 Accessible.name: qsTr("Next track on %1").arg(modelData.player)
                                                 enabled: pairing.connected && window.featureEnabled("media.control")
                                                 onClicked: pairing.mediaAction(modelData.player, "next")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: homePagePage.pageIndex === 0 && launcher.platformSupported
+                                Text {
+                                    text: qsTr("Android widgets")
+                                    color: Theme.foreground
+                                    font.pixelSize: Theme.fontSize(19)
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Button {
+                                    text: qsTr("Add widget")
+                                    Accessible.name: qsTr("Add Android widget")
+                                    enabled: launcher.androidWidgets.length < 8
+                                    onClicked: {
+                                        window.androidWidgetMessage = launcher.addAndroidWidget()
+                                                ? "" : qsTr("Android widget picker could not be opened.")
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: homePagePage.pageIndex === 0
+                                         && window.androidWidgetMessage.length > 0
+                                text: window.androidWidgetMessage
+                                color: Theme.urgent
+                                font.pixelSize: Theme.fontSize(12)
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: homePagePage.pageIndex === 0
+                                         && launcher.platformSupported
+                                         && launcher.androidWidgets.length === 0
+                                text: qsTr("Android widgets you add here stay on this phone and work offline.")
+                                color: Theme.muted
+                                font.pixelSize: Theme.fontSize(11)
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Repeater {
+                                model: launcher.androidWidgets
+                                delegate: ColumnLayout {
+                                    required property var modelData
+                                    required property int index
+                                    visible: modelData.page === homePagePage.pageIndex
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: visible ? implicitHeight : 0
+                                    spacing: Theme.space(8)
+
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: modelData.name
+                                            color: Theme.muted
+                                            font.pixelSize: Theme.fontSize(12)
+                                            elide: Text.ElideRight
+                                        }
+                                        Button {
+                                            text: qsTr("Remove")
+                                            Accessible.name: qsTr("Remove Android widget %1").arg(modelData.name)
+                                            onClicked: {
+                                                if (!launcher.removeAndroidWidget(modelData.id))
+                                                    window.androidWidgetMessage = qsTr("Android widget could not be removed.")
+                                                else
+                                                    window.androidWidgetMessage = ""
+                                            }
+                                        }
+                                    }
+
+                                    Item {
+                                        id: nativeWidgetSlot
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: Math.max(120, Math.min(480,
+                                            Number(modelData.minHeightDp) || 160))
+                                        Accessible.name: modelData.name
+
+                                        function syncNativeWidgetFrame() {
+                                            if (!launcher.platformSupported)
+                                                return
+                                            const widgetPoint = mapToItem(null, 0, 0)
+                                            const scrollPoint = homePageFlickable.mapToItem(null, 0, 0)
+                                            const pagePoint = homePageView.mapToItem(null, 0, 0)
+                                            const clipX = Math.max(scrollPoint.x, pagePoint.x)
+                                            const clipY = Math.max(scrollPoint.y, pagePoint.y)
+                                            const clipRight = Math.min(scrollPoint.x + homePageFlickable.width,
+                                                                       pagePoint.x + homePageView.width)
+                                            const clipBottom = Math.min(scrollPoint.y + homePageFlickable.height,
+                                                                        pagePoint.y + homePageView.height)
+                                            const frameVisible = visible && window.selectedPage === 0
+                                                    && window.selectedHomePage === homePagePage.pageIndex
+                                                    && !window.androidWidgetModalVisible
+                                            launcher.setAndroidWidgetFrame(modelData.id,
+                                                widgetPoint.x, widgetPoint.y, width, height,
+                                                clipX, clipY, Math.max(0, clipRight - clipX),
+                                                Math.max(0, clipBottom - clipY), frameVisible)
+                                        }
+
+                                        Component.onCompleted: Qt.callLater(function() {
+                                            nativeWidgetSlot.syncNativeWidgetFrame()
+                                        })
+                                        onXChanged: syncNativeWidgetFrame()
+                                        onYChanged: syncNativeWidgetFrame()
+                                        onWidthChanged: syncNativeWidgetFrame()
+                                        onHeightChanged: syncNativeWidgetFrame()
+                                        onVisibleChanged: syncNativeWidgetFrame()
+                                        Component.onDestruction: launcher.setAndroidWidgetFrame(
+                                            modelData.id, 0, 0, 0, 0, 0, 0, 0, 0, false)
+
+                                        Connections {
+                                            target: homePageFlickable
+                                            function onContentYChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                        }
+
+                                        Connections {
+                                            target: homePagePage
+                                            function onXChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                        }
+
+                                        Connections {
+                                            target: homePageView
+                                            function onContentXChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                            function onCurrentIndexChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                        }
+
+                                        Connections {
+                                            target: window
+                                            function onSelectedPageChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                            function onSelectedHomePageChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                            function onAndroidWidgetModalVisibleChanged() {
+                                                nativeWidgetSlot.syncNativeWidgetFrame()
+                                            }
+                                        }
+
+                                        Connections {
+                                            target: launcher
+                                            function onAndroidWidgetsChanged() {
+                                                Qt.callLater(function() {
+                                                    nativeWidgetSlot.syncNativeWidgetFrame()
+                                                })
                                             }
                                         }
                                     }

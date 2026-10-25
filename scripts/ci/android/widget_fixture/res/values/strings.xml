@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ci_widget_title">OmaApp CI Interactive Widget</string>
+    <string name="ci_widget_ready">CI_WIDGET_READY</string>
+    <string name="ci_widget_updated">CI_WIDGET_UPDATED</string>
+    <string name="ci_widget_updated_twice">CI_WIDGET_UPDATED_TWICE</string>
+    <string name="ci_widget_action">CI_WIDGET_ACTION</string>
+</resources>

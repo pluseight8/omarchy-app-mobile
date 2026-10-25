@@ -35,7 +35,30 @@
 - [ ] Add permissioned clipboard, file, media, notification, workspace, terminal, desktop, and command features in reviewed slices.
 - [ ] Configure the owner's release-signing secrets; publish and verify the first signed Pre-release and update-over-install.
 
+## Android AppWidgetHost (separate technical stage)
+
+- [x] Add the first product `AppWidgetHost` integration inside OmaApp's existing `QtActivity`; keep the Android provider fixture out of the product manifest.
+- [x] Use the system widget picker, run provider configuration activities, and release cancelled or removed widget IDs.
+- [x] Bridge live Home slot coordinates and QML viewport clipping to interactive `AppWidgetHostView` instances.
+- [x] Persist provider IDs and ordered first-page placement in the app's private storage; restore IDs after Activity/process recreation and discard stale providers.
+- [x] Keep the existing offline OWL widget list available below native Android widgets.
+- [ ] Pass the CI integration that binds, clicks, process-restores, and removes a real test-only RemoteViews provider on OpenGL and Vulkan.
+- [ ] Add drag/reorder, resize handles, per-page placement, layout backup/restore, and lifecycle/performance measurements in follow-up slices.
+- [ ] Validate touch, accessibility, gestures, insets, and GrapheneOS behavior on a physical device.
+- [ ] Measure memory and frame performance across widget sizes, orientation changes, and available display refresh rates.
+
 ## Environment limits at this checkpoint
 
-- This workspace has no CMake, JDK, Android SDK, emulator, or attached device; `adb`, Qt desktop libraries, QtTest, and `qmllint` are installed. GitHub Actions run 44 passed the emulator smoke test.
+- This workspace has `adb`, `ninja`, and `qmllint`, but no CMake, JDK, Android SDK, emulator, or attached device. Android builds and provider selection must be verified in GitHub Actions.
 - Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.
+
+## Candidate secure connection stages
+
+- [ ] Android notification forwarding with the system's explicit Notification Access grant plus a separate per-device Omarchy permission and content-redaction policy.
+- [ ] Multiple trusted computers with versioned Keystore entries and independent TLS pins, tokens, permissions, status, reconnect, and revocation.
+- [ ] File-transfer queue with bounded storage, progress, cancel, and explicit completion/error states.
+- [ ] A fuller MPRIS page backed by the existing permissioned player API.
+- [ ] Quick Actions that call user-configured command IDs only; never accept arbitrary command strings.
+- [ ] Phone battery status with a new host grant, rate limit, bounded schema, and expiry on disconnect.
+
+Remote desktop and terminal access remain deferred until the simpler features have independent integration tests and security review.

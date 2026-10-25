@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QList>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -19,6 +20,7 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(int gridColumns READ gridColumns NOTIFY gridColumnsChanged)
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
+    Q_PROPERTY(QVariantList androidWidgets READ androidWidgets NOTIFY androidWidgetsChanged)
     Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
 
 public:
@@ -32,6 +34,7 @@ public:
     Q_ENUM(Role)
 
     explicit LauncherModel(QObject *parent = nullptr);
+    ~LauncherModel() override;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -45,10 +48,17 @@ public:
     int gridColumns() const;
     int homePageCount() const;
     QVariantMap homeWidgets() const;
+    QVariantList androidWidgets() const;
     QVariantMap gestures() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refreshAndroidWidgets();
+    Q_INVOKABLE bool addAndroidWidget();
+    Q_INVOKABLE bool removeAndroidWidget(int widgetId);
+    Q_INVOKABLE void setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
+                                           qreal width, qreal height, qreal clipX, qreal clipY,
+                                           qreal clipWidth, qreal clipHeight, bool visible);
     Q_INVOKABLE void setGridColumns(int columns);
     Q_INVOKABLE void setHomePageCount(int count);
     Q_INVOKABLE QVariantList homePageApps(int page) const;
@@ -83,6 +93,7 @@ signals:
     void gridColumnsChanged();
     void homePagesChanged();
     void homeWidgetsChanged();
+    void androidWidgetsChanged();
     void gesturesChanged();
 
 private:
@@ -107,6 +118,7 @@ private:
     int m_gridColumns = 4;
     int m_homePageCount = 1;
     QVariantMap m_homeWidgets;
+    QVariantList m_androidWidgets;
     QVariantMap m_gestures;
     mutable QHash<QString, QString> m_iconUrls;
     bool m_platformSupported = false;

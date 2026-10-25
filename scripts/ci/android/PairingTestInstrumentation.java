@@ -2,6 +2,10 @@ package app.omaapp;
 
 import android.app.Activity;
 import android.app.Instrumentation;
+import android.app.UiAutomation;
+import android.appwidget.AppWidgetManager;
+import android.appwidget.AppWidgetProviderInfo;
+import android.content.ComponentName;
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ClipboardManager;
@@ -17,6 +21,7 @@ import android.os.SystemClock;
 import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -61,6 +66,28 @@ public final class PairingTestInstrumentation extends Instrumentation {
             Log.i(TAG, "Target application context is ready.");
             if ((context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0) {
                 throw new IllegalStateException("Pairing smoke tests require a debug APK.");
+            }
+            String widgetHostMode = testArguments.getString("androidWidgetHost", "");
+            if ("setup".equals(widgetHostMode)) {
+                runAndroidWidgetHostSetup(context);
+                result.putString("stage", "android_widget_host_picker_bind_touch_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if ("restore".equals(widgetHostMode)) {
+                runAndroidWidgetHostRestore(context);
+                result.putString("stage", "android_widget_host_process_restore_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
+            }
+            if ("remove".equals(widgetHostMode)) {
+                runAndroidWidgetHostRemove(context);
+                result.putString("stage", "android_widget_host_id_release_passed");
+                sendStatus(2, result);
+                finish(Activity.RESULT_OK, result);
+                return;
             }
             runEventRefreshQueueSmoke(context);
             runFileTransferStateSmoke();
@@ -719,6 +746,324 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException(path + " returned HTTP " + result.status + ".");
         }
         return result.body;
+    }
+
+    private void runAndroidWidgetHostSetup(Context context) throws Exception {
+        ComponentName expectedProvider = new ComponentName(
+                "app.omaapp.widgetfixture",
+                "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
+        AppWidgetManager manager = AppWidgetManager.getInstance(context);
+        boolean providerInstalled = false;
+        for (AppWidgetProviderInfo provider : manager.getInstalledProviders()) {
+            if (expectedProvider.equals(provider.provider)) {
+                providerInstalled = true;
+                break;
+            }
+        }
+        if (!providerInstalled) {
+            throw new IllegalStateException("The real CI AppWidgetProvider is not installed.");
+        }
+
+        Intent launch = new Intent(context, OmaAppActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Activity activity = startActivitySync(launch);
+        if (!(activity instanceof OmaAppActivity)) {
+            throw new IllegalStateException("Could not open OmaApp Home for widget hosting.");
+        }
+        UiAutomation automation = getUiAutomation();
+        awaitAccessibilityText(automation, "Add Android widget", 15_000L, context);
+        if (!clickAccessibleText(automation, "Add Android widget")) {
+            throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
+        }
+
+        String providerLabel = "OmaApp CI Interactive Widget";
+        long bindDeadline = SystemClock.elapsedRealtime() + 90_000L;
+        boolean providerChoiceClicked = false;
+        boolean configurationClicked = false;
+        while (SystemClock.elapsedRealtime() < bindDeadline
+                && !hasWidgetRecord(context, expectedProvider)) {
+            if (!providerChoiceClicked && clickAccessibleText(automation, providerLabel)) {
+                providerChoiceClicked = true;
+                reportStage("android_widget_host_provider_selected");
+            } else if (providerChoiceClicked) {
+                if (!configurationClicked && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
+                    configurationClicked = true;
+                    reportStage("android_widget_host_configured");
+                } else {
+                    clickAccessibleText(automation, "Add to home screen", "Add to Home screen",
+                            "Add widget", "Add", "Place widget");
+                }
+            }
+            scrollSystemPicker(automation, context);
+            SystemClock.sleep(500L);
+        }
+        if (!providerChoiceClicked || !configurationClicked
+                || !hasWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("Android's system picker did not bind the selected CI provider. UI: "
+                    + accessibilityTree(automation));
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_READY", 30_000L, context);
+        if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
+            throw new IllegalStateException("The real RemoteViews action was not accessible in OmaApp Home.");
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
+        if (!hasWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("The bound provider disappeared after its click action.");
+        }
+
+        Activity recreated = recreateOmaAppActivity((OmaAppActivity) activity);
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
+        if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
+            throw new IllegalStateException("The Android widget stopped receiving touch after Activity recreation.");
+        }
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE", 15_000L, context);
+        if (!(recreated instanceof OmaAppActivity)) {
+            throw new IllegalStateException("OmaApp did not recreate its Qt Activity for lifecycle coverage.");
+        }
+    }
+
+    private void runAndroidWidgetHostRestore(Context context) throws Exception {
+        ComponentName expectedProvider = new ComponentName(
+                "app.omaapp.widgetfixture",
+                "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
+        Intent launch = new Intent(context, OmaAppActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Activity activity = startActivitySync(launch);
+        if (!(activity instanceof OmaAppActivity)) {
+            throw new IllegalStateException("Could not reopen OmaApp after process restart.");
+        }
+        if (!hasWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("The Android widget ID/provider record did not survive process death.");
+        }
+        awaitAccessibilityText(getUiAutomation(), "CI_WIDGET_UPDATED_TWICE", 30_000L, context);
+    }
+
+    private void runAndroidWidgetHostRemove(Context context) throws Exception {
+        ComponentName expectedProvider = new ComponentName(
+                "app.omaapp.widgetfixture",
+                "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
+        JSONArray widgets = new JSONArray(AndroidWidgetHost.listWidgets(context));
+        int widgetId = -1;
+        for (int index = 0; index < widgets.length(); ++index) {
+            JSONObject item = widgets.optJSONObject(index);
+            if (item != null && expectedProvider.flattenToString().equals(item.optString("provider"))) {
+                widgetId = item.optInt("id", -1);
+                break;
+            }
+        }
+        if (widgetId <= 0 || !AndroidWidgetHost.removeWidget(context, widgetId)) {
+            throw new IllegalStateException("OmaApp did not remove the selected widget and release its ID.");
+        }
+        if (AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId) != null
+                || hasWidgetRecord(context, expectedProvider)) {
+            throw new IllegalStateException("The removed Android widget ID or saved placement remains.");
+        }
+    }
+
+    private Activity recreateOmaAppActivity(OmaAppActivity activity) throws Exception {
+        runOnMainSync(activity::recreate);
+        long deadline = SystemClock.elapsedRealtime() + 15_000L;
+        OmaAppActivity recreated = AndroidWidgetHost.currentActivityForInstrumentation();
+        while ((recreated == null || recreated == activity)
+                && SystemClock.elapsedRealtime() < deadline) {
+            SystemClock.sleep(50L);
+            recreated = AndroidWidgetHost.currentActivityForInstrumentation();
+        }
+        if (!(recreated instanceof OmaAppActivity)) {
+            throw new IllegalStateException("OmaApp Qt Activity did not reattach after recreation.");
+        }
+        return recreated;
+    }
+
+    private static boolean hasWidgetRecord(Context context, ComponentName expectedProvider) {
+        try {
+            JSONArray widgets = new JSONArray(AndroidWidgetHost.listWidgets(context));
+            for (int index = 0; index < widgets.length(); ++index) {
+                JSONObject item = widgets.optJSONObject(index);
+                if (item != null && expectedProvider.flattenToString()
+                        .equals(item.optString("provider"))) {
+                    int widgetId = item.optInt("id", -1);
+                    AppWidgetProviderInfo info = AppWidgetManager.getInstance(context)
+                            .getAppWidgetInfo(widgetId);
+                    return widgetId > 0 && info != null && expectedProvider.equals(info.provider);
+                }
+            }
+        } catch (Exception error) {
+            Log.e(TAG, "Could not read the saved widget host state.", error);
+        }
+        return false;
+    }
+
+    private static void awaitAccessibilityText(UiAutomation automation, String text,
+                                               long timeoutMillis, Context context) throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        int swipes = 0;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (containsAccessibleText(automation, text)) {
+                return;
+            }
+            if (swipes++ % 3 == 2) {
+                scrollHome(automation, context);
+            }
+            SystemClock.sleep(250L);
+        }
+        throw new IllegalStateException("Timed out waiting for Android widget text " + text
+                + "; visible accessibility tree: " + accessibilityTree(automation));
+    }
+
+    private static boolean clickAccessibleText(UiAutomation automation, String... labels) {
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root == null) {
+            return false;
+        }
+        try {
+            return clickAccessibleNode(root, labels, 0);
+        } finally {
+            root.recycle();
+        }
+    }
+
+    private static boolean clickAccessibleNode(AccessibilityNodeInfo node, String[] labels,
+                                               int depth) {
+        if (node == null || depth > 24) {
+            return false;
+        }
+        CharSequence text = node.getText();
+        CharSequence description = node.getContentDescription();
+        boolean matches = false;
+        for (String label : labels) {
+            matches |= (text != null && text.toString().contains(label))
+                    || (description != null && description.toString().contains(label));
+        }
+        if (matches) {
+            AccessibilityNodeInfo candidate = AccessibilityNodeInfo.obtain(node);
+            try {
+                for (int parentDepth = 0; candidate != null && parentDepth < 5; ++parentDepth) {
+                    if (candidate.isClickable()
+                            && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                        return true;
+                    }
+                    AccessibilityNodeInfo parent = candidate.getParent();
+                    candidate.recycle();
+                    candidate = parent;
+                }
+            } finally {
+                if (candidate != null) {
+                    candidate.recycle();
+                }
+            }
+        }
+        for (int index = 0; index < node.getChildCount(); ++index) {
+            AccessibilityNodeInfo child = node.getChild(index);
+            try {
+                if (clickAccessibleNode(child, labels, depth + 1)) {
+                    return true;
+                }
+            } finally {
+                if (child != null) {
+                    child.recycle();
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsAccessibleText(UiAutomation automation, String expected) {
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        if (root == null) {
+            return false;
+        }
+        try {
+            return containsAccessibleNode(root, expected);
+        } finally {
+            root.recycle();
+        }
+    }
+
+    private static boolean containsAccessibleNode(AccessibilityNodeInfo root, String expected) {
+        if (root == null) {
+            return false;
+        }
+        CharSequence text = root.getText();
+        CharSequence description = root.getContentDescription();
+        if ((text != null && text.toString().contains(expected))
+                || (description != null && description.toString().contains(expected))) {
+            return true;
+        }
+        for (int index = 0; index < root.getChildCount(); ++index) {
+            AccessibilityNodeInfo child = root.getChild(index);
+            try {
+                if (containsAccessibleNode(child, expected)) {
+                    return true;
+                }
+            } finally {
+                if (child != null) {
+                    child.recycle();
+                }
+            }
+        }
+        return false;
+    }
+
+    private static String accessibilityTree(UiAutomation automation) {
+        StringBuilder result = new StringBuilder();
+        AccessibilityNodeInfo root = automation.getRootInActiveWindow();
+        try {
+            appendAccessibilityTree(result, root, 0);
+        } finally {
+            if (root != null) {
+                root.recycle();
+            }
+        }
+        return result.toString();
+    }
+
+    private static void appendAccessibilityTree(StringBuilder output, AccessibilityNodeInfo node,
+                                                int depth) {
+        if (node == null || depth > 20 || output.length() > 12_000) {
+            return;
+        }
+        CharSequence text = node.getText();
+        CharSequence description = node.getContentDescription();
+        if (text != null || description != null) {
+            output.append(" ".repeat(Math.min(depth, 10)))
+                    .append(text == null ? "" : text).append("|")
+                    .append(description == null ? "" : description).append("\n");
+        }
+        for (int index = 0; index < node.getChildCount(); ++index) {
+            AccessibilityNodeInfo child = node.getChild(index);
+            try {
+                appendAccessibilityTree(output, child, depth + 1);
+            } finally {
+                if (child != null) {
+                    child.recycle();
+                }
+            }
+        }
+    }
+
+    private static void scrollSystemPicker(UiAutomation automation, Context context) {
+        if (containsAccessibleText(automation, "OmaApp CI Interactive Widget")) {
+            return;
+        }
+        executeSwipe(automation, context, 0.78f, 0.28f);
+    }
+
+    private static void scrollHome(UiAutomation automation, Context context) {
+        executeSwipe(automation, context, 0.84f, 0.38f);
+    }
+
+    private static void executeSwipe(UiAutomation automation, Context context,
+                                     float fromRatio, float toRatio) {
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        String command = "input swipe " + (width / 2) + " " + Math.round(height * fromRatio)
+                + " " + (width / 2) + " " + Math.round(height * toRatio) + " 250";
+        try {
+            automation.executeShellCommand(command).close();
+        } catch (Exception error) {
+            Log.w(TAG, "Could not scroll the Android widget accessibility surface.", error);
+        }
     }
 
     private static void transferFiles(JSONObject credentials) throws Exception {
