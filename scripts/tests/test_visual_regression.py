@@ -83,6 +83,17 @@ def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = N
 
 
 class VisualRegressionTests(unittest.TestCase):
+    def test_android_ci_uses_the_reviewed_compact_home_baseline_for_both_renderers(self) -> None:
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "--home-alternate-baseline tests/visual_baselines/android/home-compact-viewport.png",
+            workflow,
+        )
+        self.assertNotIn('--home-alternate-baseline "$baseline_dir/home-compact-viewport.png"', workflow)
+
     def test_decodes_rgba_png_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "screen.png"

@@ -305,6 +305,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
 
     def test_home_widget_controls_drive_per_page_move_resize_and_placeholder_rebind(self):
         model = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
         header = (ROOT / "app/native/LauncherModel.h").read_text(encoding="utf-8")
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         self.assertIn("moveAndroidWidget(const QString &recordId, int page, int order)", header)
@@ -312,6 +315,15 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp)", header)
         self.assertIn('"moveWidgetRecord"', model)
         self.assertIn('"placeWidgetRecord"', model)
+        self.assertIn(
+            '"placeWidgetRecord",\n        "(Landroid/content/Context;Ljava/lang/String;IIII)Z"',
+            model,
+        )
+        self.assertIn(
+            "public static boolean placeWidgetRecord(Context context, String recordId, int page,\n"
+            "                                            int xDp, int yDp, int pageCount)",
+            host,
+        )
         self.assertIn('"resizeWidgetRecord"', model)
         self.assertIn('launcher.addAndroidWidgetOnPage(\n                                            homePagePage.pageIndex)', qml)
         self.assertIn('modelData.page + 1, 7)', qml)

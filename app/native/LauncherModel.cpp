@@ -476,7 +476,7 @@ bool LauncherModel::placeAndroidWidget(const QString &recordId, int page, int xD
     const QJniObject record = QJniObject::fromString(recordId);
     const bool placed = QJniObject::callStaticMethod<jboolean>(
         "app/omaapp/AndroidWidgetHost", "placeWidgetRecord",
-        "(Landroid/content/Context;Ljava/lang/String;IIIII)Z", context.object<jobject>(),
+        "(Landroid/content/Context;Ljava/lang/String;IIII)Z", context.object<jobject>(),
         record.object<jstring>(), static_cast<jint>(page), static_cast<jint>(xDp),
         static_cast<jint>(yDp), static_cast<jint>(m_homePageCount));
     if (placed)
