@@ -752,18 +752,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
-        AppWidgetManager manager = AppWidgetManager.getInstance(context);
-        boolean providerInstalled = false;
-        for (AppWidgetProviderInfo provider : manager.getInstalledProviders()) {
-            if (expectedProvider.equals(provider.provider)) {
-                providerInstalled = true;
-                break;
-            }
-        }
-        if (!providerInstalled) {
-            throw new IllegalStateException("The real CI AppWidgetProvider is not installed.");
-        }
-
         Intent launch = new Intent(context, OmaAppActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         Activity activity = startActivitySync(launch);

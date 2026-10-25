@@ -117,6 +117,13 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
         )
+        setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
+        setup_end = instrumentation.index("private void runAndroidWidgetHostRestore", setup_start)
+        widget_setup = instrumentation[setup_start:setup_end]
+        # InstalledProviders is package-visibility filtered for the host app;
+        # validate the provider through the system picker and actual binding.
+        self.assertNotIn("getInstalledProviders()", widget_setup)
+        self.assertIn("clickAccessibleText(automation, providerLabel)", widget_setup)
         for mode, stage in (
             ("setup", "android_widget_host_picker_bind_touch_passed"),
             ("restore", "android_widget_host_process_restore_passed"),
