@@ -124,6 +124,14 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Resize Android widget")', native)
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Widget size was not changed.")', native)
 
+    def test_schema_migration_instrumentation_reports_from_instance_context(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("private void verifyWidgetSchemaTwoMigration(", instrumentation)
+        self.assertNotIn("private static void verifyWidgetSchemaTwoMigration(", instrumentation)
+        self.assertIn('reportStage("android_widget_host_schema_migration_passed")', instrumentation)
+
     def test_integration_smoke_checks_old_widget_schema_and_survives_slow_qml_startup(self):
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"

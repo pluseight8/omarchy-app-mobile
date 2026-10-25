@@ -1756,7 +1756,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
     }
 
-    private static void verifyWidgetSchemaTwoMigration(Context context, JSONObject current)
+    private void verifyWidgetSchemaTwoMigration(Context context, JSONObject current)
             throws Exception {
         JSONObject legacyWidget = new JSONObject()
                 .put("recordId", current.getString("recordId"))
