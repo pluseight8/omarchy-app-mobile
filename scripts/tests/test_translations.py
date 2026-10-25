@@ -76,10 +76,18 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn("trap restore_android_font_scale EXIT", smoke)
         self.assertIn("grep -F 'Binding loop detected'", smoke)
         first_ui_capture = smoke.index("dump_ui\npython3 scripts/ci/android_accessibility_assert_checked.py")
-        self.assertLess(smoke.index("native_translation_output="), first_ui_capture)
-        self.assertLess(smoke.index("native_english_output="), first_ui_capture)
-        self.assertLess(smoke.index("live_locale_process="), first_ui_capture)
-        self.assertIn("adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity", smoke)
+        russian_selection = smoke.index("tap_scrolling_label 'Russian'\n")
+        native_russian_check = smoke.index("nativeQtTranslations true")
+        english_selection = smoke.index("tap_scrolling_label 'Английский' down")
+        native_english_check = smoke.index("nativeEnglishStrings true")
+        live_pid_capture = smoke.index("live_locale_process=")
+        self.assertLess(first_ui_capture, russian_selection)
+        self.assertLess(russian_selection, native_russian_check)
+        self.assertLess(native_russian_check, english_selection)
+        self.assertLess(english_selection, native_english_check)
+        self.assertLess(native_english_check, live_pid_capture)
+        self.assertIn("restart_app_for_persistence", smoke[native_russian_check:native_english_check])
+        self.assertIn("restart_app_for_persistence", smoke[native_english_check:live_pid_capture])
         live_switch_stage = smoke.split("# Exercise rapid locale changes", 1)[1].split(
             "# Haptics", 1
         )[0]
