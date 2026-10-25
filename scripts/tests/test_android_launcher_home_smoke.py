@@ -1,0 +1,50 @@
+from pathlib import Path
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class AndroidLauncherHomeSmokeTests(unittest.TestCase):
+    def test_tab_selection_refreshes_accessibility_tree_before_pin_target(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        helper_start = smoke.index("select_tab_when_needed() {")
+        helper_end = smoke.index("\n}\n", helper_start) + 3
+        helper = smoke[helper_start:helper_end]
+
+        self.assertIn('"$accessibility_xml" "$tab_label"', helper)
+        self.assertIn(
+            'android_accessibility_tap_target.py "$accessibility_xml" "$tab_label"',
+            helper,
+        )
+        self.assertIn(
+            'android_accessibility_dump.py "$device_xml" "$accessibility_xml"',
+            helper,
+        )
+        self.assertIn("for attempt in 1 2 3 4 5", helper)
+
+        navigation_start = smoke.index(
+            'apps_navigation_xml="$smoke_artifacts/window-apps-before-pin-navigation.xml"'
+        )
+        pin_target_start = smoke.index(
+            'pin_target="$(python3 scripts/ci/android_launcher_tap_target.py'
+        )
+        navigation = smoke[navigation_start:pin_target_start]
+        self.assertIn("select_tab_when_needed 'Apps'", navigation)
+        self.assertIn('window-apps-before-pin.xml" \'Apps\'', navigation)
+        self.assertLess(
+            navigation.index("android_accessibility_assert_checked.py"),
+            navigation.index(
+                'adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"'
+            ),
+        )
+        self.assertNotIn(
+            'apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py',
+            navigation,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

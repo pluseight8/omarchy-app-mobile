@@ -120,6 +120,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
         setup_end = instrumentation.index("private void runAndroidWidgetHostRestore", setup_start)
         widget_setup = instrumentation[setup_start:setup_end]
+        self.assertIn('reportStage("android_widget_host_setup_started")', widget_setup)
+        self.assertIn("context.startActivity(launch)", widget_setup)
+        self.assertNotIn("startActivitySync", widget_setup)
+        self.assertIn('reportStage("android_widget_host_picker_opened")', widget_setup)
         # InstalledProviders is package-visibility filtered for the host app;
         # validate the provider through the system picker and actual binding.
         self.assertNotIn("getInstalledProviders()", widget_setup)

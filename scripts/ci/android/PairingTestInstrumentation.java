@@ -749,20 +749,25 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void runAndroidWidgetHostSetup(Context context) throws Exception {
+        reportStage("android_widget_host_setup_started");
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
         Intent launch = new Intent(context, OmaAppActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        Activity activity = startActivitySync(launch);
+        context.startActivity(launch);
+        reportStage("android_widget_host_home_launch_requested");
+        UiAutomation automation = getUiAutomation();
+        awaitAccessibilityText(automation, "Add Android widget", 15_000L, context);
+        reportStage("android_widget_host_home_ready");
+        Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         if (!(activity instanceof OmaAppActivity)) {
             throw new IllegalStateException("Could not open OmaApp Home for widget hosting.");
         }
-        UiAutomation automation = getUiAutomation();
-        awaitAccessibilityText(automation, "Add Android widget", 15_000L, context);
         if (!clickAccessibleText(automation, "Add Android widget")) {
             throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
         }
+        reportStage("android_widget_host_picker_opened");
 
         String providerLabel = "OmaApp CI Interactive Widget";
         long bindDeadline = SystemClock.elapsedRealtime() + 90_000L;

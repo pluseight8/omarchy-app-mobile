@@ -25,6 +25,26 @@ select_home_when_needed() {
   python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" 'Home'
 }
 
+select_tab_when_needed() {
+  local tab_label="$1"
+  local accessibility_xml="$2"
+  local device_xml="$3"
+  for attempt in 1 2 3 4 5; do
+    if python3 scripts/ci/android_accessibility_assert_checked.py \
+      "$accessibility_xml" "$tab_label" >/dev/null 2>&1; then
+      return 0
+    fi
+    local target
+    target="$(python3 scripts/ci/android_accessibility_tap_target.py "$accessibility_xml" "$tab_label")"
+    local x y
+    read -r x y <<< "$target"
+    adb shell input tap "$x" "$y"
+    sleep 1
+    python3 scripts/ci/android_accessibility_dump.py "$device_xml" "$accessibility_xml"
+  done
+  python3 scripts/ci/android_accessibility_assert_checked.py "$accessibility_xml" "$tab_label"
+}
+
 scroll_to_home_folder() {
   local accessibility_xml="$1"
   local device_xml="$2"
@@ -113,11 +133,12 @@ scroll_to_home_folder "$smoke_artifacts/window-home-before-restart-navigation.xm
 cp "$smoke_artifacts/window-home-before-restart-navigation.xml" \
   "$smoke_artifacts/window-folder-on-home.xml"
 grep -F "Open $folder_name folder, 1 apps" "$smoke_artifacts/window-folder-on-home.xml"
-apps_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-folder-on-home.xml" 'Apps')"
-read -r apps_x apps_y <<< "$apps_target"
-adb shell input tap "$apps_x" "$apps_y"
-sleep 1
+apps_navigation_xml="$smoke_artifacts/window-apps-before-pin-navigation.xml"
+cp "$smoke_artifacts/window-folder-on-home.xml" "$apps_navigation_xml"
+select_tab_when_needed 'Apps' "$apps_navigation_xml" /sdcard/omaapp-apps-before-pin.xml
+cp "$apps_navigation_xml" "$smoke_artifacts/window-apps-before-pin.xml"
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$smoke_artifacts/window-apps-before-pin.xml" 'Apps'
 adb exec-out screencap -p > "$smoke_artifacts/launcher-before-pin.png"
 python3 scripts/ci/android_accessibility_dump.py \
   /sdcard/omaapp-before-pin.xml "$smoke_artifacts/window-before-pin.xml"
