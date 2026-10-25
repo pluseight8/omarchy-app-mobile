@@ -22,9 +22,41 @@ run_stage() {
 }
 
 run_stage setup android_widget_host_picker_bind_touch_passed
+pid_before="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
+if [[ -z "$pid_before" ]]; then
+  printf 'OmaApp process was not running before the AppWidgetHost restart.\n' >&2
+  exit 1
+fi
+printf '%s\n' "$pid_before" > "$artifacts/pid-before-process-death.txt"
 adb shell am force-stop app.omaapp
+pid_after_force_stop="$pid_before"
+for attempt in {1..40}; do
+  pid_after_force_stop="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
+  if [[ "$pid_after_force_stop" != "$pid_before" ]]; then
+    break
+  fi
+  sleep 0.25
+done
+if [[ "$pid_after_force_stop" == "$pid_before" ]]; then
+  printf 'Android did not terminate or restart the OmaApp process after force-stop.\n' >&2
+  exit 1
+fi
+printf '%s\n' "$pid_after_force_stop" > "$artifacts/pid-after-force-stop.txt"
 adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity \
   > "$artifacts/relaunch-after-widget-host.txt"
+pid_after_start=""
+for attempt in {1..40}; do
+  pid_after_start="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
+  if [[ -n "$pid_after_start" ]]; then
+    break
+  fi
+  sleep 0.25
+done
+if [[ -z "$pid_after_start" || "$pid_after_start" == "$pid_before" ]]; then
+  printf 'OmaApp did not relaunch in a new process after AppWidgetHost force-stop.\n' >&2
+  exit 1
+fi
+printf '%s\n' "$pid_after_start" > "$artifacts/pid-after-relaunch.txt"
 run_stage restore android_widget_host_process_restore_passed
 run_stage remove android_widget_host_id_release_passed
 adb uninstall "$package"

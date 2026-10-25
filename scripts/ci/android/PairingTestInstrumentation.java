@@ -820,15 +820,23 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private void runAndroidWidgetHostRestore(Context context) throws Exception {
+        reportStage("android_widget_host_restore_started");
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
-        Intent launch = new Intent(context, OmaAppActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        Activity activity = startActivitySync(launch);
-        if (!(activity instanceof OmaAppActivity)) {
-            throw new IllegalStateException("Could not reopen OmaApp after process restart.");
+        Activity activity = null;
+        long activityDeadline = SystemClock.elapsedRealtime() + 15_000L;
+        while (SystemClock.elapsedRealtime() < activityDeadline) {
+            activity = AndroidWidgetHost.currentActivityForInstrumentation();
+            if (activity instanceof OmaAppActivity && !activity.isFinishing()) {
+                break;
+            }
+            SystemClock.sleep(100L);
         }
+        if (!(activity instanceof OmaAppActivity)) {
+            throw new IllegalStateException("OmaApp did not attach its cold-started QtActivity after process restart.");
+        }
+        reportStage("android_widget_host_restore_activity_ready");
         if (!hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The Android widget ID/provider record did not survive process death.");
         }

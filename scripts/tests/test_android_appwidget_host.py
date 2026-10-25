@@ -162,6 +162,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         ):
             self.assertIn(f'run_stage {mode} {stage}', smoke)
             self.assertIn(stage, instrumentation)
+        self.assertIn('pid_before="$(adb shell pidof app.omaapp', smoke)
+        self.assertIn('[[ "$pid_after_force_stop" != "$pid_before" ]]', smoke)
+        self.assertIn('[[ -z "$pid_after_start" || "$pid_after_start" == "$pid_before" ]]', smoke)
         self.assertIn("AppWidgetManager.ACTION_APPWIDGET_PICK", host)
         self.assertIn("CI_WIDGET_ACTION", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED", instrumentation)
@@ -173,6 +176,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         restore_start = instrumentation.index("private void runAndroidWidgetHostRestore")
         restore_end = instrumentation.index("private void runAndroidWidgetHostRemove", restore_start)
         widget_restore = instrumentation[restore_start:restore_end]
+        self.assertIn('reportStage("android_widget_host_restore_started")', widget_restore)
+        self.assertIn("AndroidWidgetHost.currentActivityForInstrumentation()", widget_restore)
+        self.assertNotIn("startActivitySync", widget_restore)
         self.assertIn('clickAccessibleText(automation, "CI_WIDGET_ACTION")', widget_restore)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', widget_restore)
         self.assertIn("currentActivityForInstrumentation", instrumentation)
