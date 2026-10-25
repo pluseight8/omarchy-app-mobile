@@ -131,6 +131,19 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
             self.assertTrue(is_checked(path, "Use 5 app columns"))
             self.assertFalse(is_checked(path, "Use 3 app columns"))
 
+    def test_checked_tab_does_not_match_part_of_another_control_name(self):
+        xml = """<hierarchy>
+            <node package="app.omaapp" checked="true"
+                content-desc="Swipe between Home, Apps, Devices, Style, and Settings" />
+            <node package="app.omaapp" checked="true" content-desc="Home" />
+            <node package="app.omaapp" checked="false" content-desc="Apps" />
+        </hierarchy>"""
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "window.xml"
+            path.write_text(xml, encoding="utf-8")
+            self.assertTrue(is_checked(path, "Home"))
+            self.assertFalse(is_checked(path, "Apps"))
+
 
 if __name__ == "__main__":
     unittest.main()

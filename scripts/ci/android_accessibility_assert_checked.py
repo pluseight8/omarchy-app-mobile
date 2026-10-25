@@ -18,7 +18,6 @@ def is_checked(xml_path: Path, target: str) -> bool:
             value = node.attrib.get(attribute, "").strip()
             if value:
                 labels.add(value)
-                labels.update(label.strip() for label in value.split(","))
         if target in labels:
             return True
     return False
