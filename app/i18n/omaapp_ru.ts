@@ -163,6 +163,14 @@
             <translation>Не удалось удалить виджет Android.</translation>
         </message>
         <message>
+            <source>Android widget layout changed.</source>
+            <translation>Расположение виджета Android изменено.</translation>
+        </message>
+        <message>
+            <source>Android widget layout could not be restored.</source>
+            <translation>Не удалось восстановить расположение виджета Android.</translation>
+        </message>
+        <message>
             <source>Android widget picker could not be opened.</source>
             <translation>Не удалось открыть выбор виджетов Android.</translation>
         </message>
@@ -227,6 +235,14 @@
             <translation>Удалить виджет Android %1</translation>
         </message>
         <message>
+            <source>Remove this Android widget?</source>
+            <translation>Удалить этот виджет Android?</translation>
+        </message>
+        <message>
+            <source>Remove %1 from this Home page? The Android widget binding will be released.</source>
+            <translation>Удалить %1 с этой страницы? Системная привязка виджета Android будет освобождена.</translation>
+        </message>
+        <message>
             <source>Rebind</source>
             <translation>Перепривязать</translation>
         </message>
@@ -235,8 +251,24 @@
             <translation>Перепривязать виджет Android %1</translation>
         </message>
         <message>
+            <source>Resize Android widget</source>
+            <translation>Изменить размер виджета Android</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>Отменить</translation>
+        </message>
+        <message>
+            <source>Undo Android widget layout change</source>
+            <translation>Отменить изменение расположения виджета Android</translation>
+        </message>
+        <message>
             <source>This widget needs a fresh Android system binding.</source>
             <translation>Для этого виджета требуется новая системная привязка Android.</translation>
+        </message>
+        <message>
+            <source>Widget size was not changed.</source>
+            <translation>Размер виджета не изменён.</translation>
         </message>
         <message>
             <source>Choose the app language. System default follows the phone language; English and Russian are available offline.</source>

@@ -15,7 +15,7 @@ The Android launcher and arm64 debug packaging already exist. Direct QR pairing 
 - The service reads active Omarchy theme files and Hyprland options/animations. Android applies authenticated theme/workspace events and uses a 30-second foreground refresh for missed events and system metrics.
 - Clipboard, file-transfer, MPRIS, system metrics, Hyprland workspaces, and user-configured commands have independent, disabled-by-default per-device grants.
 
-PR #16 was merged into `main` at `bf4baef832968383d1d1a3ac29abc61f0f15e6af`; its [CI #266](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40210984247) passed all four jobs and its review threads were resolved. PR #17 remains a draft while its AppWidgetHost work is integrated against that merge. The existing [CI #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660) passed the earlier host implementation on Desktop, arm64, OpenGL, and Vulkan. The current local integration passes 153 Python tests and 314 Russian translation checks; its combined CI run has not started yet. The plugin was installed and restarted earlier inside Omarchy 4.0.4 / Quickshell 0.3.1. This workspace has no CMake, JDK, Android SDK, emulator, or attached device; the Pixel/GrapheneOS and live Android-to-Omarchy checks remain unverified here.
+PR #16 was merged into `main` at `bf4baef832968383d1d1a3ac29abc61f0f15e6af`; its [CI #266](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40210984247) passed all four jobs and its review threads were resolved. PR #17's integrated branch head is `e670868`. [CI #273](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40219670413) completed with Desktop and arm64 green; OpenGL exposed a native-translation check racing Qt startup and Vulkan exposed an accessibility check racing Home readiness. The current working tree waits for persisted locale/QML readiness and adds the versioned grid, QML nudge/undo, confirmed removal, and native resize grip. It now has 155 Python tests and 322 Russian translation checks; a fresh four-job CI run is required after push. The plugin was installed and restarted earlier inside Omarchy 4.0.4 / Quickshell 0.3.1. This workspace has no CMake, JDK, Android SDK, emulator, or attached device; Pixel/GrapheneOS and live Android-to-Omarchy checks remain unverified here.
 
 ## Work sequence
 
@@ -77,11 +77,12 @@ PR #16 was merged into `main` at `bf4baef832968383d1d1a3ac29abc61f0f15e6af`; its
 - [x] Launch Android's system picker and provider configuration flow; do not bind providers without the user's picker choice.
 - [x] Restore persisted provider IDs through one stable `AppWidgetHost` and release cancelled, stale, and deleted IDs.
 - [x] Align interactive `AppWidgetHostView` children with first-page Qt Quick Home slots, convert dp bounds, and clip them to the scroll/page viewport.
-- [x] Save provider identity, local Android ID, page/order, minimum size and selected size in a versioned schema; migrate the former array format.
-- [x] Add per-page widget placement, order controls, drag-to-page, and width/height adjustment controls without disabling RemoteViews interaction.
+- [x] Save provider identity, local Android ID, page/order, 24 dp snapped x/y, minimum size and selected size in a versioned schema; migrate the former array and schema-2 records.
+- [x] Add per-page grid placement, drag-to-position/page, overlap checks, accessible movement controls, and width/height adjustment controls without disabling RemoteViews interaction outside the resize grip.
+- [x] Add an Android-native corner resize grip that updates provider size options.
 - [x] Add ID-free backup export, placeholder restore, provider-matched system-picker rebind, and safe remove ordering with metadata rollback.
-- [ ] Run the integrated real-provider emulator smoke for placement/size persistence, options updates, ID-free backup, placeholder restore and rebind after pushing PR #17.
-- [ ] Add freeform shared-grid x/y placement and edge resize handles; current widgets remain an ordered vertical stack per page.
+- [ ] Run the updated real-provider emulator smoke for grid placement, native handle resizing, options updates, ID-free backup, placeholder restore and rebind after pushing the grid follow-up.
+- [ ] Unify the Android widget, app-icon, and OWL widget placement grids; these areas are currently separate.
 - [ ] Measure Home performance and check gestures, accessibility, orientation/insets, and GrapheneOS with a physical device.
 - [ ] Measure widget memory and frame cost across display densities, rotation, and the emulator's available refresh rates.
 

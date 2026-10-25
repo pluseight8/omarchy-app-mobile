@@ -97,10 +97,48 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("setAndroidWidgetFrame", model)
         self.assertIn('qsTr("Android widgets")', qml)
         self.assertIn('Accessible.name: qsTr("Add Android widget")', qml)
+        self.assertIn('Accessible.name: qsTr("Undo Android widget layout change")', qml)
+        self.assertIn('id: removeAndroidWidgetDialog', qml)
+        self.assertIn('title: qsTr("Remove this Android widget?")', qml)
         self.assertIn("homePageFlickable.mapToItem(null, 0, 0)", qml)
         self.assertIn("homePageView.mapToItem(null, 0, 0)", qml)
         self.assertIn("onContentYChanged", qml)
         self.assertIn("modelData.page === homePagePage.pageIndex", qml)
+
+    def test_android_widget_grid_uses_page_local_width_and_offers_undo(self):
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        start = qml.index("function placeAndroidWidgetTo(")
+        end = qml.index("function moveAndroidWidgetTo(", start)
+        place_function = qml[start:end]
+        self.assertIn("availableWidthDp", place_function)
+        self.assertIn("Number(availableWidthDp)", place_function)
+        self.assertNotIn("androidWidgetCanvas.width", place_function)
+        self.assertIn("DragHandler {", qml)
+        self.assertIn("androidWidgetCanvas.width)", qml)
+        self.assertIn("function undoAndroidWidgetLayout()", qml)
+        self.assertIn('onTriggered: window.androidWidgetLayoutUndo = null', qml)
+        self.assertIn("function updateAndroidWidgetDragPage(scenePosition)", qml)
+        self.assertIn("androidWidgetPageDragTimer", qml)
+        self.assertIn("centroid.scenePosition", qml)
+
+    def test_integration_smoke_checks_old_widget_schema_and_survives_slow_qml_startup(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (
+            ROOT / "scripts/ci/android_translation_smoke.sh"
+        ).read_text(encoding="utf-8")
+        widget_smoke = (
+            ROOT / "scripts/ci/android_appwidget_host_smoke.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("verifyWidgetSchemaTwoMigration(context, originalWidget)", instrumentation)
+        self.assertIn('reportStage("android_widget_host_schema_migration_passed")', instrumentation)
+        self.assertIn('reportStage("android_widget_host_qml_controls_passed")', instrumentation)
+        self.assertIn("stored.optInt(\"schemaVersion\", -1) != 3", instrumentation)
+        self.assertIn("for (int attempt = 0; attempt < 40", instrumentation)
+        self.assertIn("restart_app_for_persistence\nensure_settings_tab 'Настройки'", smoke)
+        self.assertIn("for attempt in {1..60}", smoke)
+        self.assertIn("stage=android_widget_host_schema_migration_passed", widget_smoke)
 
     def test_emulator_fixture_is_real_interactive_remoteviews_and_test_only(self):
         manifest = (ROOT / "app/android/AndroidManifest.xml").read_text(encoding="utf-8")
@@ -191,10 +229,13 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("context.startActivity(launch)", remove_stage)
         self.assertIn("AndroidWidgetHost.currentActivityForInstrumentation()", remove_stage)
         self.assertIn('awaitAccessibilityText(automation, "Add Android widget"', remove_stage)
-        self.assertIn("failed to remove selected widget ID", remove_stage)
+        self.assertIn("The Android widget removal confirmation was not accessible", remove_stage)
         self.assertIn("removalDeadline", remove_stage)
         self.assertIn("currentActivityForInstrumentation", instrumentation)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
+        self.assertIn('clickAccessibleText(automation, "Remove Android widget ")', instrumentation)
+        self.assertIn('awaitAccessibilityText(automation, "Remove this Android widget?"', instrumentation)
+        self.assertIn('clickAccessibleText(automation, "OK")', instrumentation)
         self.assertIn("build_android_appwidget_fixture.sh", workflow)
         self.assertIn("android_appwidget_host_smoke.sh", workflow)
 
@@ -202,14 +243,19 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
         )
-        self.assertIn("WIDGETS_SCHEMA_VERSION = 2", host)
-        self.assertIn('root.optInt("schemaVersion", -1) != WIDGETS_SCHEMA_VERSION', host)
+        self.assertIn("WIDGETS_SCHEMA_VERSION = 3", host)
+        self.assertIn("storedSchemaVersion < 2 || storedSchemaVersion > WIDGETS_SCHEMA_VERSION", host)
         self.assertIn('legacyArray = stored.trim().startsWith("[")', host)
         self.assertIn('recordId = id > 0 ? "legacy-" + id', host)
         self.assertIn('root.put("schemaVersion", WIDGETS_SCHEMA_VERSION)', host)
         self.assertIn('sanitized.put("widthDp", width)', host)
         self.assertIn('sanitized.put("heightDp", height)', host)
         self.assertIn('sanitized.put("page", page)', host)
+        self.assertIn('sanitized.put("xDp", xDp)', host)
+        self.assertIn('sanitized.put("yDp", yDp)', host)
+        self.assertIn("PLACEMENT_GRID_DP = 24", host)
+        self.assertIn("hasPlacementConflict", host)
+        self.assertIn("nextWidgetY", host)
         self.assertIn("normalizePageOrders(result)", host)
 
     def test_removal_persists_before_android_releases_the_widget_id(self):
@@ -233,10 +279,12 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         restore_start = host.index("private static List<JSONObject> parseWidgetBackup")
         restore_end = host.index("private static boolean isWidgetBound", restore_start)
         parser = host[restore_start:restore_end]
-        self.assertIn("BACKUP_SCHEMA_VERSION = 1", host)
+        self.assertIn("BACKUP_SCHEMA_VERSION = 2", host)
         self.assertNotIn('entry.put("id"', export_method)
         self.assertNotIn('entry.put("grant"', export_method)
-        self.assertIn('entry.length() != 8', parser)
+        self.assertIn('entry.length() != (backupVersion == 1 ? 8 : 10)', parser)
+        self.assertIn('entry.put("xDp"', export_method)
+        self.assertIn('entry.put("yDp"', export_method)
         self.assertIn('placeholder.put("id", 0)', parser)
         self.assertIn('placeholder.put("state", "needs_rebind")', parser)
         self.assertIn('"The selected provider does not match the saved widget placeholder."', host)
@@ -250,14 +298,19 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         self.assertIn("moveAndroidWidget(const QString &recordId, int page, int order)", header)
         self.assertIn("resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp)", header)
+        self.assertIn("placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp)", header)
         self.assertIn('"moveWidgetRecord"', model)
+        self.assertIn('"placeWidgetRecord"', model)
         self.assertIn('"resizeWidgetRecord"', model)
         self.assertIn('launcher.addAndroidWidgetOnPage(\n                                            homePagePage.pageIndex)', qml)
         self.assertIn('modelData.page + 1, 7)', qml)
         self.assertIn('window.resizeAndroidWidgetTo(modelData.recordId', qml)
-        self.assertIn('launcher.rebindAndroidWidget(\n                                                        modelData.recordId)', qml)
+        self.assertIn("launcher.rebindAndroidWidget(", qml)
         self.assertIn('modelData.state !== "ready"', qml)
         self.assertIn("DropArea {", qml)
+        self.assertIn("androidWidgetGridStep: 24", qml)
+        self.assertIn('x: Number(modelData.xDp) || 0', qml)
+        self.assertIn('y: Number(modelData.yDp) || 0', qml)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
         instrumentation = (
@@ -267,6 +320,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("android_widget_host_layout_roundtrip_passed", instrumentation)
+        self.assertIn("android_widget_host_resize_handle_passed", instrumentation)
+        self.assertIn("dragResizeHandle(context, widgetId, 24, 24)", instrumentation)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
         self.assertIn("exportWidgetBackup(context)", instrumentation)

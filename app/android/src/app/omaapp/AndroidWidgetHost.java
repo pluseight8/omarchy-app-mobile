@@ -13,9 +13,12 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -39,8 +42,8 @@ public final class AndroidWidgetHost {
     private static final String TAG = "OmaAppAppWidget";
     private static final String PREFS = "android_widget_host";
     private static final String WIDGETS_KEY = "widgets";
-    private static final int WIDGETS_SCHEMA_VERSION = 2;
-    private static final int BACKUP_SCHEMA_VERSION = 1;
+    private static final int WIDGETS_SCHEMA_VERSION = 3;
+    private static final int BACKUP_SCHEMA_VERSION = 2;
     private static final String PENDING_ID_KEY = "pending_widget_id";
     private static final String PENDING_RECORD_ID_KEY = "pending_widget_record_id";
     private static final String PENDING_PAGE_KEY = "pending_widget_page";
@@ -51,7 +54,10 @@ public final class AndroidWidgetHost {
     private static final int REQUEST_PICK = 0x4f40;
     private static final int REQUEST_CONFIGURE = 0x4f41;
     private static final int MAX_WIDGETS = 8;
-    private static final float MAX_COORDINATE_DP = 10000f;
+    private static final int PLACEMENT_GRID_DP = 24;
+    private static final int WIDGET_CHROME_HEIGHT_DP = 256;
+    private static final int MIN_WIDGET_CARD_WIDTH_DP = 280;
+    private static final float MAX_COORDINATE_DP = 20000f;
     private static final float MAX_SIZE_DP = 3000f;
 
     private static WeakReference<OmaAppActivity> activityRef = new WeakReference<>(null);
@@ -63,6 +69,7 @@ public final class AndroidWidgetHost {
     private static int pendingPage;
     private static final Map<Integer, AppWidgetHostView> views = new HashMap<>();
     private static final Map<Integer, FrameLayout> clips = new HashMap<>();
+    private static final Map<Integer, TextView> resizeHandles = new HashMap<>();
     private static final Map<Integer, WidgetFrame> frames = new HashMap<>();
     private static final Map<Integer, String> lastSizeOptions = new HashMap<>();
 
@@ -71,6 +78,10 @@ public final class AndroidWidgetHost {
 
     static OmaAppActivity currentActivityForInstrumentation() {
         return activityRef.get();
+    }
+
+    static View resizeHandleForInstrumentation(int widgetId) {
+        return resizeHandles.get(widgetId);
     }
 
     static void restoreInstanceState(Bundle state) {
@@ -178,6 +189,7 @@ public final class AndroidWidgetHost {
         }
         views.clear();
         clips.clear();
+        resizeHandles.clear();
         frames.clear();
         lastSizeOptions.clear();
     }
@@ -356,12 +368,16 @@ public final class AndroidWidgetHost {
             OmaAppActivity.notifyAndroidWidgetsChanged();
             return;
         }
-        int order = previous == null ? countWidgetsOnPage(widgets, pendingPage)
+        int page = previous == null ? pendingPage : previous.optInt("page", pendingPage);
+        int order = previous == null ? countWidgetsOnPage(widgets, page)
                 : previous.optInt("order", 0);
+        int xDp = previous == null ? 0 : previous.optInt("xDp", 0);
+        int yDp = previous == null ? nextWidgetY(widgets, page)
+                : previous.optInt("yDp", nextWidgetY(widgets, page));
         JSONObject item = widgetRecord(activity, widgetId, info,
                 previous == null ? UUID.randomUUID().toString()
                         : previous.optString("recordId", UUID.randomUUID().toString()),
-                previous == null ? pendingPage : previous.optInt("page", pendingPage), order);
+                page, order, xDp, yDp);
         if (item == null) {
             deletePendingWidget(activity);
             OmaAppActivity.notifyAndroidWidgetsChanged();
@@ -372,6 +388,15 @@ public final class AndroidWidgetHost {
         } else {
             int previousIndex = widgets.indexOf(previous);
             item = preserveWidgetGeometry(previous, item);
+            if (hasPlacementConflict(widgets, item, previous)) {
+                try {
+                    item.put("xDp", 0);
+                    item.put("yDp", nextWidgetY(widgets, page));
+                } catch (JSONException ignored) {
+                    deletePendingWidget(activity);
+                    return;
+                }
+            }
             widgets.set(previousIndex, item);
         }
         if (!writeWidgets(activity, widgets)) {
@@ -454,6 +479,10 @@ public final class AndroidWidgetHost {
         try {
             moved.put("page", page);
             moved.put("order", targetOrder);
+            if (moving.optInt("page", 0) != page) {
+                moved.put("xDp", 0);
+                moved.put("yDp", nextWidgetY(reordered, page));
+            }
         } catch (JSONException ignored) {
             return false;
         }
@@ -468,6 +497,46 @@ public final class AndroidWidgetHost {
         reordered.add(insertAt, moved);
         normalizePageOrders(reordered);
         if (!writeWidgets(context, reordered)) {
+            return false;
+        }
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    /** Places a widget on the Home grid after validating bounds and overlap. */
+    public static boolean placeWidgetRecord(Context context, String recordId, int page,
+                                            int xDp, int yDp, int pageCount) {
+        if (context == null || recordId == null || recordId.isEmpty()
+                || page < 0 || pageCount < 1 || page >= pageCount || pageCount > 5
+                || xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+                || xDp % PLACEMENT_GRID_DP != 0 || yDp % PLACEMENT_GRID_DP != 0) {
+            return false;
+        }
+        List<JSONObject> widgets = readWidgets(context);
+        JSONObject current = findWidgetByRecordId(widgets, recordId);
+        if (current == null) {
+            return false;
+        }
+        List<JSONObject> updated = deepCopyWidgets(widgets);
+        JSONObject target = findWidgetByRecordId(updated, recordId);
+        int oldPage = target.optInt("page", 0);
+        try {
+            target.put("page", page);
+            target.put("xDp", xDp);
+            target.put("yDp", yDp);
+            if (oldPage != page) {
+                target.put("order", countWidgetsOnPage(updated, page) - 1);
+            }
+        } catch (JSONException ignored) {
+            return false;
+        }
+        if (xDp + Math.max(MIN_WIDGET_CARD_WIDTH_DP, target.optInt("widthDp", 1)) > 3000
+                || yDp + target.optInt("heightDp", 1) + WIDGET_CHROME_HEIGHT_DP > 20000
+                || hasPlacementConflict(updated, target, target)) {
+            return false;
+        }
+        normalizePageOrders(updated);
+        if (!writeWidgets(context, updated)) {
             return false;
         }
         OmaAppActivity.notifyAndroidWidgetsChanged();
@@ -508,6 +577,11 @@ public final class AndroidWidgetHost {
         } catch (JSONException ignored) {
             return false;
         }
+        if (target.optInt("xDp", 0) + Math.max(MIN_WIDGET_CARD_WIDTH_DP, widthDp) > 3000
+                || target.optInt("yDp", 0) + heightDp + WIDGET_CHROME_HEIGHT_DP > 20000
+                || hasPlacementConflict(updated, target, target)) {
+            return false;
+        }
         if (!writeWidgets(context, updated)) {
             return false;
         }
@@ -524,9 +598,16 @@ public final class AndroidWidgetHost {
             return false;
         }
         List<JSONObject> updated = deepCopyWidgets(widgets);
+        List<JSONObject> placed = new ArrayList<>();
         for (JSONObject widget : updated) {
             try {
-                widget.put("page", Math.min(pageCount - 1, widget.optInt("page", 0)));
+                int page = Math.min(pageCount - 1, widget.optInt("page", 0));
+                widget.put("page", page);
+                if (hasPlacementConflict(placed, widget, null)) {
+                    widget.put("xDp", 0);
+                    widget.put("yDp", nextWidgetY(placed, page));
+                }
+                placed.add(widget);
             } catch (JSONException ignored) {
                 return false;
             }
@@ -555,6 +636,8 @@ public final class AndroidWidgetHost {
                 entry.put("label", widget.optString("label", ""));
                 entry.put("page", widget.optInt("page", 0));
                 entry.put("order", widget.optInt("order", 0));
+                entry.put("xDp", widget.optInt("xDp", 0));
+                entry.put("yDp", widget.optInt("yDp", 0));
                 entry.put("minWidthDp", widget.optInt("minWidthDp", 160));
                 entry.put("minHeightDp", widget.optInt("minHeightDp", 120));
                 entry.put("widthDp", widget.optInt("widthDp", 400));
@@ -675,6 +758,7 @@ public final class AndroidWidgetHost {
             ((ViewGroup) view.getParent()).removeView(view);
         }
         FrameLayout clip = clips.remove(widgetId);
+        resizeHandles.remove(widgetId);
         if (clip != null && clip.getParent() instanceof ViewGroup) {
             ((ViewGroup) clip.getParent()).removeView(clip);
         }
@@ -775,6 +859,26 @@ public final class AndroidWidgetHost {
             params.height = height;
             view.setLayoutParams(params);
         }
+        TextView resizeHandle = resizeHandles.get(view.getAppWidgetId());
+        if (resizeHandle != null) {
+            int handleSize = Math.round(48f * density);
+            int handleLeft = Math.round(view.getTranslationX()) + width - handleSize;
+            int handleTop = Math.round(view.getTranslationY()) + height - handleSize;
+            FrameLayout.LayoutParams handleParams =
+                    (FrameLayout.LayoutParams) resizeHandle.getLayoutParams();
+            if (handleParams == null) {
+                handleParams = new FrameLayout.LayoutParams(handleSize, handleSize);
+            }
+            if (handleParams.width != handleSize || handleParams.height != handleSize
+                    || handleParams.leftMargin != handleLeft || handleParams.topMargin != handleTop) {
+                handleParams.width = handleSize;
+                handleParams.height = handleSize;
+                handleParams.leftMargin = handleLeft;
+                handleParams.topMargin = handleTop;
+                resizeHandle.setLayoutParams(handleParams);
+            }
+            resizeHandle.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
             String sizeKey = Math.round(frame.widthDp) + "x" + Math.round(frame.heightDp);
             if (sizeKey.equals(lastSizeOptions.get(view.getAppWidgetId()))) {
@@ -851,6 +955,7 @@ public final class AndroidWidgetHost {
             if (!known.contains(id)) {
                 views.remove(id);
                 FrameLayout stale = clips.remove(id);
+                resizeHandles.remove(id);
                 if (stale != null && stale.getParent() instanceof ViewGroup) {
                     ((ViewGroup) stale.getParent()).removeView(stale);
                 }
@@ -891,6 +996,9 @@ public final class AndroidWidgetHost {
             clip.addView(view, new FrameLayout.LayoutParams(1, 1));
             clips.put(widgetId, clip);
             views.put(widgetId, view);
+            TextView handle = createResizeHandle(context, widgetId);
+            clip.addView(handle, new FrameLayout.LayoutParams(1, 1));
+            resizeHandles.put(widgetId, handle);
             WidgetFrame frame = frames.get(widgetId);
             Activity activity = context instanceof Activity ? (Activity) context : activityRef.get();
             if (frame != null && activity != null) {
@@ -899,6 +1007,70 @@ public final class AndroidWidgetHost {
         } catch (RuntimeException error) {
             Log.e(TAG, "Could not create Android widget view for ID " + widgetId + ".", error);
         }
+    }
+
+    private static TextView createResizeHandle(Context context, int widgetId) {
+        TextView handle = new TextView(context);
+        handle.setText("◢");
+        handle.setTextSize(15f);
+        handle.setTextColor(0xffb8f27c);
+        handle.setGravity(Gravity.CENTER);
+        handle.setBackgroundColor(0xdd202020);
+        handle.setElevation(8f * context.getResources().getDisplayMetrics().density);
+        handle.setFocusable(true);
+        handle.setClickable(true);
+        handle.setContentDescription(NativeStrings.get("Resize Android widget"));
+        handle.setOnClickListener(view -> { });
+        final int[] startSize = {0, 0};
+        final float[] startTouch = {0f, 0f};
+        final String[] recordId = {""};
+        handle.setOnTouchListener((view, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    JSONObject widget = findWidget(readWidgets(context), widgetId);
+                    if (widget == null) {
+                        return false;
+                    }
+                    recordId[0] = widget.optString("recordId", "");
+                    startSize[0] = widget.optInt("widthDp", 0);
+                    startSize[1] = widget.optInt("heightDp", 0);
+                    startTouch[0] = event.getRawX();
+                    startTouch[1] = event.getRawY();
+                    return true;
+                }
+                case MotionEvent.ACTION_MOVE:
+                    return true;
+                case MotionEvent.ACTION_UP: {
+                    float density = context.getResources().getDisplayMetrics().density;
+                    int width = snapWidgetSize(startSize[0]
+                            + Math.round((event.getRawX() - startTouch[0]) / density));
+                    int height = snapWidgetSize(startSize[1]
+                            + Math.round((event.getRawY() - startTouch[1]) / density));
+                    JSONObject widget = findWidgetByRecordId(readWidgets(context), recordId[0]);
+                    if (widget != null) {
+                        width = Math.max(widget.optInt("minWidthDp", 1), width);
+                        height = Math.max(widget.optInt("minHeightDp", 1), height);
+                        if (!resizeWidgetRecord(context, recordId[0], width, height)) {
+                            view.announceForAccessibility(NativeStrings.get(
+                                    "Widget size was not changed."));
+                        }
+                    }
+                    view.performClick();
+                    return true;
+                }
+                case MotionEvent.ACTION_CANCEL:
+                    return true;
+                default:
+                    return false;
+            }
+        });
+        return handle;
+    }
+
+    private static int snapWidgetSize(int sizeDp) {
+        int bounded = Math.max(PLACEMENT_GRID_DP, Math.min(1200, sizeDp));
+        return Math.max(PLACEMENT_GRID_DP,
+                Math.round((float) bounded / PLACEMENT_GRID_DP) * PLACEMENT_GRID_DP);
     }
 
     private static void applySavedFrames(Context context) {
@@ -912,7 +1084,7 @@ public final class AndroidWidgetHost {
     }
 
     private static JSONObject widgetRecord(Context context, int id, AppWidgetProviderInfo info,
-                                           String recordId, int page, int order) {
+                                           String recordId, int page, int order, int xDp, int yDp) {
         if (info == null || info.provider == null || id <= 0 || recordId == null
                 || recordId.isEmpty() || page < 0 || page >= 5
                 || order < 0 || order >= MAX_WIDGETS) {
@@ -937,6 +1109,8 @@ public final class AndroidWidgetHost {
             item.put("label", label.substring(0, Math.min(160, label.length())));
             item.put("page", page);
             item.put("order", order);
+            item.put("xDp", xDp);
+            item.put("yDp", yDp);
             item.put("minWidthDp", minWidth);
             item.put("minHeightDp", minHeight);
             item.put("widthDp", Math.max(minWidth, Math.min(1200, 400)));
@@ -957,6 +1131,7 @@ public final class AndroidWidgetHost {
         List<JSONObject> result = new ArrayList<>();
         JSONArray array;
         boolean legacyArray = false;
+        int storedSchemaVersion = 1;
         try {
             String stored = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .getString(WIDGETS_KEY, "[]");
@@ -966,7 +1141,8 @@ public final class AndroidWidgetHost {
                 array = new JSONArray(stored);
             } else {
                 JSONObject root = new JSONObject(stored);
-                if (root.optInt("schemaVersion", -1) != WIDGETS_SCHEMA_VERSION) {
+                storedSchemaVersion = root.optInt("schemaVersion", -1);
+                if (storedSchemaVersion < 2 || storedSchemaVersion > WIDGETS_SCHEMA_VERSION) {
                     throw new JSONException("unsupported Android widget schema version");
                 }
                 array = root.getJSONArray("widgets");
@@ -1008,6 +1184,9 @@ public final class AndroidWidgetHost {
             int minHeight = boundedProviderSize(item.optInt("minHeightDp", 120));
             int width = Math.max(minWidth, Math.min(1200, item.optInt("widthDp", 400)));
             int height = Math.max(minHeight, Math.min(1200, item.optInt("heightDp", 240)));
+            int xDp = storedSchemaVersion >= 3 ? item.optInt("xDp", -1) : 0;
+            int yDp = storedSchemaVersion >= 3 ? item.optInt("yDp", -1)
+                    : nextWidgetY(result, page);
             JSONObject sanitized = new JSONObject();
             try {
                 sanitized.put("recordId", recordId);
@@ -1016,11 +1195,23 @@ public final class AndroidWidgetHost {
                 sanitized.put("label", safeLabel(label, provider));
                 sanitized.put("page", page);
                 sanitized.put("order", order);
+                sanitized.put("xDp", xDp);
+                sanitized.put("yDp", yDp);
                 sanitized.put("minWidthDp", minWidth);
                 sanitized.put("minHeightDp", minHeight);
                 sanitized.put("widthDp", width);
                 sanitized.put("heightDp", height);
                 sanitized.put("state", id > 0 ? "ready" : "needs_rebind");
+                if (xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+                        || (storedSchemaVersion >= 3
+                                && (xDp % PLACEMENT_GRID_DP != 0
+                                        || yDp % PLACEMENT_GRID_DP != 0))
+                        || xDp + Math.max(MIN_WIDGET_CARD_WIDTH_DP, width) > 3000
+                        || yDp + height + WIDGET_CHROME_HEIGHT_DP > 20000
+                        || hasPlacementConflict(result, sanitized, null)) {
+                    sanitized.put("xDp", 0);
+                    sanitized.put("yDp", nextWidgetY(result, page));
+                }
                 result.add(sanitized);
             } catch (JSONException ignored) {
                 // JSONObject.put of these bounded primitive values cannot fail.
@@ -1029,7 +1220,8 @@ public final class AndroidWidgetHost {
         result.sort(Comparator.comparingInt((JSONObject item) -> item.optInt("page", 0))
                 .thenComparingInt(item -> item.optInt("order", 0)));
         normalizePageOrders(result);
-        if (legacyArray && !writeWidgets(context, result)) {
+        if ((legacyArray || storedSchemaVersion < WIDGETS_SCHEMA_VERSION)
+                && !writeWidgets(context, result)) {
             Log.w(TAG, "Legacy Android widget configuration remains unmigrated.");
         }
         return result;
@@ -1066,15 +1258,29 @@ public final class AndroidWidgetHost {
         JSONArray array = new JSONArray();
         List<JSONObject> normalized = deepCopyWidgets(widgets);
         normalizePageOrders(normalized);
+        List<JSONObject> validated = new ArrayList<>();
         for (int index = 0; index < normalized.size() && index < MAX_WIDGETS; ++index) {
             JSONObject value = normalized.get(index);
             value.remove("state");
+            int xDp = value.optInt("xDp", -1);
+            int yDp = value.optInt("yDp", -1);
+            int widthDp = value.optInt("widthDp", -1);
+            int heightDp = value.optInt("heightDp", -1);
+            if (xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+                    || xDp % PLACEMENT_GRID_DP != 0 || yDp % PLACEMENT_GRID_DP != 0
+                    || widthDp < 1 || widthDp > 1200 || heightDp < 1 || heightDp > 1200
+                    || xDp + Math.max(MIN_WIDGET_CARD_WIDTH_DP, widthDp) > 3000
+                    || yDp + heightDp + WIDGET_CHROME_HEIGHT_DP > 20000
+                    || hasPlacementConflict(validated, value, null)) {
+                return false;
+            }
             try {
                 value.put("order", value.optInt("order", index));
             } catch (JSONException ignored) {
                 continue;
             }
             array.put(value);
+            validated.add(value);
         }
         JSONObject root = new JSONObject();
         try {
@@ -1152,7 +1358,9 @@ public final class AndroidWidgetHost {
         }
         try {
             JSONObject root = new JSONObject(json);
-            if (root.length() != 2 || root.optInt("schemaVersion", -1) != BACKUP_SCHEMA_VERSION) {
+            int backupVersion = root.optInt("schemaVersion", -1);
+            if (root.length() != 2 || (backupVersion != 1
+                    && backupVersion != BACKUP_SCHEMA_VERSION)) {
                 return null;
             }
             JSONArray entries = root.optJSONArray("widgets");
@@ -1163,13 +1371,16 @@ public final class AndroidWidgetHost {
             Set<String> identityKeys = new HashSet<>();
             for (int index = 0; index < entries.length(); ++index) {
                 JSONObject entry = entries.optJSONObject(index);
-                if (entry == null || entry.length() != 8) {
+                if (entry == null || entry.length() != (backupVersion == 1 ? 8 : 10)) {
                     return null;
                 }
                 String provider = entry.optString("provider", "");
                 String label = entry.optString("label", "");
                 int page = entry.optInt("page", -1);
                 int order = entry.optInt("order", -1);
+                int xDp = backupVersion == 1 ? 0 : entry.optInt("xDp", -1);
+                int yDp = backupVersion == 1 ? nextWidgetY(placeholders, page)
+                        : entry.optInt("yDp", -1);
                 int minWidth = entry.optInt("minWidthDp", -1);
                 int minHeight = entry.optInt("minHeightDp", -1);
                 int width = entry.optInt("widthDp", -1);
@@ -1180,7 +1391,12 @@ public final class AndroidWidgetHost {
                         || order < 0 || order >= MAX_WIDGETS
                         || minWidth < 1 || minWidth > 1200 || minHeight < 1 || minHeight > 1200
                         || width < minWidth || width > 1200
-                        || height < minHeight || height > 1200) {
+                        || height < minHeight || height > 1200
+                        || xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+                        || (backupVersion >= 2 && (xDp % PLACEMENT_GRID_DP != 0
+                                || yDp % PLACEMENT_GRID_DP != 0))
+                        || xDp + Math.max(MIN_WIDGET_CARD_WIDTH_DP, width) > 3000
+                        || yDp + height + WIDGET_CHROME_HEIGHT_DP > 20000) {
                     return null;
                 }
                 String identity = provider + "\u0000" + page + "\u0000" + order;
@@ -1194,11 +1410,16 @@ public final class AndroidWidgetHost {
                 placeholder.put("label", safeLabel(label, provider));
                 placeholder.put("page", page);
                 placeholder.put("order", order);
+                placeholder.put("xDp", xDp);
+                placeholder.put("yDp", yDp);
                 placeholder.put("minWidthDp", minWidth);
                 placeholder.put("minHeightDp", minHeight);
                 placeholder.put("widthDp", width);
                 placeholder.put("heightDp", height);
                 placeholder.put("state", "needs_rebind");
+                if (hasPlacementConflict(placeholders, placeholder, null)) {
+                    return null;
+                }
                 placeholders.add(placeholder);
             }
             placeholders.sort(Comparator.comparingInt((JSONObject item) -> item.optInt("page", 0))
@@ -1283,6 +1504,51 @@ public final class AndroidWidgetHost {
         return count;
     }
 
+    private static int nextWidgetY(List<JSONObject> widgets, int page) {
+        int bottom = 0;
+        if (widgets != null) {
+            for (JSONObject widget : widgets) {
+                if (widget.optInt("page", -1) == page) {
+                    bottom = Math.max(bottom, widget.optInt("yDp", 0)
+                            + widget.optInt("heightDp", 240) + WIDGET_CHROME_HEIGHT_DP);
+                }
+            }
+        }
+        int snapped = ((bottom + PLACEMENT_GRID_DP - 1) / PLACEMENT_GRID_DP)
+                * PLACEMENT_GRID_DP;
+        return Math.min(20000 - WIDGET_CHROME_HEIGHT_DP - 120, snapped);
+    }
+
+    private static boolean hasPlacementConflict(List<JSONObject> widgets, JSONObject candidate,
+                                                JSONObject ignored) {
+        if (widgets == null || candidate == null) {
+            return false;
+        }
+        int page = candidate.optInt("page", -1);
+        int left = candidate.optInt("xDp", -1);
+        int top = candidate.optInt("yDp", -1);
+        int right = left + Math.max(MIN_WIDGET_CARD_WIDTH_DP,
+                candidate.optInt("widthDp", 0));
+        int bottom = top + candidate.optInt("heightDp", 0) + WIDGET_CHROME_HEIGHT_DP;
+        for (JSONObject other : widgets) {
+            if (other == ignored || other == candidate
+                    || other.optInt("page", -2) != page) {
+                continue;
+            }
+            int otherLeft = other.optInt("xDp", -1);
+            int otherTop = other.optInt("yDp", -1);
+            int otherRight = otherLeft + Math.max(MIN_WIDGET_CARD_WIDTH_DP,
+                    other.optInt("widthDp", 0));
+            int otherBottom = otherTop + other.optInt("heightDp", 0)
+                    + WIDGET_CHROME_HEIGHT_DP;
+            if (left < otherRight && right > otherLeft
+                    && top < otherBottom && bottom > otherTop) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static int boundedProviderSize(int size) {
         return Math.max(1, Math.min(1200, size));
     }
@@ -1303,6 +1569,8 @@ public final class AndroidWidgetHost {
         try {
             updated.put("page", previous.optInt("page", 0));
             updated.put("order", previous.optInt("order", 0));
+            updated.put("xDp", previous.optInt("xDp", 0));
+            updated.put("yDp", previous.optInt("yDp", 0));
             updated.put("widthDp", Math.max(updated.optInt("minWidthDp", 1),
                     Math.min(1200, previous.optInt("widthDp", 400))));
             updated.put("heightDp", Math.max(updated.optInt("minHeightDp", 1),

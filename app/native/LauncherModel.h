@@ -65,6 +65,7 @@ public:
     Q_INVOKABLE bool removeAndroidWidgetRecord(const QString &recordId);
     Q_INVOKABLE bool rebindAndroidWidget(const QString &recordId);
     Q_INVOKABLE bool moveAndroidWidget(const QString &recordId, int page, int order);
+    Q_INVOKABLE bool placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp);
     Q_INVOKABLE bool resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp);
     Q_INVOKABLE bool canRestoreAndroidWidgetBackup(const QString &json) const;
     Q_INVOKABLE bool restoreAndroidWidgetBackup(const QString &json);

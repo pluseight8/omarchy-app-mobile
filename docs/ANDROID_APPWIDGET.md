@@ -7,30 +7,40 @@ Native bounds are supplied in density-independent units and clipped to the
 visible page viewport. Activity start/stop pairs call `startListening()` /
 `stopListening()`.
 
-Widget configuration is versioned. It records provider identity, a local Android
-widget ID, Home page, order, provider minimum size, and selected width/height.
-Legacy array state migrates to the versioned format. Removal commits the new
-configuration before releasing the Android ID and rolls back metadata if ID
-release fails. Missing providers and portable restores remain visible as
-placeholders; backup JSON contains provider/layout metadata but never Android
-binding IDs or grants. Rebinding runs through the system picker and only accepts
-the provider component saved in the placeholder.
+Widget configuration is versioned (schema 3). It records provider identity, a
+local Android widget ID, Home page, 24 dp snapped x/y coordinates, display
+order, provider minimum size, and selected width/height. Unversioned arrays and
+schema 2 records migrate to non-overlapping grid positions. Removal commits the
+new configuration before releasing the Android ID and rolls back metadata if
+ID release fails. Missing providers and portable restores remain visible as
+placeholders; backup schema 2 contains provider/layout metadata but never
+Android binding IDs or grants. Schema 1 backups still import. Rebinding runs
+through the system picker and only accepts the provider component saved in the
+placeholder.
 
-The Home UI supports per-page placement, page/order movement, drag-to-page-header,
-accessible reorder controls, and width/height adjustment controls. Widgets are
-currently arranged in an ordered vertical stack on each page; this is not yet a
-freeform shared grid with edge resize handles. Resized slot bounds update Android
-widget options, and native widget controls remain interactive.
+Each Home page has a separate Android-widget grid. A drag handle moves a widget
+between grid positions; holding it near either horizontal edge advances to the
+adjacent Home page so it can be dropped there. Placements snap to 24 dp and the
+host rejects overlaps. Accessible controls nudge a widget vertically or move it
+to another page. The last grid, page, or size change can be undone briefly, and
+removal asks for confirmation. Width and height controls honor provider
+minimums, and a visible native corner grip resizes both dimensions while
+leaving the rest of RemoteViews touchable. Resize changes update Android widget
+options. App icons and OWL widgets remain in their existing Home areas; they do
+not yet share one grid with Android widgets.
 
 The OpenGL and Vulkan emulator smoke uses a separate test-only APK containing a
 real interactive `AppWidgetProvider` and configuration Activity. It binds via
-the system picker, verifies a `RemoteViews` click, moves and resizes the saved
-placement, checks `AppWidgetManager` size options, force-stops and cold-starts
-OmaApp, and verifies the widget remains interactive. It exports a backup,
-confirms the binding ID is absent, removes the widget, restores a placeholder,
-rebinds through Android's picker to a fresh ID, checks preserved geometry, and
-removes the rebound widget. The smoke stores Home and placeholder screenshots
-as CI artifacts. The fixture package and signing key are generated only in CI;
+the system picker, verifies a `RemoteViews` click, places the widget on another
+page and at another grid coordinate, migrates a schema 2 layout, rejects
+off-grid/out-of-bounds placements, exercises the QML position/undo controls,
+resizes it through the Android corner grip, checks `AppWidgetManager` size
+options, force-stops and cold-starts OmaApp, and verifies the widget remains
+interactive. It exports a backup, confirms the binding ID is absent, removes
+the widget through the confirmation dialog, restores a placeholder, rebinds
+through Android's picker to a fresh ID, checks preserved geometry, and removes
+the rebound widget. The smoke stores Home and placeholder screenshots as CI
+artifacts. The fixture package and signing key are generated only in CI;
 neither is part of the product APK or release workflow.
 
 The host uses Android's picker rather than silently invoking
@@ -42,10 +52,11 @@ views. Importing a backup does not install a missing provider; the user must
 install it and approve a fresh binding in the Android picker.
 
 CI verification is emulator-only. Pixel/GrapheneOS behavior, provider
-compatibility beyond the CI fixture, rotation, density changes, Android system
-gestures/insets, TalkBack focus, memory use, and frame performance still need
-physical-device or broader provider testing. Freeform x/y positioning, shared
-app/OWL/widget grid placement, and edge resize handles are not implemented.
+compatibility beyond the CI fixture, rotation, live density changes, Android
+system gestures/insets, TalkBack focus, memory use, and frame performance still
+need physical-device or broader provider testing. Android-widget positions are
+saved in density-independent coordinates; migration after a display size change
+may require a manual move if a provider no longer fits the viewport.
 
 Qt documents the Android integration options in [Qt for Android](https://doc.qt.io/qt-6/android.html)
 and [Qt Quick for Android](https://doc.qt.io/qt-6/qtquick-for-android.html).

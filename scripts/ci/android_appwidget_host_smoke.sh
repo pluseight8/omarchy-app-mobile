@@ -24,6 +24,12 @@ run_stage() {
 run_stage setup android_widget_host_picker_bind_touch_passed
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_layout_roundtrip_passed' \
   "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_schema_migration_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_qml_controls_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_resize_handle_passed' \
+  "$artifacts/setup-instrumentation.txt"
 adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-home-layout.png \
   "$artifacts/widget-home-layout.png"
 # Some Android builds terminate the target Qt process when the instrumentation

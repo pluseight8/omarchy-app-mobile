@@ -40,13 +40,14 @@
 - [x] Add the first product `AppWidgetHost` integration inside OmaApp's existing `QtActivity`; keep the Android provider fixture out of the product manifest.
 - [x] Use the system widget picker, run provider configuration activities, and release cancelled or removed widget IDs.
 - [x] Bridge live Home slot coordinates and QML viewport clipping to interactive `AppWidgetHostView` instances.
-- [x] Persist a versioned model with provider ID, page, order, minimum and selected size; migrate the old array format and restore widget IDs after process death.
-- [x] Add per-page add/move/reorder, drag-to-page, and accessible width/height controls in the Home UI.
+- [x] Persist a versioned model with provider ID, page, order, 24 dp snapped x/y position, minimum and selected size; migrate unversioned/schema-2 records and restore widget IDs after process death.
+- [x] Add per-page grid placement, cross-page drag/drop, overlap rejection, accessible position controls, and provider-constrained width/height adjustment in Home.
+- [x] Add a native Android corner resize grip that changes dimensions without disabling RemoteViews touch outside the grip.
 - [x] Export provider/layout metadata without Android binding IDs; restore placeholders and require system-picker rebind with provider identity matching.
 - [x] Persist removal before releasing a widget ID and roll back the record if release fails.
 - [x] Keep the existing offline OWL widget list available below native Android widgets.
-- [x] Extend the real-provider emulator instrumentation to verify page/order/size persistence, options updates, ID-free backup, placeholder restore, picker rebind, and fresh binding IDs. This integrated CI run is pending after the branch update; the previous host smoke passed in [run #270](https://github.com/pluseight8/omarchy-app-mobile/actions/runs/40212669660).
-- [ ] Implement freeform shared-grid coordinates and edge resize handles; current widgets use an ordered vertical stack per Home page.
+- [x] Extend real-provider emulator instrumentation to verify cross-page grid coordinates, off-grid/bounds rejection, native resize-grip drag, Android size options, ID-free backup, placeholder restore, picker rebind, and fresh binding IDs. The updated implementation still needs a new integrated CI run.
+- [ ] Share one placement grid between Android widgets, app icons, and OWL widgets; they currently occupy separate Home areas.
 - [ ] Validate touch, accessibility, gestures, insets, and GrapheneOS behavior on a physical device.
 - [ ] Measure memory and frame performance across widget sizes, orientation changes, and available display refresh rates.
 

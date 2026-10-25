@@ -21,10 +21,19 @@ dump_ui() {
 tap_label() {
   local label="$1"
   local target x y
-  target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-    "$artifacts/translation-ui.xml" "$label")"
-  read -r x y <<< "$target"
-  adb shell input tap "$x" "$y"
+  for attempt in {1..16}; do
+    dump_ui > /dev/null
+    if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+      "$artifacts/translation-ui.xml" "$label" 2>/dev/null)"; then
+      read -r x y <<< "$target"
+      adb shell input tap "$x" "$y"
+      return 0
+    fi
+    sleep 0.35
+  done
+  printf 'Could not find a clickable Android UI target: %s; accessibility snapshot: %s\n' \
+    "$label" "$artifacts/translation-ui.xml" >&2
+  return 1
 }
 
 find_scrolling_label() {
@@ -92,8 +101,17 @@ restart_app_for_persistence() {
     return 1
   fi
   adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-  sleep 5
-  dump_ui
+  for attempt in {1..60}; do
+    dump_ui > /dev/null
+    if grep -Eq 'content-desc="(Settings|Настройки)"' "$artifacts/translation-ui.xml"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  adb exec-out screencap -p > "$artifacts/launcher-readiness-failure.png" 2>/dev/null || true
+  printf 'OmaApp Home accessibility did not become ready after process restart. UI: %s\n' \
+    "$artifacts/translation-ui.xml" >&2
+  return 1
 }
 
 dump_ui
@@ -130,9 +148,12 @@ python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-russian.png" "$artifacts/translation-ui-russian.xml" \
   'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Настройки'
 
-# Native Android Activities query the Qt catalog selected in-app. Run this
-# check after choosing Russian, then verify that choice survives instrumentation
-# process teardown and an explicit process restart.
+# Native Android Activities query the Qt catalog selected in-app. Restart first
+# so the check covers loading the saved Russian catalog into a fresh Qt engine.
+restart_app_for_persistence
+ensure_settings_tab 'Настройки'
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'Русский'
 native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$native_translation_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \

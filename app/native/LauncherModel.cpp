@@ -330,6 +330,8 @@ void LauncherModel::refreshAndroidWidgets()
             const QString name = object.value(QStringLiteral("label")).toString();
             const int page = object.value(QStringLiteral("page")).toInt(-1);
             const int order = object.value(QStringLiteral("order")).toInt(-1);
+            const int x = object.value(QStringLiteral("xDp")).toInt(-1);
+            const int y = object.value(QStringLiteral("yDp")).toInt(-1);
             const int minWidth = object.value(QStringLiteral("minWidthDp")).toInt(-1);
             const int minHeight = object.value(QStringLiteral("minHeightDp")).toInt(-1);
             const int width = object.value(QStringLiteral("widthDp")).toInt(-1);
@@ -339,7 +341,7 @@ void LauncherModel::refreshAndroidWidgets()
                 || recordId.size() > 64 || knownRecords.contains(recordId)
                 || provider.isEmpty() || provider.size() > 512
                 || name.isEmpty() || name.size() > 160 || page < 0 || page >= m_homePageCount
-                || order < 0 || order >= 8
+                || order < 0 || order >= 8 || x < 0 || x > 3000 || y < 0 || y > 20000
                 || minWidth < 1 || minWidth > 1200 || minHeight < 1 || minHeight > 1200) {
                 continue;
             }
@@ -358,6 +360,8 @@ void LauncherModel::refreshAndroidWidgets()
                 {QStringLiteral("name"), name},
                 {QStringLiteral("page"), page},
                 {QStringLiteral("order"), order},
+                {QStringLiteral("xDp"), x},
+                {QStringLiteral("yDp"), y},
                 {QStringLiteral("minWidthDp"), minWidth},
                 {QStringLiteral("minHeightDp"), minHeight},
                 {QStringLiteral("widthDp"), width},
@@ -461,6 +465,32 @@ bool LauncherModel::moveAndroidWidget(const QString &recordId, int page, int ord
 #endif
 }
 
+bool LauncherModel::placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64 || page < 0 || page >= m_homePageCount
+        || xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+        || xDp % 24 != 0 || yDp % 24 != 0)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject record = QJniObject::fromString(recordId);
+    const bool placed = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "placeWidgetRecord",
+        "(Landroid/content/Context;Ljava/lang/String;IIIII)Z", context.object<jobject>(),
+        record.object<jstring>(), static_cast<jint>(page), static_cast<jint>(xDp),
+        static_cast<jint>(yDp), static_cast<jint>(m_homePageCount));
+    if (placed)
+        refreshAndroidWidgets();
+    return placed;
+#else
+    Q_UNUSED(recordId)
+    Q_UNUSED(page)
+    Q_UNUSED(xDp)
+    Q_UNUSED(yDp)
+    return false;
+#endif
+}
+
 bool LauncherModel::resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp)
 {
 #ifdef Q_OS_ANDROID
@@ -543,8 +573,8 @@ void LauncherModel::setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
     if (widgetId <= 0 || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width)
         || !std::isfinite(height) || !std::isfinite(clipX) || !std::isfinite(clipY)
         || !std::isfinite(clipWidth) || !std::isfinite(clipHeight)
-        || std::abs(x) > 10000.0 || std::abs(y) > 10000.0
-        || std::abs(clipX) > 10000.0 || std::abs(clipY) > 10000.0
+        || std::abs(x) > 10000.0 || std::abs(y) > 20000.0
+        || std::abs(clipX) > 10000.0 || std::abs(clipY) > 20000.0
         || width < 0.0 || width > 3000.0 || height < 0.0 || height > 3000.0
         || clipWidth < 0.0 || clipWidth > 3000.0 || clipHeight < 0.0 || clipHeight > 3000.0) {
         return;

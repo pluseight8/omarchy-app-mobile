@@ -28,6 +28,7 @@ import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -52,6 +53,7 @@ import java.net.URI;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -126,8 +128,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 }
                 launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 context.startActivity(launch);
-                SystemClock.sleep(2_000L);
-                String translated = NativeStrings.get("Computer files");
+                waitForIdleSync();
+                String translated = "Computer files";
+                for (int attempt = 0; attempt < 40 && "Computer files".equals(translated); ++attempt) {
+                    translated = NativeStrings.get("Computer files");
+                    if ("Computer files".equals(translated)) {
+                        SystemClock.sleep(250L);
+                    }
+                }
                 if (!"Файлы компьютера".equals(translated)) {
                     throw new IllegalStateException("Native Android UI did not use the Russian Qt catalog: "
                             + translated);
@@ -1581,6 +1589,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     private void runAndroidWidgetHostSetup(Context context) throws Exception {
         reportStage("android_widget_host_setup_started");
+        verifyWidgetGridCollisionRules();
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
@@ -1649,6 +1658,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
 
         JSONObject originalWidget = requireWidgetRecord(context, expectedProvider);
+        verifyWidgetSchemaTwoMigration(context, originalWidget);
+        originalWidget = requireWidgetRecord(context, expectedProvider);
         String widgetRecordId = originalWidget.getString("recordId");
         int widgetId = originalWidget.getInt("id");
         int resizedWidth = Math.max(originalWidget.getInt("minWidthDp"), 320);
@@ -1656,11 +1667,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
         AtomicReference<String> layoutError = new AtomicReference<>("");
         runOnMainSync(() -> {
             try {
-                if (!AndroidWidgetHost.moveWidgetRecord(context, widgetRecordId, 1, 0, 2)
+                if (!AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 1,
+                            24, 48, 2)
                         || !AndroidWidgetHost.resizeWidgetRecord(context, widgetRecordId,
                                 resizedWidth, resizedHeight)
-                        || !AndroidWidgetHost.moveWidgetRecord(context, widgetRecordId, 0, 0, 2)) {
-                    throw new IllegalStateException("The AppWidgetHost rejected page/order/size updates.");
+                        || !AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
+                                48, 72, 2)
+                        || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
+                                25, 72, 2)
+                        || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
+                                48, -24, 2)) {
+                    throw new IllegalStateException("The AppWidgetHost rejected grid/size updates or accepted invalid coordinates.");
                 }
             } catch (Exception error) {
                 layoutError.set(error.getMessage());
@@ -1673,16 +1690,39 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (resizedWidget.getInt("id") != widgetId
                 || !widgetRecordId.equals(resizedWidget.getString("recordId"))
                 || resizedWidget.getInt("page") != 0 || resizedWidget.getInt("order") != 0
+                || resizedWidget.getInt("xDp") != 48 || resizedWidget.getInt("yDp") != 72
                 || resizedWidget.getInt("widthDp") != resizedWidth
                 || resizedWidget.getInt("heightDp") != resizedHeight) {
             throw new IllegalStateException("The Android widget placement/size did not round-trip: "
                     + resizedWidget);
         }
         awaitWidgetOptions(context, widgetId, resizedWidth, resizedHeight, 10_000L);
+        awaitAccessibilityText(automation, "Move Android widget down", 20_000L, context);
+        if (!clickAccessibleText(automation, "Move Android widget down")) {
+            throw new IllegalStateException("The Android widget grid movement control was not accessible.");
+        }
+        if (!awaitWidgetPosition(context, expectedProvider, 0, 48, 96, 10_000L)) {
+            throw new IllegalStateException("The Home screen could not save an accessible grid move.");
+        }
+        awaitAccessibilityText(automation, "Undo Android widget layout change", 15_000L, context);
+        if (!clickAccessibleText(automation, "Undo Android widget layout change")
+                || !awaitWidgetPosition(context, expectedProvider, 0, 48, 72, 10_000L)) {
+            throw new IllegalStateException("The Home screen could not undo the Android widget grid move.");
+        }
+        reportStage("android_widget_host_qml_controls_passed");
+        int handleResizedWidth = Math.min(1200, resizedWidth + 24);
+        int handleResizedHeight = Math.min(1200, resizedHeight + 24);
+        if (!dragResizeHandle(context, widgetId, 24, 24)
+                || !awaitWidgetDimensions(context, expectedProvider, handleResizedWidth,
+                        handleResizedHeight, 10_000L)) {
+            throw new IllegalStateException("The native Android resize handle did not persist its drag.");
+        }
+        awaitWidgetOptions(context, widgetId, handleResizedWidth, handleResizedHeight, 10_000L);
+        reportStage("android_widget_host_resize_handle_passed");
         String widgetBackup = AndroidWidgetHost.exportWidgetBackup(context);
         JSONObject portableBackup = new JSONObject(widgetBackup);
         JSONArray portableWidgets = portableBackup.optJSONArray("widgets");
-        if (portableBackup.optInt("schemaVersion", -1) != 1 || portableWidgets == null
+        if (portableBackup.optInt("schemaVersion", -1) != 2 || portableWidgets == null
                 || portableWidgets.length() != 1 || widgetBackup.contains("\"id\"")) {
             throw new IllegalStateException("Android widget backup included a binding ID or lost its placement: "
                     + widgetBackup);
@@ -1697,6 +1737,59 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // QtActivity owns a process-wide native Qt engine; forcing Activity.recreate() tears
         // down that engine and is not a supported way to test Android lifecycle restoration.
         // The next instrumentation stage force-stops this process and verifies a cold restore.
+    }
+
+    private static void verifyWidgetGridCollisionRules() throws Exception {
+        JSONObject first = new JSONObject().put("page", 0).put("xDp", 0).put("yDp", 0)
+                .put("widthDp", 320).put("heightDp", 240);
+        JSONObject overlaps = new JSONObject().put("page", 0).put("xDp", 24).put("yDp", 24)
+                .put("widthDp", 320).put("heightDp", 240);
+        JSONObject touchesChromeBoundary = new JSONObject().put("page", 0).put("xDp", 0)
+                .put("yDp", 496).put("widthDp", 320).put("heightDp", 240);
+        Method conflictCheck = AndroidWidgetHost.class.getDeclaredMethod(
+                "hasPlacementConflict", List.class, JSONObject.class, JSONObject.class);
+        conflictCheck.setAccessible(true);
+        List<JSONObject> occupied = Collections.singletonList(first);
+        if (!((Boolean) conflictCheck.invoke(null, occupied, overlaps, null))
+                || ((Boolean) conflictCheck.invoke(null, occupied, touchesChromeBoundary, null))) {
+            throw new IllegalStateException("The widget grid did not reject overlaps or allowed cards to collide.");
+        }
+    }
+
+    private static void verifyWidgetSchemaTwoMigration(Context context, JSONObject current)
+            throws Exception {
+        JSONObject legacyWidget = new JSONObject()
+                .put("recordId", current.getString("recordId"))
+                .put("id", current.getInt("id"))
+                .put("provider", current.getString("provider"))
+                .put("label", current.getString("label"))
+                .put("page", 0)
+                .put("order", 0)
+                .put("minWidthDp", current.getInt("minWidthDp"))
+                .put("minHeightDp", current.getInt("minHeightDp"))
+                .put("widthDp", current.getInt("widthDp"))
+                .put("heightDp", current.getInt("heightDp"));
+        JSONObject legacyRoot = new JSONObject()
+                .put("schemaVersion", 2)
+                .put("widgets", new JSONArray().put(legacyWidget));
+        if (!context.getSharedPreferences("android_widget_host", Context.MODE_PRIVATE).edit()
+                .putString("widgets", legacyRoot.toString()).commit()) {
+            throw new IllegalStateException("Could not seed the prior widget layout schema.");
+        }
+
+        JSONObject migrated = requireWidgetRecord(context,
+                ComponentName.unflattenFromString(current.getString("provider")));
+        JSONObject stored = new JSONObject(context.getSharedPreferences("android_widget_host",
+                Context.MODE_PRIVATE).getString("widgets", "{}"));
+        if (stored.optInt("schemaVersion", -1) != 3
+                || migrated.optInt("id", -1) != current.optInt("id", -2)
+                || migrated.optInt("xDp", -1) != 0 || migrated.optInt("yDp", -1) != 0
+                || migrated.optInt("widthDp", -1) != current.optInt("widthDp", -2)
+                || migrated.optInt("heightDp", -1) != current.optInt("heightDp", -2)) {
+            throw new IllegalStateException("The previous Android widget schema did not migrate safely: "
+                    + migrated + " stored=" + stored);
+        }
+        reportStage("android_widget_host_schema_migration_passed");
     }
 
     private void runAndroidWidgetHostRestore(Context context) throws Exception {
@@ -1728,6 +1821,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (expectedPlacement == null
                 || restoredPlacement.optInt("page", -1) != expectedPlacement.optInt("page", -2)
                 || restoredPlacement.optInt("order", -1) != expectedPlacement.optInt("order", -2)
+                || restoredPlacement.optInt("xDp", -1) != expectedPlacement.optInt("xDp", -2)
+                || restoredPlacement.optInt("yDp", -1) != expectedPlacement.optInt("yDp", -2)
                 || restoredPlacement.optInt("widthDp", -1) != expectedPlacement.optInt("widthDp", -2)
                 || restoredPlacement.optInt("heightDp", -1) != expectedPlacement.optInt("heightDp", -2)
                 || !"ready".equals(restoredPlacement.optString("state"))) {
@@ -1785,9 +1880,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("No persisted CI widget ID was found before removal: "
                     + widgets);
         }
-        if (!AndroidWidgetHost.removeWidget(context, widgetId)) {
-            throw new IllegalStateException("OmaApp failed to remove selected widget ID " + widgetId
-                    + " from its active Home Activity.");
+        if (!clickAccessibleText(automation, "Remove Android widget ")) {
+            awaitAccessibilityText(automation, "Remove Android widget ", 20_000L, context);
+            if (!clickAccessibleText(automation, "Remove Android widget ")) {
+                throw new IllegalStateException("The Android widget removal control was not accessible.");
+            }
+        }
+        awaitAccessibilityText(automation, "Remove this Android widget?", 10_000L, context);
+        if (!clickAccessibleText(automation, "OK")) {
+            throw new IllegalStateException("The Android widget removal confirmation was not accessible.");
         }
         long removalDeadline = SystemClock.elapsedRealtime() + 5_000L;
         while (SystemClock.elapsedRealtime() < removalDeadline
@@ -1809,7 +1910,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         JSONObject portableBackup = new JSONObject(backup);
         JSONArray backupWidgets = portableBackup.optJSONArray("widgets");
-        if (portableBackup.optInt("schemaVersion", -1) != 1
+        if (portableBackup.optInt("schemaVersion", -1) != 2
                 || backupWidgets == null || backupWidgets.length() != 0) {
             throw new IllegalStateException("A removed widget remained in the empty portable backup.");
         }
@@ -1869,6 +1970,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int reboundId = rebound.getInt("id");
         if (!recordId.equals(rebound.getString("recordId")) || reboundId == widgetId
                 || rebound.getInt("page") != placeholder.getInt("page")
+                || rebound.getInt("xDp") != placeholder.getInt("xDp")
+                || rebound.getInt("yDp") != placeholder.getInt("yDp")
                 || rebound.getInt("widthDp") != placeholder.getInt("widthDp")
                 || rebound.getInt("heightDp") != placeholder.getInt("heightDp")) {
             throw new IllegalStateException("The system rebind did not preserve placement with a fresh ID: "
@@ -1927,6 +2030,80 @@ public final class PairingTestInstrumentation extends Instrumentation {
         } while (SystemClock.elapsedRealtime() < deadline);
         throw new IllegalStateException("AppWidget size options did not reach " + width + "x" + height
                 + " dp: " + options);
+    }
+
+    private boolean dragResizeHandle(Context context, int widgetId, int deltaWidthDp,
+                                     int deltaHeightDp) {
+        AtomicReference<int[]> location = new AtomicReference<>();
+        runOnMainSync(() -> {
+            View handle = AndroidWidgetHost.resizeHandleForInstrumentation(widgetId);
+            if (handle == null || handle.getVisibility() != View.VISIBLE
+                    || handle.getWidth() <= 0 || handle.getHeight() <= 0) {
+                return;
+            }
+            int[] point = new int[2];
+            handle.getLocationOnScreen(point);
+            location.set(new int[]{point[0], point[1], handle.getWidth(), handle.getHeight()});
+        });
+        int[] bounds = location.get();
+        if (bounds == null) {
+            return false;
+        }
+        float density = context.getResources().getDisplayMetrics().density;
+        int startX = bounds[0] + bounds[2] / 2;
+        int startY = bounds[1] + bounds[3] / 2;
+        float endX = startX + deltaWidthDp * density;
+        float endY = startY + deltaHeightDp * density;
+        long downTime = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(downTime, downTime,
+                MotionEvent.ACTION_DOWN, startX, startY, 0);
+        MotionEvent move = MotionEvent.obtain(downTime, downTime + 80,
+                MotionEvent.ACTION_MOVE, endX, endY, 0);
+        MotionEvent up = MotionEvent.obtain(downTime, downTime + 160,
+                MotionEvent.ACTION_UP, endX, endY, 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        move.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        try {
+            UiAutomation automation = getUiAutomation();
+            return automation.injectInputEvent(down, true)
+                    && automation.injectInputEvent(move, true)
+                    && automation.injectInputEvent(up, true);
+        } finally {
+            down.recycle();
+            move.recycle();
+            up.recycle();
+        }
+    }
+
+    private static boolean awaitWidgetDimensions(Context context, ComponentName provider,
+                                                int width, int height, long timeoutMillis)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        do {
+            JSONObject widget = requireWidgetRecord(context, provider);
+            if (widget.optInt("widthDp", -1) == width
+                    && widget.optInt("heightDp", -1) == height) {
+                return true;
+            }
+            SystemClock.sleep(100L);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        return false;
+    }
+
+    private static boolean awaitWidgetPosition(Context context, ComponentName provider,
+                                               int page, int xDp, int yDp, long timeoutMillis)
+            throws Exception {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        do {
+            JSONObject widget = requireWidgetRecord(context, provider);
+            if (widget.optInt("page", -1) == page && widget.optInt("xDp", -1) == xDp
+                    && widget.optInt("yDp", -1) == yDp) {
+                return true;
+            }
+            SystemClock.sleep(100L);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        return false;
     }
 
     private static boolean hasWidgetRecord(Context context, ComponentName expectedProvider) {
