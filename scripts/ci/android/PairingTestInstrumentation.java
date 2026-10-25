@@ -1621,7 +1621,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not open OmaApp Home for widget hosting.");
         }
         ensureSecondHomePage(automation, context);
-        if (!clickAccessibleText(automation, "Add Android widget")) {
+        // Every Home page exposes the same control name. Only click the visible
+        // control so the system picker inherits the page that is currently shown.
+        if (!clickAccessibleControl(automation, "Add Android widget")) {
             throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
         }
         reportStage("android_widget_host_picker_opened");

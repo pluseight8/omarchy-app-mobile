@@ -391,6 +391,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
+        widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
+        widget_setup_end = instrumentation.index("private void ensureSecondHomePage", widget_setup_start)
+        widget_setup = instrumentation[widget_setup_start:widget_setup_end]
+        self.assertIn('clickAccessibleControl(automation, "Add Android widget")', widget_setup)
+        self.assertNotIn('clickAccessibleText(automation, "Add Android widget")', widget_setup)
         self.assertIn("exportWidgetBackup(context)", instrumentation)
         self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
         self.assertIn('"needs_rebind"', instrumentation)
