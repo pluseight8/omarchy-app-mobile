@@ -325,6 +325,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         )
         header = (ROOT / "app/native/LauncherModel.h").read_text(encoding="utf-8")
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
         self.assertIn("moveAndroidWidget(const QString &recordId, int page, int order)", header)
         self.assertIn("resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp)", header)
         self.assertIn("placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp)", header)
@@ -349,6 +352,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("androidWidgetGridStep: 24", qml)
         self.assertIn('x: Number(modelData.xDp) || 0', qml)
         self.assertIn('y: Number(modelData.yDp) || 0', qml)
+        self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.05f)', instrumentation)
+        self.assertIn('" + x + " " + Math.round(height * toRatio)', instrumentation)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
         instrumentation = (

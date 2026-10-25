@@ -83,16 +83,26 @@ def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = N
 
 
 class VisualRegressionTests(unittest.TestCase):
-    def test_android_ci_uses_the_reviewed_compact_home_baseline_for_both_renderers(self) -> None:
-        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text(
-            encoding="utf-8"
-        )
+    def test_android_ci_uses_renderer_specific_compact_home_baselines(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
+        self.assertIn('if [[ -f "$baseline_dir/home-compact-viewport.png" ]]', workflow)
         self.assertIn(
+            'home_baseline_args+=(--home-alternate-baseline "$baseline_dir/home-compact-viewport.png")',
+            workflow,
+        )
+        self.assertNotIn(
             "--home-alternate-baseline tests/visual_baselines/android/home-compact-viewport.png",
             workflow,
         )
-        self.assertNotIn('--home-alternate-baseline "$baseline_dir/home-compact-viewport.png"', workflow)
+        self.assertTrue(
+            (root / "tests/visual_baselines/android/opengl/home-compact-viewport.png").is_file()
+        )
+        self.assertFalse(
+            (root / "tests/visual_baselines/android/home-compact-viewport.png").exists(),
+            "a shared compact screenshot can hide a renderer-specific Home regression",
+        )
 
     def test_decodes_rgba_png_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

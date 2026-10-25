@@ -539,11 +539,14 @@ jobs:
             baseline_dir="$baseline_dir/opengl"
           fi
           # Android's initial HOME frame can use a shorter content viewport.
-          # The canonical baseline is backend-specific; the compact fallback
-          # is shared because both RHI captures have the same reviewed layout.
+          # Keep compact captures renderer-specific: the native widget canvas
+          # is clipped differently by the OpenGL and Vulkan scenegraphs.
+          home_baseline_args=()
+          if [[ -f "$baseline_dir/home-compact-viewport.png" ]]; then
+            home_baseline_args+=(--home-alternate-baseline "$baseline_dir/home-compact-viewport.png")
+          fi
           python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
-            --baselines "$baseline_dir" \
-            --home-alternate-baseline tests/visual_baselines/android/home-compact-viewport.png \
+            --baselines "$baseline_dir" "${home_baseline_args[@]}" \
             --verify-style-surface
           sleep 8
           adb shell pidof app.omaapp

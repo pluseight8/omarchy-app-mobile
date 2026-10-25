@@ -2323,15 +2323,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static void scrollHome(UiAutomation automation, Context context) {
-        executeSwipe(automation, context, 0.84f, 0.38f);
+        // A bound AppWidgetHostView occupies the center of the page and owns
+        // its RemoteViews touch stream. Scroll along the empty leading gutter
+        // so the gesture reaches Qt Quick's Home Flickable.
+        executeSwipe(automation, context, 0.84f, 0.38f, 0.05f);
     }
 
     private static void executeSwipe(UiAutomation automation, Context context,
                                      float fromRatio, float toRatio) {
+        executeSwipe(automation, context, fromRatio, toRatio, 0.5f);
+    }
+
+    private static void executeSwipe(UiAutomation automation, Context context,
+                                     float fromRatio, float toRatio, float xRatio) {
         int width = context.getResources().getDisplayMetrics().widthPixels;
         int height = context.getResources().getDisplayMetrics().heightPixels;
-        String command = "input swipe " + (width / 2) + " " + Math.round(height * fromRatio)
-                + " " + (width / 2) + " " + Math.round(height * toRatio) + " 250";
+        int x = Math.max(1, Math.min(width - 2, Math.round(width * xRatio)));
+        String command = "input swipe " + x + " " + Math.round(height * fromRatio)
+                + " " + x + " " + Math.round(height * toRatio) + " 250";
         try {
             automation.executeShellCommand(command).close();
         } catch (Exception error) {
