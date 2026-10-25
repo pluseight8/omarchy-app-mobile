@@ -405,7 +405,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 throw new IllegalStateException("The DNS-SD fixture did not change the saved endpoint.");
             }
             startDnsSdFixture(context,
-                    "OmaApp-ci-rogue-" + Long.toHexString(SystemClock.elapsedRealtime()),
+                    "OmaApp-" + fingerprint.substring(0, 12),
                     host, discoveryPort, "0".repeat(64));
             try {
                 SystemClock.sleep(3_000L);
@@ -419,7 +419,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
 
             startDnsSdFixture(context,
-                    "OmaApp-" + fingerprint.substring(0, 12) + "-ci-" + discoveryPort,
+                    "OmaApp-" + fingerprint.substring(0, 12),
                     host, discoveryPort, fingerprint);
             try {
                 long deadline = SystemClock.uptimeMillis() + 25_000L;

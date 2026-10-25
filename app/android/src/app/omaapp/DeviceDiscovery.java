@@ -8,6 +8,8 @@ import android.os.Build;
 import android.os.ext.SdkExtensions;
 import android.util.Log;
 
+import org.json.JSONObject;
+
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
@@ -58,12 +60,16 @@ public final class DeviceDiscovery {
 
             @Override
             public void onServiceFound(NsdServiceInfo service) {
-                if (!isCurrent(discoveryGeneration) || service == null || service.getServiceName() == null
-                        || !service.getServiceName().startsWith("OmaApp-")) {
+                if (!isCurrent(discoveryGeneration) || service == null) {
+                    return;
+                }
+                String serviceName = service.getServiceName();
+                if (!matchesTrustedServiceName(discoveryContext, serviceName)) {
+                    debugLog(discoveryContext, "Ignored a DNS-SD name without the saved certificate hint.");
                     return;
                 }
                 debugLog(discoveryContext, "DNS-SD candidate found.");
-                String key = discoveryGeneration + "\u001f" + service.getServiceName()
+                String key = discoveryGeneration + "\u001f" + serviceName
                         + "\u001f" + service.getServiceType();
                 if (!RESOLVING.add(key)) {
                     return;
@@ -287,6 +293,21 @@ public final class DeviceDiscovery {
         }
         String fingerprint = new String(value, StandardCharsets.US_ASCII).toLowerCase(java.util.Locale.ROOT);
         return fingerprint.matches("[a-f0-9]{64}") ? fingerprint : "";
+    }
+
+    /** The short name is only a prefilter; the full TLS certificate and token are checked later. */
+    private static boolean matchesTrustedServiceName(Context context, String serviceName) {
+        if (context == null || serviceName == null
+                || !serviceName.matches("OmaApp-[a-fA-F0-9]{12}")) {
+            return false;
+        }
+        JSONObject credentials = PairingStore.readCredential(context);
+        if (credentials == null || credentials.optString("token", "").isEmpty()) {
+            return false;
+        }
+        String fingerprint = credentials.optString("fingerprint", "");
+        return fingerprint.matches("[a-fA-F0-9]{64}")
+                && serviceName.equalsIgnoreCase("OmaApp-" + fingerprint.substring(0, 12));
     }
 
     private static List<String> siteLocalIpv4Addresses(NsdServiceInfo service) {
