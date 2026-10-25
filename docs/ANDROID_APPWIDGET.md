@@ -14,10 +14,10 @@ removed widget IDs are released.
 The emulator CI builds a separate test-only APK containing a real interactive
 `AppWidgetProvider` and a configuration Activity. It selects that provider
 through Android's system picker, completes the provider configuration result,
-checks its live `RemoteViews`, clicks its button, checks the updated state after
-Activity recreation, clicks it again, then force-stops and restarts OmaApp and
-checks the provider's updated state returns. Finally it removes the widget and
-checks that Android releases the ID. This test runs in the OpenGL and Vulkan
+checks its live `RemoteViews` and clicks its button, then force-stops and cold
+starts OmaApp. It verifies the saved widget and its updated provider state are
+restored, clicks it again, and finally removes the widget and checks that
+Android releases the ID. This test runs in the OpenGL and Vulkan
 emulator jobs. The fixture package, resources, and short-lived fixture signing
 key are generated only in CI; they are not included in the product APK or
 release workflow.
