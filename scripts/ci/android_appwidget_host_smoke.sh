@@ -22,6 +22,12 @@ run_stage() {
 }
 
 run_stage setup android_widget_host_picker_bind_touch_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_second_home_page_ready' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_second_page_placement_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_cross_page_move_passed' \
+  "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_layout_roundtrip_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_schema_migration_passed' \

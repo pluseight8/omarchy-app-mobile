@@ -265,6 +265,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("build_android_appwidget_fixture.sh", workflow)
         self.assertIn("android_appwidget_host_smoke.sh", workflow)
 
+    def test_picker_smoke_reports_host_ownership_when_provider_metadata_exists(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn('if (!"ready".equals(selectedWidget.optString("state")))', instrumentation)
+        self.assertIn("widgetBindingDiagnostics(context, expectedProvider)", instrumentation)
+        self.assertIn("host.getAppWidgetIds()", instrumentation)
+        self.assertIn('", managerProvider="', instrumentation)
+        self.assertIn('", hostOwnsId=" + owned', instrumentation)
+
     def test_widget_storage_is_versioned_and_migrates_legacy_arrays(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
@@ -363,6 +373,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("android_widget_host_layout_roundtrip_passed", instrumentation)
+        self.assertIn("android_widget_host_second_home_page_ready", instrumentation)
+        self.assertIn("android_widget_host_second_page_placement_passed", instrumentation)
+        self.assertIn("android_widget_host_cross_page_move_passed", instrumentation)
+        self.assertIn('selectedWidget.optInt("page", -1) != 1', instrumentation)
+        self.assertIn('"Move Android widget to previous page"', instrumentation)
         self.assertIn("android_widget_host_resize_handle_passed", instrumentation)
         self.assertIn("dragResizeHandle(context, widgetId, 24, 24)", instrumentation)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
@@ -376,6 +391,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("widget-home-layout.png", smoke)
         self.assertIn("widget-rebind-placeholder.png", smoke)
         self.assertIn("android_widget_host_geometry_restore_passed", smoke)
+        self.assertIn("android_widget_host_cross_page_move_passed", smoke)
 
 
 if __name__ == "__main__":

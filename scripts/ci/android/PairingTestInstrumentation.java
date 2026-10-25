@@ -53,6 +53,7 @@ import java.net.URI;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1619,6 +1620,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!(activity instanceof OmaAppActivity)) {
             throw new IllegalStateException("Could not open OmaApp Home for widget hosting.");
         }
+        ensureSecondHomePage(automation, context);
         if (!clickAccessibleText(automation, "Add Android widget")) {
             throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
         }
@@ -1656,6 +1658,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + ", configured=" + configurationClicked + ", recordSaved=" + widgetRecordSaved
                     + "). UI: " + accessibilityTree(automation));
         }
+        JSONObject selectedWidget = requireWidgetRecord(context, expectedProvider);
+        if (selectedWidget.optInt("page", -1) != 1) {
+            throw new IllegalStateException("Selecting a widget from Home page 2 did not save it there: "
+                    + selectedWidget);
+        }
+        if (!"ready".equals(selectedWidget.optString("state"))) {
+            throw new IllegalStateException("The system picker saved the provider but OmaApp could not "
+                    + "verify its AppWidgetHost binding: "
+                    + widgetBindingDiagnostics(context, expectedProvider));
+        }
+        reportStage("android_widget_host_second_page_placement_passed");
         awaitAccessibilityText(automation, "CI_WIDGET_READY", 30_000L, context);
         if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
             throw new IllegalStateException("The real RemoteViews action was not accessible in OmaApp Home.");
@@ -1676,11 +1689,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
         runOnMainSync(() -> {
             try {
                 if (!AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 1,
-                            24, 48, 2)
+                            0, 48, 2)
                         || !AndroidWidgetHost.resizeWidgetRecord(context, widgetRecordId,
                                 resizedWidth, resizedHeight)
-                        || !AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
-                                0, 72, 2)
                         || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
                                 25, 72, 2)
                         || AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
@@ -1697,14 +1708,29 @@ public final class PairingTestInstrumentation extends Instrumentation {
         JSONObject resizedWidget = requireWidgetRecord(context, expectedProvider);
         if (resizedWidget.getInt("id") != widgetId
                 || !widgetRecordId.equals(resizedWidget.getString("recordId"))
-                || resizedWidget.getInt("page") != 0 || resizedWidget.getInt("order") != 0
-                || resizedWidget.getInt("xDp") != 0 || resizedWidget.getInt("yDp") != 72
+                || resizedWidget.getInt("page") != 1 || resizedWidget.getInt("order") != 0
+                || resizedWidget.getInt("xDp") != 0 || resizedWidget.getInt("yDp") != 48
                 || resizedWidget.getInt("widthDp") != resizedWidth
                 || resizedWidget.getInt("heightDp") != resizedHeight) {
             throw new IllegalStateException("The Android widget placement/size did not round-trip: "
                     + resizedWidget);
         }
         awaitWidgetOptions(context, widgetId, resizedWidth, resizedHeight, 10_000L);
+        scrollHomeToTop(automation, context);
+        awaitAccessibilityText(automation, "Move Android widget to previous page", 20_000L,
+                context);
+        if (!clickAccessibleText(automation, "Move Android widget to previous page")
+                || !awaitWidgetPosition(context, expectedProvider, 0, 0, 48, 10_000L)) {
+            throw new IllegalStateException("The Home control could not move the widget from page 2 to page 1: "
+                    + requireWidgetRecord(context, expectedProvider));
+        }
+        reportStage("android_widget_host_cross_page_move_passed");
+        swipeHomePage(automation, context, false);
+        awaitAccessibilityText(automation, "Home page 1 of 2", 10_000L, context);
+        if (!AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
+                    0, 72, 2)) {
+            throw new IllegalStateException("The widget grid rejected an on-page position update.");
+        }
         // The direct host mutation above notifies Qt asynchronously. Wait until the Home
         // accessibility bridge reports the durable position before clicking a control whose
         // target is derived from the QML delegate's modelData.
@@ -1726,6 +1752,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The Home screen could not undo the Android widget grid move.");
         }
         reportStage("android_widget_host_qml_controls_passed");
+        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 10_000L, context);
         int handleResizedWidth = Math.min(1200, resizedWidth + 24);
         int handleResizedHeight = Math.min(1200, resizedHeight + 24);
         if (!dragResizeHandle(context, widgetId, 24, 24)
@@ -1755,6 +1782,21 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // The next instrumentation stage force-stops this process and verifies a cold restore.
     }
 
+    private void ensureSecondHomePage(UiAutomation automation, Context context) throws Exception {
+        if (!clickAccessibleText(automation, "Settings")) {
+            throw new IllegalStateException("Could not open Settings to add a second Home page.");
+        }
+        awaitAccessibilityText(automation, "Add a home page", 15_000L, context);
+        if (!clickAccessibleText(automation, "Add a home page")
+                || !clickAccessibleText(automation, "Home")) {
+            throw new IllegalStateException("Could not enable a second Home page in the launcher.");
+        }
+        awaitAccessibilityText(automation, "Home page 1 of 2", 15_000L, context);
+        swipeHomePage(automation, context, true);
+        awaitAccessibilityText(automation, "Home page 2 of 2", 10_000L, context);
+        reportStage("android_widget_host_second_home_page_ready");
+    }
+
     private static void verifyWidgetGridCollisionRules() throws Exception {
         JSONObject first = new JSONObject().put("page", 0).put("xDp", 0).put("yDp", 0)
                 .put("widthDp", 320).put("heightDp", 240);
@@ -1779,7 +1821,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 .put("id", current.getInt("id"))
                 .put("provider", current.getString("provider"))
                 .put("label", current.getString("label"))
-                .put("page", 0)
+                .put("page", current.getInt("page"))
                 .put("order", 0)
                 .put("minWidthDp", current.getInt("minWidthDp"))
                 .put("minHeightDp", current.getInt("minHeightDp"))
@@ -1799,6 +1841,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 Context.MODE_PRIVATE).getString("widgets", "{}"));
         if (stored.optInt("schemaVersion", -1) != 3
                 || migrated.optInt("id", -1) != current.optInt("id", -2)
+                || migrated.optInt("page", -1) != current.optInt("page", -2)
                 || migrated.optInt("xDp", -1) != 0 || migrated.optInt("yDp", -1) != 0
                 || migrated.optInt("widthDp", -1) != current.optInt("widthDp", -2)
                 || migrated.optInt("heightDp", -1) != current.optInt("heightDp", -2)) {
@@ -2141,6 +2184,30 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return false;
     }
 
+    private static String widgetBindingDiagnostics(Context context, ComponentName expectedProvider) {
+        try {
+            JSONObject widget = requireWidgetRecord(context, expectedProvider);
+            int widgetId = widget.optInt("id", AppWidgetManager.INVALID_APPWIDGET_ID);
+            AppWidgetProviderInfo providerInfo = widgetId > 0
+                    ? AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId) : null;
+            Field hostField = AndroidWidgetHost.class.getDeclaredField("host");
+            hostField.setAccessible(true);
+            AppWidgetHost host = (AppWidgetHost) hostField.get(null);
+            int[] hostWidgetIds = host == null ? new int[0] : host.getAppWidgetIds();
+            Method hostOwnsId = AndroidWidgetHost.class.getDeclaredMethod("hostOwnsId", int.class);
+            hostOwnsId.setAccessible(true);
+            boolean owned = (Boolean) hostOwnsId.invoke(null, widgetId);
+            Field listeningField = AndroidWidgetHost.class.getDeclaredField("listening");
+            listeningField.setAccessible(true);
+            return "record=" + widget + ", managerProvider="
+                    + (providerInfo == null ? "null" : providerInfo.provider.flattenToString())
+                    + ", hostIds=" + java.util.Arrays.toString(hostWidgetIds)
+                    + ", hostOwnsId=" + owned + ", listening=" + listeningField.getBoolean(null);
+        } catch (Exception error) {
+            return "could not inspect binding state: " + error;
+        }
+    }
+
     private static void awaitAccessibilityText(UiAutomation automation, String text,
                                                long timeoutMillis, Context context) throws Exception {
         long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
@@ -2327,6 +2394,29 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // its RemoteViews touch stream. Scroll along the empty leading gutter
         // so the gesture reaches Qt Quick's Home Flickable.
         executeSwipe(automation, context, 0.84f, 0.38f, 0.05f);
+    }
+
+    private static void scrollHomeToTop(UiAutomation automation, Context context) {
+        for (int attempt = 0; attempt < 4; attempt++) {
+            executeSwipe(automation, context, 0.38f, 0.84f, 0.05f);
+            SystemClock.sleep(200L);
+        }
+    }
+
+    private static void swipeHomePage(UiAutomation automation, Context context,
+                                      boolean forward) {
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        int startX = Math.round(width * (forward ? 0.84f : 0.16f));
+        int endX = Math.round(width * (forward ? 0.16f : 0.84f));
+        int y = Math.round(height * 0.48f);
+        String command = "input swipe " + startX + " " + y + " " + endX + " " + y + " 300";
+        try {
+            automation.executeShellCommand(command).close();
+        } catch (Exception error) {
+            Log.w(TAG, "Could not switch Android widget Home pages.", error);
+        }
+        SystemClock.sleep(350L);
     }
 
     private static void executeSwipe(UiAutomation automation, Context context,
