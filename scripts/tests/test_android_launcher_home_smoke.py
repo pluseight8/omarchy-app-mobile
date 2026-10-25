@@ -45,6 +45,23 @@ class AndroidLauncherHomeSmokeTests(unittest.TestCase):
             navigation,
         )
 
+    def test_restart_icon_cache_assertion_waits_until_apps_are_visible(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        restart_start = smoke.index('restarted_pid="$(adb shell pidof app.omaapp')
+        home_restore_start = smoke.index("scroll_to_home_folder", restart_start)
+        restart = smoke[restart_start:home_restore_start]
+
+        apps_selection = restart.index("select_tab_when_needed 'Apps'")
+        bounded_wait = restart.index("for attempt in {1..10}")
+        icon_assertion = restart.rindex("OmaApp: cached launcher icon for")
+        home_selection = restart.index("select_tab_when_needed 'Home'")
+        self.assertLess(apps_selection, bounded_wait)
+        self.assertLess(bounded_wait, icon_assertion)
+        self.assertLess(icon_assertion, home_selection)
+        self.assertIn("sleep 1", restart[bounded_wait:icon_assertion])
+
 
 if __name__ == "__main__":
     unittest.main()

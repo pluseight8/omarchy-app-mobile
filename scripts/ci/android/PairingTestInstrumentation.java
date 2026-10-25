@@ -14,6 +14,7 @@ import android.content.Intent;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -21,6 +22,7 @@ import android.os.SystemClock;
 import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
 import org.json.JSONArray;
@@ -910,14 +912,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
             return false;
         }
         try {
-            return clickAccessibleNode(root, labels, 0);
+            return clickAccessibleNode(automation, root, labels, 0);
         } finally {
             root.recycle();
         }
     }
 
-    private static boolean clickAccessibleNode(AccessibilityNodeInfo node, String[] labels,
-                                               int depth) {
+    private static boolean clickAccessibleNode(UiAutomation automation, AccessibilityNodeInfo node,
+                                               String[] labels, int depth) {
         if (node == null || depth > 24) {
             return false;
         }
@@ -936,6 +938,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
                             && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                         return true;
                     }
+                    if (candidate.isClickable() && injectAccessibleTap(automation, candidate)) {
+                        return true;
+                    }
                     AccessibilityNodeInfo parent = candidate.getParent();
                     candidate.recycle();
                     candidate = parent;
@@ -949,7 +954,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         for (int index = 0; index < node.getChildCount(); ++index) {
             AccessibilityNodeInfo child = node.getChild(index);
             try {
-                if (clickAccessibleNode(child, labels, depth + 1)) {
+                if (clickAccessibleNode(automation, child, labels, depth + 1)) {
                     return true;
                 }
             } finally {
@@ -959,6 +964,29 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return false;
+    }
+
+    private static boolean injectAccessibleTap(UiAutomation automation,
+                                               AccessibilityNodeInfo node) {
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (bounds.isEmpty()) {
+            return false;
+        }
+        int x = bounds.centerX();
+        int y = bounds.centerY();
+        long downTime = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(downTime, downTime,
+                MotionEvent.ACTION_DOWN, x, y, 0);
+        MotionEvent up = MotionEvent.obtain(downTime, downTime + 60,
+                MotionEvent.ACTION_UP, x, y, 0);
+        try {
+            return automation.injectInputEvent(down, true)
+                    && automation.injectInputEvent(up, true);
+        } finally {
+            down.recycle();
+            up.recycle();
+        }
     }
 
     private static boolean containsAccessibleText(UiAutomation automation, String expected) {

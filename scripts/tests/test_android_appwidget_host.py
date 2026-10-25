@@ -6,6 +6,16 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppWidgetHostTests(unittest.TestCase):
+    def test_instrumentation_falls_back_to_a_touch_for_qt_accessibility_controls(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)", instrumentation)
+        self.assertIn("injectAccessibleTap(automation, candidate)", instrumentation)
+        self.assertIn("node.getBoundsInScreen(bounds)", instrumentation)
+        self.assertIn("automation.injectInputEvent(down, true)", instrumentation)
+        self.assertIn("automation.injectInputEvent(up, true)", instrumentation)
+
     def test_product_host_uses_the_system_picker_and_releases_cancelled_ids(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
