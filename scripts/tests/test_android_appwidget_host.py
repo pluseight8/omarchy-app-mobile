@@ -155,6 +155,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         # validate the provider through the system picker and actual binding.
         self.assertNotIn("getInstalledProviders()", widget_setup)
         self.assertIn("clickAccessibleText(automation, providerLabel)", widget_setup)
+        self.assertIn("&& (!configurationClicked || !widgetRecordSaved)", widget_setup)
+        self.assertIn("if (!providerChoiceClicked) {\n                scrollSystemPicker", widget_setup)
         for mode, stage in (
             ("setup", "android_widget_host_picker_bind_touch_passed"),
             ("restore", "android_widget_host_process_restore_passed"),

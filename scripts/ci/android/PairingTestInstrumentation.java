@@ -783,8 +783,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
         long bindDeadline = SystemClock.elapsedRealtime() + 90_000L;
         boolean providerChoiceClicked = false;
         boolean configurationClicked = false;
+        boolean widgetRecordSaved = hasWidgetRecord(context, expectedProvider);
         while (SystemClock.elapsedRealtime() < bindDeadline
-                && !hasWidgetRecord(context, expectedProvider)) {
+                && (!configurationClicked || !widgetRecordSaved)) {
             if (!providerChoiceClicked && clickAccessibleText(automation, providerLabel)) {
                 providerChoiceClicked = true;
                 reportStage("android_widget_host_provider_selected");
@@ -797,13 +798,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
                             "Add widget", "Add", "Place widget");
                 }
             }
-            scrollSystemPicker(automation, context);
+            if (!providerChoiceClicked) {
+                scrollSystemPicker(automation, context);
+            }
             SystemClock.sleep(500L);
+            widgetRecordSaved = hasWidgetRecord(context, expectedProvider);
         }
         if (!providerChoiceClicked || !configurationClicked
                 || !hasWidgetRecord(context, expectedProvider)) {
-            throw new IllegalStateException("Android's system picker did not bind the selected CI provider. UI: "
-                    + accessibilityTree(automation));
+            throw new IllegalStateException("Android's system picker did not finish binding/configuring "
+                    + "the selected CI provider (selected=" + providerChoiceClicked
+                    + ", configured=" + configurationClicked + ", recordSaved=" + widgetRecordSaved
+                    + "). UI: " + accessibilityTree(automation));
         }
         awaitAccessibilityText(automation, "CI_WIDGET_READY", 30_000L, context);
         if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
