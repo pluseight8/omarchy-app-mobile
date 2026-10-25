@@ -13,6 +13,22 @@ restore_android_font_scale() {
 }
 trap restore_android_font_scale EXIT
 
+# Android instrumentation tears down the target process when the runner exits.
+# Run the native-only catalog checks before measuring live QML retranslation.
+adb logcat -c
+native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+printf '%s\n' "$native_translation_output"
+grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
+  <<< "$native_translation_output"
+native_english_output="$(adb shell am instrument -w -e nativeEnglishStrings true app.omaapp/app.omaapp.PairingTestInstrumentation)"
+printf '%s\n' "$native_english_output"
+grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
+  <<< "$native_english_output"
+adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
+sleep 5
+live_locale_process="$(adb shell pidof app.omaapp | tr -d '\r')"
+test -n "$live_locale_process"
+
 dump_ui() {
   python3 scripts/ci/android_accessibility_dump.py \
     /sdcard/omaapp-translation-ui.xml "$artifacts/translation-ui.xml"
@@ -129,10 +145,6 @@ cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-russian.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-russian.png" "$artifacts/translation-ui-russian.xml" \
   'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Настройки'
-native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
-printf '%s\n' "$native_translation_output"
-grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
-  <<< "$native_translation_output"
 
 # Language choice is app-local and survives a confirmed process death, then
 # can be changed back without clearing launcher data.
@@ -153,25 +165,6 @@ python3 scripts/ci/check_android_navigation_layout.py \
   Home Apps Devices Style Settings
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
-locale_process_before_instrument="$(adb shell pidof app.omaapp | tr -d '\r')"
-test -n "$locale_process_before_instrument"
-native_english_output="$(adb shell am instrument -w -e nativeEnglishStrings true app.omaapp/app.omaapp.PairingTestInstrumentation)"
-printf '%s\n' "$native_english_output"
-grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
-  <<< "$native_english_output"
-
-# Instrumentation can leave Android Settings in the foreground. Return to the
-# existing launcher Activity without force-stopping it, so the next language
-# switch genuinely exercises live QML retranslation in the same process.
-adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-sleep 2
-locale_process_after_instrument="$(adb shell pidof app.omaapp | tr -d '\r')"
-if [[ "$locale_process_after_instrument" != "$locale_process_before_instrument" ]]; then
-  printf 'Native string instrumentation restarted OmaApp before the live locale-switch check.\n' >&2
-  exit 1
-fi
-dump_ui
-ensure_settings_tab 'Settings'
 
 # Exercise rapid locale changes without recreating the Activity. This catches
 # stale OWL labels and one-way translation bindings after several retranslate() calls.
@@ -189,6 +182,11 @@ python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Language'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
+locale_process_after_switches="$(adb shell pidof app.omaapp | tr -d '\r')"
+if [[ "$locale_process_after_switches" != "$live_locale_process" ]]; then
+  printf 'Live locale switches recreated the OmaApp process.\n' >&2
+  exit 1
+fi
 
 # Haptics are explicitly opt-in, use Android's View API, and remain enabled
 # after Activity recreation. The emulator may not have a vibration motor, so
