@@ -7,6 +7,79 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppWidgetHostTests(unittest.TestCase):
+    def test_layout_backup_restore_uses_a_recoverable_cross_store_journal(self):
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        model = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        owl = (ROOT / "app/native/OwlModel.cpp").read_text(encoding="utf-8")
+        inspect_start = qml.index("function inspectLayoutBackup(json)")
+        inspect_end = qml.index("function applyLayoutBackup", inspect_start)
+        inspect = qml[inspect_start:inspect_end]
+        self.assertLess(
+            inspect.index("json.length > 2 * 1024 * 1024"), inspect.index("JSON.parse(json)")
+        )
+
+        restore_start = qml.index("function restoreLayoutBackup(json)")
+        restore_end = qml.index("function recoverLayoutBackupRestore", restore_start)
+        restore = qml[restore_start:restore_end]
+        self.assertLess(
+            restore.index("beginLayoutRestoreJournal"),
+            restore.index("applyLayoutBackup(json, true)"),
+        )
+        self.assertLess(
+            restore.index("applyLayoutBackup(json, true)"),
+            restore.index("commitLayoutRestoreJournal"),
+        )
+        self.assertIn("rollbackLayoutBackup(rollbackBackup)", restore)
+        self.assertIn('phase === "committed"', qml)
+        self.assertIn('phase !== "applying"', qml)
+        self.assertIn("layoutRestoreJournalBackup()", qml)
+        self.assertIn('"launcher/layoutRestoreJournalBackup"', model)
+        self.assertIn('"launcher/layoutRestoreJournalPhase"', model)
+
+        import_start = owl.index("bool OwlModel::importWidgetBackup")
+        import_end = owl.index("bool OwlModel::isCustomId", import_start)
+        self.assertIn("if (!saveStore(installed, custom))", owl[import_start:import_end])
+
+    def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("prepareWidgetBackupRestore(Context context, String json)", host)
+        self.assertIn("commitWidgetBackupRestore(Context context)", host)
+        self.assertIn("rollbackWidgetBackupRestore(Context context)", host)
+        self.assertIn("recoverWidgetBackupRestore(Context context)", host)
+        self.assertIn("if (!clearWidgetBackupRestoreJournal(preferences))", host)
+        self.assertIn("host.deleteAppWidgetId(id)", host)
+        self.assertIn("android_widget_host_backup_transaction_rollback_passed", instrumentation)
+        self.assertIn("android_widget_host_backup_transaction_commit_passed", instrumentation)
+        self.assertIn("android_widget_host_backup_recovery_prepared", instrumentation)
+        self.assertIn("recoverAndroidWidgetBackupRestore()", (
+            ROOT / "app/qml/Main.qml"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("android_widget_host_backup_transaction_rollback_passed", smoke)
+        self.assertIn("android_widget_host_backup_transaction_commit_passed", smoke)
+
+    def test_native_resize_grip_reports_a_reversible_size_change(self):
+        activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
+            encoding="utf-8"
+        )
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        native = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        self.assertIn("notifyAndroidWidgetResizeFinished(recordId[0]", host)
+        self.assertIn("notifyNativeAndroidWidgetResizeFinished", activity)
+        self.assertIn("androidWidgetResizeFinished", native)
+        self.assertIn("function onAndroidWidgetResizeFinished", qml)
+        self.assertIn("window.rememberAndroidWidgetLayout({", qml)
+
     def test_widget_provider_visibility_is_scoped_to_widget_update_receivers(self):
         manifest_path = ROOT / "app/android/AndroidManifest.xml"
         manifest = ET.parse(manifest_path).getroot()
@@ -97,6 +170,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("setAndroidWidgetFrame", model)
         self.assertIn('qsTr("Android widgets")', qml)
         self.assertIn('Accessible.name: qsTr("Add Android widget to Home page %1")', qml)
+        self.assertIn('Accessible.name: qsTr("Next Home page")', qml)
+        self.assertIn('Accessible.name: qsTr("Previous Home page")', qml)
+        self.assertIn('qsTr("Current Home page %1 of %2")', qml)
         self.assertIn('id: androidWidgetPickerLaunchTimer', qml)
         self.assertIn('androidWidgetPickerLaunchTimer.restart()', qml)
         self.assertIn('property int pendingAndroidWidgetPage: -1', qml)
@@ -297,6 +373,21 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("nextWidgetY", host)
         self.assertIn("normalizePageOrders(result)", host)
 
+    def test_cross_page_move_keeps_position_when_the_target_space_is_free(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        move_start = host.index("public static boolean moveWidgetRecord(")
+        move_end = host.index("/** Places a widget on the Home grid", move_start)
+        move_method = host[move_start:move_end]
+        self.assertIn("hasPlacementConflict(reordered, moved, null)", move_method)
+        self.assertLess(
+            move_method.index("hasPlacementConflict(reordered, moved, null)"),
+            move_method.index('moved.put("xDp", 0)'),
+        )
+        self.assertIn('moved.optInt("yDp", -1) + moved.optInt("heightDp", 0)', move_method)
+        self.assertIn("return false;", move_method)
+
     def test_removal_persists_before_android_releases_the_widget_id(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
@@ -366,7 +457,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("androidWidgetGridStep: 24", qml)
         self.assertIn('x: Number(modelData.xDp) || 0', qml)
         self.assertIn('y: Number(modelData.yDp) || 0', qml)
-        self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.05f)', instrumentation)
+        self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.92f)', instrumentation)
         self.assertIn('" + x + " " + Math.round(height * toRatio)', instrumentation)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
@@ -383,6 +474,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('selectedWidget.optInt("page", -1) != 1', instrumentation)
         self.assertIn('"Move Android widget to previous page"', instrumentation)
         self.assertIn("android_widget_host_resize_handle_passed", instrumentation)
+        self.assertIn("android_widget_host_resize_undo_passed", instrumentation)
         self.assertIn("dragResizeHandle(context, widgetId, 24, 24)", instrumentation)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
@@ -395,9 +487,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
-        self.assertIn('clickAccessibleControl(automation, target)', instrumentation)
+        self.assertIn(
+            'String direction = page == 0 ? "Previous Home page" : "Next Home page"',
+            instrumentation,
+        )
         self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
-        self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.05f)', instrumentation)
+        self.assertIn(
+            'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',
+            second_page_setup,
+        )
+        self.assertIn('"Current Home page " + (page + 1) + " of 2"', instrumentation)
         self.assertNotIn("swipeHomePage(", instrumentation)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
         widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")

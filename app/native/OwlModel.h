@@ -51,7 +51,7 @@ private:
     QString render(const QString &sourceText, qreal width, qreal height,
                    const QString &themeJson) const;
     QString readResource(const QString &path) const;
-    void saveStore(const QStringList &installed, const QVariantMap &custom) const;
+    bool saveStore(const QStringList &installed, const QVariantMap &custom) const;
 
     static const QList<BuiltinWidget> s_builtins;
 };

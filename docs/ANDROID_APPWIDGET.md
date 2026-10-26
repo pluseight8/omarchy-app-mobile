@@ -23,13 +23,22 @@ between grid positions; holding it near either horizontal edge advances to the
 adjacent Home page so it can be dropped there. Placements snap to 24 dp and the
 host rejects overlaps. Accessible controls nudge a widget vertically or move it
 to another page. The last grid, page, or size change can be undone briefly, and
-removal asks for confirmation. Undo applies to edits made through QML position
-and size controls; the direct native resize grip does not yet participate in
-Undo. Width and height controls honor provider minimums, and a visible native
-corner grip resizes both dimensions while leaving the rest of RemoteViews
-touchable. Resize changes update Android widget options. App icons and OWL
+removal asks for confirmation. Undo applies to QML position and size controls
+and the direct native resize grip. Width and height controls honor provider
+minimums, and a visible native corner grip resizes both dimensions while
+leaving the rest of RemoteViews touchable. Resize changes update Android widget
+options. App icons and OWL
 widgets remain in their existing Home areas; they do not yet share one grid
 with Android widgets.
+
+Combined layout backup restore validates OWL and Android widget sections before
+applying them and writes a durable recovery snapshot before changing launcher
+or OWL settings. Android stages placeholder records while retaining old widget
+IDs; only the committed Qt journal lets Android release those IDs. A restart
+rolls back an unfinished prepare or retries cleanup for a committed restore.
+Desktop tests exercise both journal outcomes across model recreation. Emulator
+tests verify rollback preserves a live widget ID, recovery after force-stop
+during Android prepare, and commit releases the replaced ID.
 
 The OpenGL and Vulkan emulator smoke uses a separate test-only APK containing a
 real interactive `AppWidgetProvider` and configuration Activity. It binds via

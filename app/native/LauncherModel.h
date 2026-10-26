@@ -68,6 +68,10 @@ public:
     Q_INVOKABLE bool placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp);
     Q_INVOKABLE bool resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp);
     Q_INVOKABLE bool canRestoreAndroidWidgetBackup(const QString &json) const;
+    Q_INVOKABLE bool prepareAndroidWidgetBackupRestore(const QString &json);
+    Q_INVOKABLE bool commitAndroidWidgetBackupRestore();
+    Q_INVOKABLE bool rollbackAndroidWidgetBackupRestore();
+    Q_INVOKABLE bool recoverAndroidWidgetBackupRestore();
     Q_INVOKABLE bool restoreAndroidWidgetBackup(const QString &json);
     Q_INVOKABLE void setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
                                            qreal width, qreal height, qreal clipX, qreal clipY,
@@ -84,7 +88,13 @@ public:
     Q_INVOKABLE bool setHapticFeedbackEnabled(bool enabled);
     Q_INVOKABLE void performHapticFeedback();
     Q_INVOKABLE QString exportLayout() const;
+    Q_INVOKABLE QString createLayoutBackup(const QString &owlWidgetBackup = QString()) const;
     Q_INVOKABLE bool importLayout(const QString &json);
+    Q_INVOKABLE QString layoutRestoreJournalPhase() const;
+    Q_INVOKABLE QString layoutRestoreJournalBackup() const;
+    Q_INVOKABLE bool beginLayoutRestoreJournal(const QString &rollbackBackup);
+    Q_INVOKABLE bool commitLayoutRestoreJournal();
+    Q_INVOKABLE bool clearLayoutRestoreJournal();
     Q_INVOKABLE bool copyLayoutBackup(const QString &owlWidgetBackup = QString()) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE void launch(int row);
@@ -112,6 +122,8 @@ signals:
     void gesturesChanged();
     void hapticFeedbackEnabledChanged();
     void systemFontScaleChanged();
+    void androidWidgetResizeFinished(const QString &recordId, int oldWidthDp, int oldHeightDp,
+                                    int newWidthDp, int newHeightDp);
 
 private:
     struct Entry {

@@ -1766,6 +1766,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         awaitWidgetOptions(context, widgetId, handleResizedWidth, handleResizedHeight, 10_000L);
         reportStage("android_widget_host_resize_handle_passed");
+        awaitAccessibilityText(automation, "Undo Android widget layout change", 15_000L, context);
+        if (!clickAccessibleText(automation, "Undo Android widget layout change")
+                || !awaitWidgetDimensions(context, expectedProvider, resizedWidth, resizedHeight,
+                        10_000L)) {
+            throw new IllegalStateException("Undo did not restore the native resize-grip dimensions.");
+        }
+        awaitWidgetOptions(context, widgetId, resizedWidth, resizedHeight, 10_000L);
+        reportStage("android_widget_host_resize_undo_passed");
         String widgetBackup = AndroidWidgetHost.exportWidgetBackup(context);
         JSONObject portableBackup = new JSONObject(widgetBackup);
         JSONArray portableWidgets = portableBackup.optJSONArray("widgets");
@@ -1778,8 +1786,49 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 .putString("json", widgetBackup).commit()) {
             throw new IllegalStateException("The test could not retain the exported widget backup.");
         }
+        int boundWidgetId = requireWidgetRecord(context, expectedProvider).getInt("id");
+        if (!context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE).edit()
+                .putInt("widgetIdBeforeTransaction", boundWidgetId).commit()) {
+            throw new IllegalStateException("The test could not retain the bound widget ID.");
+        }
+        AtomicReference<Boolean> invalidBackupAccepted = new AtomicReference<>(false);
+        runOnMainSync(() -> invalidBackupAccepted.set(
+                AndroidWidgetHost.prepareWidgetBackupRestore(context, "not-json")));
+        if (invalidBackupAccepted.get()
+                || requireWidgetRecord(context, expectedProvider).getInt("id") != boundWidgetId) {
+            throw new IllegalStateException("Invalid Android widget backup changed the current binding.");
+        }
+        AtomicReference<Boolean> restorePrepared = new AtomicReference<>(false);
+        runOnMainSync(() -> restorePrepared.set(
+                AndroidWidgetHost.prepareWidgetBackupRestore(context, widgetBackup)));
+        JSONObject preparedPlaceholder = requireWidgetRecord(context, expectedProvider);
+        if (!restorePrepared.get() || preparedPlaceholder.getInt("id") != 0
+                || AppWidgetManager.getInstance(context).getAppWidgetInfo(boundWidgetId) == null) {
+            throw new IllegalStateException("Preparing backup discarded the live Android widget binding: "
+                    + preparedPlaceholder);
+        }
+        AtomicReference<Boolean> restoreRolledBack = new AtomicReference<>(false);
+        runOnMainSync(() -> restoreRolledBack.set(
+                AndroidWidgetHost.rollbackWidgetBackupRestore(context)));
+        JSONObject rolledBackWidget = requireWidgetRecord(context, expectedProvider);
+        if (!restoreRolledBack.get() || rolledBackWidget.getInt("id") != boundWidgetId
+                || !"ready".equals(rolledBackWidget.optString("state"))) {
+            throw new IllegalStateException("Backup rollback did not preserve the original widget ID: "
+                    + rolledBackWidget);
+        }
+        reportStage("android_widget_host_backup_transaction_rollback_passed");
         saveAppWidgetScreenshot(activity, automation, "omaapp-appwidget-home-layout.png");
         reportStage("android_widget_host_layout_roundtrip_passed");
+
+        AtomicReference<Boolean> interruptedRestorePrepared = new AtomicReference<>(false);
+        runOnMainSync(() -> interruptedRestorePrepared.set(
+                AndroidWidgetHost.prepareWidgetBackupRestore(context, widgetBackup)));
+        JSONObject interruptedRestorePlaceholder = requireWidgetRecord(context, expectedProvider);
+        if (!interruptedRestorePrepared.get() || interruptedRestorePlaceholder.getInt("id") != 0
+                || AppWidgetManager.getInstance(context).getAppWidgetInfo(boundWidgetId) == null) {
+            throw new IllegalStateException("Could not stage a recoverable Android restore before process death.");
+        }
+        reportStage("android_widget_host_backup_recovery_prepared");
 
         // QtActivity owns a process-wide native Qt engine; forcing Activity.recreate() tears
         // down that engine and is not a supported way to test Android lifecycle restoration.
@@ -1800,29 +1849,29 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!clickAccessibleControl(automation, "Home")) {
             throw new IllegalStateException("Could not return to Home after adding a page.");
         }
-        awaitAccessibilityText(automation, "Home page 1 of 2", 15_000L, context);
+        if (!awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)) {
+            throw new IllegalStateException("Home did not return to its first selected page.");
+        }
         selectHomePage(automation, context, 1);
         reportStage("android_widget_host_second_home_page_ready");
     }
 
     private void selectHomePage(UiAutomation automation, Context context, int page) {
-        if (page < 0 || page >= 5) {
+        if (page < 0 || page >= 2) {
             throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
         }
-        for (int attempt = 0; attempt < 4; attempt++) {
-            // Use the blank edge gutter so vertical scrolling does not begin a QML
-            // app/widget drag before opening Android's external widget picker.
-            executeSwipe(automation, context, 0.84f, 0.38f, 0.05f);
-            SystemClock.sleep(200L);
-        }
-        String target = "Go to home page " + (page + 1);
-        if (!clickAccessibleControl(automation, target)) {
-            throw new IllegalStateException("Could not select Home page " + (page + 1)
-                    + " using the visible page indicator.");
-        }
-        String expected = "Home page " + (page + 1) + " of 2";
-        if (!awaitAccessibilityText(automation, expected, 10_000L)) {
-            throw new IllegalStateException("Home did not switch to page " + (page + 1) + ".");
+        String expected = "Current Home page " + (page + 1) + " of 2";
+        if (!awaitAccessibilityText(automation, expected, 250L)) {
+            String direction = page == 0 ? "Previous Home page" : "Next Home page";
+            if (!clickAccessibleControl(automation, direction)) {
+                throw new IllegalStateException("Could not switch to Home page " + (page + 1)
+                        + "; current page marker or visible " + direction + " control is missing.\n"
+                        + accessibilityTree(automation));
+            }
+            if (!awaitAccessibilityText(automation, expected, 10_000L)) {
+                throw new IllegalStateException("Home did not switch to page " + (page + 1)
+                        + " after using its visible page control.\n" + accessibilityTree(automation));
+            }
         }
         scrollHomeToTop(automation, context);
     }
@@ -1907,7 +1956,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
         JSONArray backupWidgets = new JSONObject(exportedBackup).optJSONArray("widgets");
         JSONObject expectedPlacement = backupWidgets == null ? null : backupWidgets.optJSONObject(0);
         JSONObject restoredPlacement = requireWidgetRecord(context, expectedProvider);
-        if (expectedPlacement == null
+        int expectedWidgetId = context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE)
+                .getInt("widgetIdBeforeTransaction", -1);
+        if (expectedPlacement == null || expectedWidgetId <= 0
+                || restoredPlacement.optInt("id", -1) != expectedWidgetId
                 || restoredPlacement.optInt("page", -1) != expectedPlacement.optInt("page", -2)
                 || restoredPlacement.optInt("order", -1) != expectedPlacement.optInt("order", -2)
                 || restoredPlacement.optInt("xDp", -1) != expectedPlacement.optInt("xDp", -2)
@@ -2071,12 +2123,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The rebound RemoteViews action was not interactive.");
         }
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
-        AtomicReference<Boolean> reboundRemoved = new AtomicReference<>(false);
-        runOnMainSync(() -> reboundRemoved.set(AndroidWidgetHost.removeWidget(context, reboundId)));
-        if (!reboundRemoved.get() || hasWidgetRecord(context, expectedProvider)
+        String emptyBackup = new JSONObject().put("schemaVersion", 2)
+                .put("widgets", new JSONArray()).toString();
+        AtomicReference<Boolean> emptyRestoreCommitted = new AtomicReference<>(false);
+        runOnMainSync(() -> emptyRestoreCommitted.set(
+                AndroidWidgetHost.prepareWidgetBackupRestore(context, emptyBackup)
+                        && AndroidWidgetHost.commitWidgetBackupRestore(context)));
+        if (!emptyRestoreCommitted.get() || hasWidgetRecord(context, expectedProvider)
                 || AppWidgetManager.getInstance(context).getAppWidgetInfo(reboundId) != null) {
-            throw new IllegalStateException("The rebound fixture widget was not released cleanly.");
+            throw new IllegalStateException("Committed empty backup did not release the old widget ID.");
         }
+        reportStage("android_widget_host_backup_transaction_commit_passed");
         reportStage("android_widget_host_id_release_passed");
     }
 
@@ -2421,14 +2478,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     private static void scrollHome(UiAutomation automation, Context context) {
         // A bound AppWidgetHostView occupies the center of the page and owns
-        // its RemoteViews touch stream. Scroll along the empty leading gutter
-        // so the gesture reaches Qt Quick's Home Flickable.
-        executeSwipe(automation, context, 0.84f, 0.38f, 0.05f);
+        // its RemoteViews touch stream. The fixture leaves a right gutter wide
+        // enough for a vertical Home scroll without touching the hosted view.
+        executeSwipe(automation, context, 0.84f, 0.38f, 0.92f);
     }
 
     private static void scrollHomeToTop(UiAutomation automation, Context context) {
         for (int attempt = 0; attempt < 4; attempt++) {
-            executeSwipe(automation, context, 0.38f, 0.84f, 0.05f);
+            executeSwipe(automation, context, 0.38f, 0.84f, 0.92f);
             SystemClock.sleep(200L);
         }
     }

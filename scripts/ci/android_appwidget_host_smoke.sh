@@ -30,11 +30,17 @@ grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_cross_page_move_passe
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_layout_roundtrip_passed' \
   "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_transaction_rollback_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_recovery_prepared' \
+  "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_schema_migration_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_qml_controls_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_resize_handle_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_resize_undo_passed' \
   "$artifacts/setup-instrumentation.txt"
 adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-home-layout.png \
   "$artifacts/widget-home-layout.png"
@@ -78,6 +84,8 @@ grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_geometry_restore_pass
   "$artifacts/restore-instrumentation.txt"
 run_stage remove android_widget_host_id_release_passed
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_placeholder_passed' \
+  "$artifacts/remove-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_transaction_commit_passed' \
   "$artifacts/remove-instrumentation.txt"
 adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-rebind-placeholder.png \
   "$artifacts/widget-rebind-placeholder.png"

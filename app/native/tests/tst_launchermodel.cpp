@@ -225,6 +225,63 @@ private slots:
         QCOMPARE(model.exportLayout(), unchangedBackup);
     }
 
+    void layoutRestoreJournalRollsBackAfterModelRestart()
+    {
+        QString rollbackBackup;
+        {
+            LauncherModel model;
+            model.setGridColumns(5);
+            rollbackBackup = model.createLayoutBackup(QStringLiteral(
+                "{\"schema\":1,\"installed\":[],\"sources\":{}}"));
+            QVERIFY(!rollbackBackup.isEmpty());
+            QVERIFY(model.beginLayoutRestoreJournal(rollbackBackup));
+            QVERIFY(!model.beginLayoutRestoreJournal(rollbackBackup));
+            model.setGridColumns(3);
+        }
+
+        // A fresh model instance mirrors the next process opening the durable journal.
+        LauncherModel restarted;
+        QCOMPARE(restarted.gridColumns(), 3);
+        QCOMPARE(restarted.layoutRestoreJournalPhase(), QStringLiteral("applying"));
+        QCOMPARE(restarted.layoutRestoreJournalBackup(), rollbackBackup);
+        QVERIFY(restarted.importLayout(restarted.layoutRestoreJournalBackup()));
+        QVERIFY(restarted.clearLayoutRestoreJournal());
+
+        LauncherModel recovered;
+        QCOMPARE(recovered.gridColumns(), 5);
+        QCOMPARE(recovered.layoutRestoreJournalPhase(), QString());
+    }
+
+    void layoutRestoreJournalKeepsCommittedLayoutAfterRestart()
+    {
+        QString rollbackBackup;
+        {
+            LauncherModel model;
+            rollbackBackup = model.createLayoutBackup(QStringLiteral(
+                "{\"schema\":1,\"installed\":[],\"sources\":{}}"));
+            QVERIFY(model.beginLayoutRestoreJournal(rollbackBackup));
+            model.setGridColumns(5);
+            QVERIFY(model.commitLayoutRestoreJournal());
+        }
+
+        LauncherModel restarted;
+        QCOMPARE(restarted.gridColumns(), 5);
+        QCOMPARE(restarted.layoutRestoreJournalPhase(), QStringLiteral("committed"));
+        QVERIFY(restarted.clearLayoutRestoreJournal());
+
+        LauncherModel recovered;
+        QCOMPARE(recovered.gridColumns(), 5);
+        QCOMPARE(recovered.layoutRestoreJournalPhase(), QString());
+    }
+
+    void layoutRestoreJournalRejectsInvalidAndOversizedSnapshots()
+    {
+        LauncherModel model;
+        QVERIFY(!model.beginLayoutRestoreJournal(QStringLiteral("not-json")));
+        QVERIFY(!model.beginLayoutRestoreJournal(QString(2 * 1024 * 1024 + 1, QLatin1Char('x'))));
+        QCOMPARE(model.layoutRestoreJournalPhase(), QString());
+    }
+
     void onlyPinnedAppsCanMoveBetweenHomePages()
     {
         LauncherModel model;

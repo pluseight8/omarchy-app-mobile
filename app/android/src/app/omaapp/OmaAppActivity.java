@@ -15,6 +15,8 @@ import org.qtproject.qt.android.bindings.QtActivity;
 /** Qt launcher activity that keeps device sync active only in the foreground. */
 public final class OmaAppActivity extends QtActivity {
     private static native void notifyNativeAndroidWidgetsChanged();
+    private static native void notifyNativeAndroidWidgetResizeFinished(String recordId,
+            int oldWidthDp, int oldHeightDp, int newWidthDp, int newHeightDp);
     private static native void refreshLauncherApps();
 
     private final Handler launcherRefreshHandler = new Handler(Looper.getMainLooper());
@@ -130,6 +132,17 @@ public final class OmaAppActivity extends QtActivity {
             notifyNativeAndroidWidgetsChanged();
         } catch (UnsatisfiedLinkError error) {
             // QML may not have loaded its native library during the first Activity resume.
+        }
+    }
+
+    static void notifyAndroidWidgetResizeFinished(String recordId, int oldWidthDp,
+                                                  int oldHeightDp, int newWidthDp,
+                                                  int newHeightDp) {
+        try {
+            notifyNativeAndroidWidgetResizeFinished(recordId, oldWidthDp, oldHeightDp,
+                    newWidthDp, newHeightDp);
+        } catch (UnsatisfiedLinkError error) {
+            // A resize before QML finishes loading has no Home undo surface to notify.
         }
     }
 }

@@ -51,6 +51,8 @@ ApplicationWindow {
         || deleteFolderDialog.visible || restoreLayoutDialog.visible || owlEditorDialog.visible
         || openSourceNoticesDialog.visible || removeAndroidWidgetDialog.visible
     property bool languageSaveFailed: false
+    property bool layoutRestoreRecoveryFailed: false
+    property bool layoutRestoreCleanupPending: false
 
     Timer {
         id: androidWidgetUndoTimer
@@ -105,6 +107,25 @@ ApplicationWindow {
         function onSystemFontScaleChanged() {
             Theme.systemFontScale = launcher.systemFontScale
         }
+        function onAndroidWidgetResizeFinished(recordId, oldWidthDp, oldHeightDp,
+                                               newWidthDp, newHeightDp) {
+            if (oldWidthDp === newWidthDp && oldHeightDp === newHeightDp)
+                return
+            const widget = launcher.androidWidgets.find(function(entry) {
+                return entry.recordId === recordId
+            })
+            if (!widget || Number(widget.widthDp) !== newWidthDp
+                    || Number(widget.heightDp) !== newHeightDp)
+                return
+            window.rememberAndroidWidgetLayout({
+                recordId: recordId,
+                page: widget.page,
+                xDp: widget.xDp,
+                yDp: widget.yDp,
+                widthDp: oldWidthDp,
+                heightDp: oldHeightDp
+            })
+        }
     }
 
     function widgetThemeColor(value) {
@@ -156,29 +177,120 @@ ApplicationWindow {
         owlEditorDialog.close()
     }
 
-    function restoreLayoutBackup(json) {
+    function inspectLayoutBackup(json) {
+        if (typeof json !== "string" || json.length === 0 || json.length > 2 * 1024 * 1024)
+            return null
         let parsed
         try {
             parsed = JSON.parse(json)
         } catch (error) {
-            return false
+            return null
         }
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-            return false
+            return null
         const owlBackup = parsed.owlWidgets === undefined ? "" : JSON.stringify(parsed.owlWidgets)
         if (owlBackup.length > 0 && !owl.canImportWidgetBackup(owlBackup))
-            return false
+            return null
         const androidWidgetBackup = parsed.androidWidgets === undefined
                 ? "" : JSON.stringify(parsed.androidWidgets)
         if (androidWidgetBackup.length > 0 && launcher.platformSupported
                 && !launcher.canRestoreAndroidWidgetBackup(androidWidgetBackup))
+            return null
+        return { owlBackup: owlBackup, androidWidgetBackup: androidWidgetBackup }
+    }
+
+    function applyLayoutBackup(json, prepareAndroidWidgets) {
+        const components = inspectLayoutBackup(json)
+        if (!components)
             return false
         if (!launcher.importLayout(json))
             return false
-        if (owlBackup.length > 0 && !owl.importWidgetBackup(owlBackup))
+        if (components.owlBackup.length > 0 && !owl.importWidgetBackup(components.owlBackup))
             return false
-        return androidWidgetBackup.length === 0 || !launcher.platformSupported
-                || launcher.restoreAndroidWidgetBackup(androidWidgetBackup)
+        return !prepareAndroidWidgets || components.androidWidgetBackup.length === 0
+                || !launcher.platformSupported
+                || launcher.prepareAndroidWidgetBackupRestore(components.androidWidgetBackup)
+    }
+
+    function rollbackLayoutBackup(backup) {
+        const layoutRestored = applyLayoutBackup(backup, false)
+        const widgetsRestored = !launcher.platformSupported
+                || launcher.rollbackAndroidWidgetBackupRestore()
+        if (!layoutRestored || !widgetsRestored || !launcher.clearLayoutRestoreJournal()) {
+            layoutRestoreRecoveryFailed = true
+            return false
+        }
+        return true
+    }
+
+    function restoreLayoutBackup(json) {
+        if (layoutRestoreRecoveryFailed)
+            return false
+        if (layoutRestoreCleanupPending) {
+            if (!recoverLayoutBackupRestore() || layoutRestoreCleanupPending)
+                return false
+        }
+        const components = inspectLayoutBackup(json)
+        if (!components)
+            return false
+        const rollbackBackup = launcher.createLayoutBackup(owl.exportWidgetBackup())
+        if (rollbackBackup.length === 0)
+            return false
+        if (!launcher.beginLayoutRestoreJournal(rollbackBackup)) {
+            if (launcher.layoutRestoreJournalPhase().length > 0) {
+                layoutRestoreRecoveryFailed = true
+                layoutMessage = qsTr("An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.")
+            }
+            return false
+        }
+        if (!applyLayoutBackup(json, true)) {
+            rollbackLayoutBackup(rollbackBackup)
+            return false
+        }
+        if (!launcher.commitLayoutRestoreJournal()) {
+            rollbackLayoutBackup(rollbackBackup)
+            return false
+        }
+        if (launcher.platformSupported && !launcher.commitAndroidWidgetBackupRestore()) {
+            layoutRestoreCleanupPending = true
+            return true
+        }
+        if (!launcher.clearLayoutRestoreJournal()) {
+            layoutRestoreCleanupPending = true
+        } else {
+            layoutRestoreCleanupPending = false
+        }
+        return true
+    }
+
+    function recoverLayoutBackupRestore() {
+        const phase = launcher.layoutRestoreJournalPhase()
+        if (phase.length === 0) {
+            layoutRestoreCleanupPending = false
+            return !launcher.platformSupported || launcher.recoverAndroidWidgetBackupRestore()
+        }
+        if (phase === "committed") {
+            if (launcher.platformSupported && !launcher.commitAndroidWidgetBackupRestore()) {
+                layoutRestoreCleanupPending = true
+                return true
+            }
+            if (!launcher.clearLayoutRestoreJournal()) {
+                layoutRestoreCleanupPending = true
+                return true
+            }
+            layoutRestoreCleanupPending = false
+            return true
+        }
+        if (phase !== "applying")
+            return false
+        const rollbackBackup = launcher.layoutRestoreJournalBackup()
+        if (rollbackBackup.length === 0 || !applyLayoutBackup(rollbackBackup, false))
+            return false
+        const recovered = (!launcher.platformSupported || launcher.rollbackAndroidWidgetBackupRestore())
+                && launcher.clearLayoutRestoreJournal()
+        if (recovered)
+            layoutRestoreCleanupPending = false
+        return recovered
     }
 
     function widgetResizeStep() {
@@ -938,7 +1050,9 @@ ApplicationWindow {
                 text: qsTr("Restore layout")
                 onClicked: {
                     if (restoreLayoutBackup(layoutBackupEditor.text)) {
-                        window.layoutMessage = qsTr("Home layout restored.")
+                        window.layoutMessage = window.layoutRestoreCleanupPending
+                                ? qsTr("Home layout restored. Android widget cleanup will retry when OmaApp starts.")
+                                : qsTr("Home layout restored.")
                         layoutRestoreError.visible = false
                         restoreLayoutDialog.close()
                     } else {
@@ -1076,9 +1190,49 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        if (!recoverLayoutBackupRestore()) {
+            layoutRestoreRecoveryFailed = true
+            layoutMessage = qsTr("An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.")
+        }
         launcher.refresh()
         Theme.systemFontScale = launcher.systemFontScale
         applySyncedTheme()
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        z: 100000
+        visible: window.layoutRestoreRecoveryFailed
+        color: Theme.background
+        Column {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 48, 360)
+            spacing: Theme.space(14)
+            Text {
+                width: parent.width
+                text: qsTr("Home restore needs recovery")
+                color: Theme.foreground
+                font.pixelSize: Theme.fontSize(20)
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: qsTr("An interrupted Home restore could not be completed. Keep OmaApp installed; free device storage if it is low, then retry recovery.")
+                color: Theme.muted
+                font.pixelSize: Theme.fontSize(14)
+                wrapMode: Text.WordWrap
+            }
+            Button {
+                text: qsTr("Retry recovery")
+                onClicked: {
+                    if (window.recoverLayoutBackupRestore()) {
+                        window.layoutRestoreRecoveryFailed = false
+                        window.layoutMessage = ""
+                    }
+                }
+            }
+        }
     }
 
     Image {
@@ -1204,12 +1358,30 @@ ApplicationWindow {
                                     font.weight: Font.DemiBold
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text {
-                                    text: qsTr("%1 / %2").arg(index + 1).arg(launcher.homePageCount)
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.fontSize(13)
-                                    Accessible.name: qsTr("Home page %1 of %2")
-                                                       .arg(index + 1).arg(launcher.homePageCount)
+                                RowLayout {
+                                    spacing: Theme.space(2)
+                                    ToolButton {
+                                        visible: index > 0
+                                        text: "‹"
+                                        Accessible.name: qsTr("Previous Home page")
+                                        onClicked: homePageView.currentIndex = index - 1
+                                    }
+                                    Text {
+                                        text: qsTr("%1 / %2").arg(index + 1).arg(launcher.homePageCount)
+                                        color: Theme.muted
+                                        font.pixelSize: Theme.fontSize(13)
+                                        Accessible.name: homePageView.currentIndex === index
+                                            ? qsTr("Current Home page %1 of %2")
+                                                .arg(index + 1).arg(launcher.homePageCount)
+                                            : qsTr("Home page %1 of %2")
+                                                .arg(index + 1).arg(launcher.homePageCount)
+                                    }
+                                    ToolButton {
+                                        visible: index + 1 < launcher.homePageCount
+                                        text: "›"
+                                        Accessible.name: qsTr("Next Home page")
+                                        onClicked: homePageView.currentIndex = index + 1
+                                    }
                                 }
                                 DropArea {
                                     Layout.preferredWidth: window.draggingWidgetRecordId.length > 0 ? 96 : 0

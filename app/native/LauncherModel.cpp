@@ -529,20 +529,79 @@ bool LauncherModel::canRestoreAndroidWidgetBackup(const QString &json) const
 #endif
 }
 
-bool LauncherModel::restoreAndroidWidgetBackup(const QString &json)
+bool LauncherModel::prepareAndroidWidgetBackupRestore(const QString &json)
 {
 #ifdef Q_OS_ANDROID
     if (!canRestoreAndroidWidgetBackup(json))
         return false;
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     const QJniObject backup = QJniObject::fromString(json);
-    const bool restored = QJniObject::callStaticMethod<jboolean>(
-        "app/omaapp/AndroidWidgetHost", "restoreWidgetBackup",
+    const bool prepared = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "prepareWidgetBackupRestore",
         "(Landroid/content/Context;Ljava/lang/String;)Z", context.object<jobject>(),
         backup.object<jstring>());
+    if (prepared)
+        refreshAndroidWidgets();
+    return prepared;
+#else
+    Q_UNUSED(json)
+    return false;
+#endif
+}
+
+bool LauncherModel::commitAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool committed = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "commitWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
+    if (committed)
+        refreshAndroidWidgets();
+    return committed;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::rollbackAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool restored = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "rollbackWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
     if (restored)
         refreshAndroidWidgets();
     return restored;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::recoverAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool recovered = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "recoverWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
+    if (recovered)
+        refreshAndroidWidgets();
+    return recovered;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::restoreAndroidWidgetBackup(const QString &json)
+{
+#ifdef Q_OS_ANDROID
+    if (!prepareAndroidWidgetBackupRestore(json))
+        return false;
+    if (commitAndroidWidgetBackupRestore())
+        return true;
+    return false;
 #else
     Q_UNUSED(json)
     return false;
@@ -783,6 +842,114 @@ QString LauncherModel::exportLayout() const
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
+QString LauncherModel::createLayoutBackup(const QString &owlWidgetBackup) const
+{
+    QJsonObject payload = QJsonDocument::fromJson(exportLayout().toUtf8()).object();
+    if (!owlWidgetBackup.isEmpty()) {
+        const QJsonDocument widgetDocument = QJsonDocument::fromJson(owlWidgetBackup.toUtf8());
+        if (!widgetDocument.isObject())
+            return {};
+        payload.insert(QStringLiteral("owlWidgets"), widgetDocument.object());
+    }
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject widgetBackup = QJniObject::callStaticObjectMethod(
+        "app/omaapp/AndroidWidgetHost", "exportWidgetBackup",
+        "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+    if (!widgetBackup.isValid() || widgetBackup.toString().isEmpty())
+        return {};
+    const QJsonDocument androidWidgetDocument = QJsonDocument::fromJson(
+        widgetBackup.toString().toUtf8());
+    if (!androidWidgetDocument.isObject())
+        return {};
+    payload.insert(QStringLiteral("androidWidgets"), androidWidgetDocument.object());
+#endif
+    const QString backup = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    return backup.toUtf8().size() <= maximumBackupBytes ? backup : QString();
+}
+
+QString LauncherModel::layoutRestoreJournalPhase() const
+{
+    QSettings settings;
+    const QString phaseKey = QStringLiteral("launcher/layoutRestoreJournalPhase");
+    const QString backupKey = QStringLiteral("launcher/layoutRestoreJournalBackup");
+    const bool hasPhase = settings.contains(phaseKey);
+    const bool hasBackup = settings.contains(backupKey);
+    if (!hasPhase && !hasBackup)
+        return {};
+    if (!hasPhase || !hasBackup)
+        return QStringLiteral("corrupt");
+    const QString phase = settings.value(phaseKey).toString();
+    const QString backup = settings.value(backupKey).toString();
+    if ((phase != QStringLiteral("applying") && phase != QStringLiteral("committed")) ||
+        backup.isEmpty() || backup.toUtf8().size() > maximumBackupBytes) {
+        return QStringLiteral("corrupt");
+    }
+    return phase;
+}
+
+QString LauncherModel::layoutRestoreJournalBackup() const
+{
+    if (layoutRestoreJournalPhase() == QStringLiteral("corrupt"))
+        return {};
+    QSettings settings;
+    return settings.value(QStringLiteral("launcher/layoutRestoreJournalBackup")).toString();
+}
+
+bool LauncherModel::beginLayoutRestoreJournal(const QString &rollbackBackup)
+{
+    const QByteArray payload = rollbackBackup.toUtf8();
+    if (payload.isEmpty() || payload.size() > maximumBackupBytes)
+        return false;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject() ||
+        document.object().value(QStringLiteral("schema")).toInt(-1) != 1) {
+        return false;
+    }
+
+    const QString phaseKey = QStringLiteral("launcher/layoutRestoreJournalPhase");
+    const QString backupKey = QStringLiteral("launcher/layoutRestoreJournalBackup");
+    QSettings settings;
+    if (settings.contains(phaseKey) || settings.contains(backupKey))
+        return false;
+    settings.setValue(backupKey, rollbackBackup);
+    settings.setValue(phaseKey, QStringLiteral("applying"));
+    settings.sync();
+    if (settings.status() == QSettings::NoError)
+        return true;
+
+    settings.remove(phaseKey);
+    settings.remove(backupKey);
+    settings.sync();
+    return false;
+}
+
+bool LauncherModel::commitLayoutRestoreJournal()
+{
+    if (layoutRestoreJournalPhase() != QStringLiteral("applying"))
+        return false;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/layoutRestoreJournalPhase"),
+                      QStringLiteral("committed"));
+    settings.sync();
+    if (settings.status() == QSettings::NoError)
+        return true;
+    settings.setValue(QStringLiteral("launcher/layoutRestoreJournalPhase"),
+                      QStringLiteral("applying"));
+    settings.sync();
+    return false;
+}
+
+bool LauncherModel::clearLayoutRestoreJournal()
+{
+    QSettings settings;
+    settings.remove(QStringLiteral("launcher/layoutRestoreJournalPhase"));
+    settings.remove(QStringLiteral("launcher/layoutRestoreJournalBackup"));
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
 bool LauncherModel::importLayout(const QString &json)
 {
     const QByteArray payload = json.toUtf8();
@@ -953,28 +1120,8 @@ bool LauncherModel::copyLayoutBackup(const QString &owlWidgetBackup) const
     QClipboard *clipboard = QGuiApplication::clipboard();
     if (!clipboard)
         return false;
-    QJsonObject payload = QJsonDocument::fromJson(exportLayout().toUtf8()).object();
-    if (!owlWidgetBackup.isEmpty()) {
-        const QJsonDocument widgetDocument = QJsonDocument::fromJson(owlWidgetBackup.toUtf8());
-        if (!widgetDocument.isObject())
-            return false;
-        payload.insert(QStringLiteral("owlWidgets"), widgetDocument.object());
-    }
-#ifdef Q_OS_ANDROID
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    const QJniObject widgetBackup = QJniObject::callStaticObjectMethod(
-        "app/omaapp/AndroidWidgetHost", "exportWidgetBackup",
-        "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
-    if (!widgetBackup.isValid() || widgetBackup.toString().isEmpty())
-        return false;
-    const QJsonDocument androidWidgetDocument = QJsonDocument::fromJson(
-        widgetBackup.toString().toUtf8());
-    if (!androidWidgetDocument.isObject())
-        return false;
-    payload.insert(QStringLiteral("androidWidgets"), androidWidgetDocument.object());
-#endif
-    const QString backup = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    if (backup.toUtf8().size() > maximumBackupBytes)
+    const QString backup = createLayoutBackup(owlWidgetBackup);
+    if (backup.isEmpty())
         return false;
     clipboard->setText(backup, QClipboard::Clipboard);
     return true;
@@ -1479,6 +1626,27 @@ Java_app_omaapp_OmaAppActivity_notifyNativeAndroidWidgetsChanged(JNIEnv *, jclas
     QMetaObject::invokeMethod(model.data(), [model] {
         if (model)
             model->refreshAndroidWidgets();
+    }, Qt::QueuedConnection);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_omaapp_OmaAppActivity_notifyNativeAndroidWidgetResizeFinished(
+    JNIEnv *environment, jclass, jstring recordId, jint oldWidthDp, jint oldHeightDp,
+    jint newWidthDp, jint newHeightDp)
+{
+    const QPointer<LauncherModel> model = androidWidgetModel;
+    if (!model || !recordId)
+        return;
+    const QJniObject javaRecordId = QJniObject::fromLocalRef(environment->NewLocalRef(recordId));
+    const QString id = javaRecordId.toString();
+    if (id.isEmpty())
+        return;
+    QMetaObject::invokeMethod(model.data(), [model, id, oldWidthDp, oldHeightDp,
+                                             newWidthDp, newHeightDp] {
+        if (model) {
+            emit model->androidWidgetResizeFinished(id, oldWidthDp, oldHeightDp,
+                                                   newWidthDp, newHeightDp);
+        }
     }, Qt::QueuedConnection);
 }
 #endif

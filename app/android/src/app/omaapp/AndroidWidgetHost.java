@@ -44,9 +44,12 @@ public final class AndroidWidgetHost {
     private static final String WIDGETS_KEY = "widgets";
     private static final int WIDGETS_SCHEMA_VERSION = 3;
     private static final int BACKUP_SCHEMA_VERSION = 2;
+    private static final int MAX_BACKUP_CHARS = 2 * 1024 * 1024;
     private static final String PENDING_ID_KEY = "pending_widget_id";
     private static final String PENDING_RECORD_ID_KEY = "pending_widget_record_id";
     private static final String PENDING_PAGE_KEY = "pending_widget_page";
+    private static final String RESTORE_STATE_KEY = "widget_backup_restore_state";
+    private static final String RESTORE_PREVIOUS_KEY = "widget_backup_restore_previous";
     private static final String PENDING_ID_STATE = "omaapp.pending_widget_id";
     private static final String PENDING_RECORD_ID_STATE = "omaapp.pending_widget_record_id";
     private static final String PENDING_PAGE_STATE = "omaapp.pending_widget_page";
@@ -479,11 +482,19 @@ public final class AndroidWidgetHost {
         try {
             moved.put("page", page);
             moved.put("order", targetOrder);
-            if (moving.optInt("page", 0) != page) {
+            if (moving.optInt("page", 0) != page
+                    && hasPlacementConflict(reordered, moved, null)) {
                 moved.put("xDp", 0);
                 moved.put("yDp", nextWidgetY(reordered, page));
             }
         } catch (JSONException ignored) {
+            return false;
+        }
+        if (moved.optInt("xDp", -1) + Math.max(MIN_WIDGET_CARD_WIDTH_DP,
+                    moved.optInt("widthDp", 0)) > 3000
+                || moved.optInt("yDp", -1) + moved.optInt("heightDp", 0)
+                    + WIDGET_CHROME_HEIGHT_DP > 20000
+                || hasPlacementConflict(reordered, moved, null)) {
             return false;
         }
         int insertAt = reordered.size();
@@ -657,7 +668,18 @@ public final class AndroidWidgetHost {
 
     /** Restores placeholders only; a provider must be chosen again in Android's system picker. */
     public static boolean restoreWidgetBackup(Context context, String json) {
-        if (context == null || pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+        return prepareWidgetBackupRestore(context, json)
+                && commitWidgetBackupRestore(context);
+    }
+
+    /** Writes placeholders but keeps existing Android IDs until the layout transaction commits. */
+    public static boolean prepareWidgetBackupRestore(Context context, String json) {
+        if (context == null || pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID
+                || json == null || json.length() > MAX_BACKUP_CHARS) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (preferences.contains(RESTORE_STATE_KEY) || preferences.contains(RESTORE_PREVIOUS_KEY)) {
             return false;
         }
         List<JSONObject> placeholders = parseWidgetBackup(json);
@@ -665,23 +687,219 @@ public final class AndroidWidgetHost {
         if (placeholders == null || oldWidgets == null) {
             return false;
         }
+        String previous = serializeStoredWidgetRecords(oldWidgets);
+        if (previous.isEmpty() || !preferences.edit()
+                .putString(RESTORE_PREVIOUS_KEY, previous)
+                .putString(RESTORE_STATE_KEY, "prepared")
+                .commit()) {
+            return false;
+        }
         if (!writeWidgets(context, placeholders)) {
+            if (!rollbackWidgetBackupRestore(context)) {
+                Log.e(TAG, "Could not roll back a failed Android widget backup preparation.");
+            }
+            return false;
+        }
+        clearWidgetViewsForBackupRestore();
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    /** Finalizes a prepared restore after the layout journal has reached its commit point. */
+    public static boolean commitWidgetBackupRestore(Context context) {
+        if (context == null) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!preferences.contains(RESTORE_STATE_KEY) && !preferences.contains(RESTORE_PREVIOUS_KEY)) {
+            return true;
+        }
+        String state = preferences.getString(RESTORE_STATE_KEY, "");
+        if ("prepared".equals(state)) {
+            if (!preferences.edit().putString(RESTORE_STATE_KEY, "committing").commit()) {
+                return false;
+            }
+        } else if (!"committing".equals(state)) {
+            return false;
+        }
+        List<JSONObject> previous = parseStoredWidgetRecords(
+                preferences.getString(RESTORE_PREVIOUS_KEY, ""));
+        if (previous == null) {
             return false;
         }
         ensureHost(context);
-        for (JSONObject old : oldWidgets) {
-            int id = old.optInt("id", 0);
-            if (id > 0 && host != null) {
-                try {
-                    host.deleteAppWidgetId(id);
-                } catch (RuntimeException error) {
-                    Log.w(TAG, "Could not release a replaced widget binding; recovery will retry.", error);
-                }
+        if (host == null) {
+            return false;
+        }
+        Set<Integer> allocated = new HashSet<>();
+        for (int id : host.getAppWidgetIds()) {
+            allocated.add(id);
+        }
+        for (JSONObject widget : previous) {
+            int id = widget.optInt("id", 0);
+            if (id <= 0 || !allocated.contains(id)) {
+                continue;
+            }
+            try {
+                host.deleteAppWidgetId(id);
+            } catch (RuntimeException error) {
+                Log.w(TAG, "Could not release a replaced Android widget ID; recovery will retry.", error);
+                return false;
             }
         }
-        releaseActivityViews();
+        if (!clearWidgetBackupRestoreJournal(preferences)) {
+            Log.w(TAG, "The Android widget restore committed; journal cleanup will retry.");
+            return false;
+        }
+        clearWidgetViewsForBackupRestore();
         OmaAppActivity.notifyAndroidWidgetsChanged();
         return true;
+    }
+
+    /** Completes the persisted choice when startup finds an Android journal without a Qt journal. */
+    public static boolean recoverWidgetBackupRestore(Context context) {
+        if (context == null) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String state = preferences.getString(RESTORE_STATE_KEY, "");
+        if (state.isEmpty() && !preferences.contains(RESTORE_PREVIOUS_KEY)) {
+            return true;
+        }
+        if ("prepared".equals(state)) {
+            return rollbackWidgetBackupRestore(context);
+        }
+        if ("committing".equals(state)) {
+            return commitWidgetBackupRestore(context);
+        }
+        return false;
+    }
+
+    /** Restores the exact previous host records without discarding their system widget IDs. */
+    public static boolean rollbackWidgetBackupRestore(Context context) {
+        if (context == null) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!preferences.contains(RESTORE_STATE_KEY) && !preferences.contains(RESTORE_PREVIOUS_KEY)) {
+            return true;
+        }
+        if (!"prepared".equals(preferences.getString(RESTORE_STATE_KEY, ""))) {
+            return false;
+        }
+        List<JSONObject> previous = parseStoredWidgetRecords(
+                preferences.getString(RESTORE_PREVIOUS_KEY, ""));
+        if (previous == null || !writeWidgets(context, previous)) {
+            return false;
+        }
+        if (!clearWidgetBackupRestoreJournal(preferences)) {
+            return false;
+        }
+        clearWidgetViewsForBackupRestore();
+        restoreWidgets(context);
+        OmaAppActivity.notifyAndroidWidgetsChanged();
+        return true;
+    }
+
+    private static void clearWidgetViewsForBackupRestore() {
+        for (FrameLayout clip : new ArrayList<>(clips.values())) {
+            if (clip.getParent() instanceof ViewGroup) {
+                ((ViewGroup) clip.getParent()).removeView(clip);
+            }
+        }
+        views.clear();
+        clips.clear();
+        resizeHandles.clear();
+        frames.clear();
+        lastSizeOptions.clear();
+    }
+
+    private static boolean hasWidgetBackupRestoreJournal(Context context) {
+        if (context == null) {
+            return false;
+        }
+        SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return preferences.contains(RESTORE_STATE_KEY) || preferences.contains(RESTORE_PREVIOUS_KEY);
+    }
+
+    private static boolean clearWidgetBackupRestoreJournal(SharedPreferences preferences) {
+        return preferences.edit().remove(RESTORE_STATE_KEY).remove(RESTORE_PREVIOUS_KEY).commit();
+    }
+
+    private static String serializeStoredWidgetRecords(List<JSONObject> widgets) {
+        JSONArray array = new JSONArray();
+        for (JSONObject widget : deepCopyWidgets(widgets)) {
+            array.put(widget);
+        }
+        JSONObject root = new JSONObject();
+        try {
+            root.put("schemaVersion", WIDGETS_SCHEMA_VERSION);
+            root.put("widgets", array);
+        } catch (JSONException ignored) {
+            return "";
+        }
+        return root.toString();
+    }
+
+    private static List<JSONObject> parseStoredWidgetRecords(String json) {
+        if (json == null || json.length() > MAX_BACKUP_CHARS) {
+            return null;
+        }
+        try {
+            JSONObject root = new JSONObject(json);
+            if (root.length() != 2 || root.optInt("schemaVersion", -1) != WIDGETS_SCHEMA_VERSION) {
+                return null;
+            }
+            JSONArray array = root.getJSONArray("widgets");
+            if (array.length() > MAX_WIDGETS) {
+                return null;
+            }
+            List<JSONObject> result = new ArrayList<>();
+            Set<Integer> ids = new HashSet<>();
+            Set<String> recordIds = new HashSet<>();
+            for (int index = 0; index < array.length(); ++index) {
+                JSONObject widget = array.optJSONObject(index);
+                if (widget == null) {
+                    return null;
+                }
+                int id = widget.optInt("id", -1);
+                String recordId = widget.optString("recordId", "");
+                String provider = widget.optString("provider", "");
+                int page = widget.optInt("page", -1);
+                int order = widget.optInt("order", -1);
+                if (id < 0 || (id > 0 && !ids.add(id)) || recordId.isEmpty()
+                        || recordId.length() > 64 || !recordIds.add(recordId)
+                        || ComponentName.unflattenFromString(provider) == null
+                        || page < 0 || page >= 5 || order < 0 || order >= MAX_WIDGETS) {
+                    return null;
+                }
+                JSONObject copy = new JSONObject(widget.toString());
+                if (!writeRecordHasValidGeometry(copy, result)) {
+                    return null;
+                }
+                result.add(copy);
+            }
+            return result;
+        } catch (JSONException | RuntimeException error) {
+            Log.e(TAG, "The pending Android widget restore journal is invalid.", error);
+            return null;
+        }
+    }
+
+    private static boolean writeRecordHasValidGeometry(JSONObject widget, List<JSONObject> occupied) {
+        int x = widget.optInt("xDp", -1);
+        int y = widget.optInt("yDp", -1);
+        int minWidth = widget.optInt("minWidthDp", -1);
+        int minHeight = widget.optInt("minHeightDp", -1);
+        int width = widget.optInt("widthDp", -1);
+        int height = widget.optInt("heightDp", -1);
+        return x >= 0 && x <= 3000 && x % PLACEMENT_GRID_DP == 0
+                && y >= 0 && y <= 20000 && y % PLACEMENT_GRID_DP == 0
+                && minWidth > 0 && minWidth <= 1200 && minHeight > 0 && minHeight <= 1200
+                && width >= minWidth && width <= 1200 && height >= minHeight && height <= 1200
+                && x + Math.max(MIN_WIDGET_CARD_WIDTH_DP, width) <= 3000
+                && y + height + WIDGET_CHROME_HEIGHT_DP <= 20000
+                && !hasPlacementConflict(occupied, widget, null);
     }
 
     public static boolean removeWidgetRecord(Context context, String recordId) {
@@ -915,6 +1133,11 @@ public final class AndroidWidgetHost {
         if (host == null || overlay == null || overlay.getParent() == null) {
             return;
         }
+        // A layout restore is between its durable prepare and commit/rollback stages.
+        // Preserve old bound IDs until the QML recovery journal decides the outcome.
+        if (hasWidgetBackupRestoreJournal(context)) {
+            return;
+        }
         List<JSONObject> widgets = readWidgets(context);
         if (widgets == null) {
             // Do not interpret corrupt preferences as an empty widget list and release users' IDs.
@@ -1053,6 +1276,9 @@ public final class AndroidWidgetHost {
                         if (!resizeWidgetRecord(context, recordId[0], width, height)) {
                             view.announceForAccessibility(NativeStrings.get(
                                     "Widget size was not changed."));
+                        } else if (width != startSize[0] || height != startSize[1]) {
+                            OmaAppActivity.notifyAndroidWidgetResizeFinished(recordId[0],
+                                    startSize[0], startSize[1], width, height);
                         }
                     }
                     view.performClick();

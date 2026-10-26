@@ -39,6 +39,10 @@
             <translation>Питание от сети / недоступно</translation>
         </message>
         <message>
+            <source>An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.</source>
+            <translation>Требуется восстановить прерванную раскладку. Не удаляйте OmaApp и повторите восстановление после проверки свободного места.</translation>
+        </message>
+        <message>
             <source>ANDROID</source>
             <translation>ANDROID</translation>
         </message>
@@ -463,6 +467,10 @@
             <translation>Удерживайте, чтобы открепить</translation>
         </message>
         <message>
+            <source>Current Home page %1 of %2</source>
+            <translation>Текущая страница %1 из %2</translation>
+        </message>
+        <message>
             <source>Home</source>
             <translation>Главный экран</translation>
         </message>
@@ -477,6 +485,14 @@
         <message>
             <source>Home layout restored.</source>
             <translation>Раскладка главного экрана восстановлена.</translation>
+        </message>
+        <message>
+            <source>Home layout restored. Android widget cleanup will retry when OmaApp starts.</source>
+            <translation>Раскладка восстановлена. Очистка виджетов Android повторится при следующем запуске OmaApp.</translation>
+        </message>
+        <message>
+            <source>Home restore needs recovery</source>
+            <translation>Требуется восстановить раскладку</translation>
         </message>
         <message>
             <source>Home page %1 of %2</source>
@@ -623,6 +639,10 @@
             <translation>Далее</translation>
         </message>
         <message>
+            <source>Next Home page</source>
+            <translation>Следующая страница рабочего стола</translation>
+        </message>
+        <message>
             <source>Next track on %1</source>
             <translation>Следующий трек: %1</translation>
         </message>
@@ -689,6 +709,10 @@
         <message>
             <source>OmaApp layout backup JSON</source>
             <translation>JSON-копия раскладки OmaApp</translation>
+        </message>
+        <message>
+            <source>An interrupted Home restore could not be completed. Keep OmaApp installed; free device storage if it is low, then retry recovery.</source>
+            <translation>Не удалось завершить восстановление главного экрана. Не удаляйте OmaApp; при нехватке места освободите его и повторите восстановление.</translation>
         </message>
         <message>
             <source>Omarchy computer status</source>
@@ -773,6 +797,10 @@
         <message>
             <source>Play %1</source>
             <translation>Воспроизвести: %1</translation>
+        </message>
+        <message>
+            <source>Previous Home page</source>
+            <translation>Предыдущая страница рабочего стола</translation>
         </message>
         <message>
             <source>Power %1  •  Radius %2 px</source>
@@ -861,6 +889,10 @@
         <message>
             <source>Retry</source>
             <translation>Повторить подключение</translation>
+        </message>
+        <message>
+            <source>Retry recovery</source>
+            <translation>Повторить восстановление</translation>
         </message>
         <message>
             <source>Rounding power</source>
