@@ -396,6 +396,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
         self.assertIn('clickAccessibleControl(automation, target)', instrumentation)
+        self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
         self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.05f)', instrumentation)
         self.assertNotIn("swipeHomePage(", instrumentation)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)

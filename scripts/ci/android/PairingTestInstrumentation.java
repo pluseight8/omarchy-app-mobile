@@ -1856,7 +1856,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + " using the visible page indicator.");
         }
         String expected = "Home page " + (page + 1) + " of 2";
-        if (!awaitAccessibilityText(automation, expected, 10_000L, context)) {
+        if (!awaitAccessibilityText(automation, expected, 10_000L)) {
             throw new IllegalStateException("Home did not switch to page " + (page + 1) + ".");
         }
         scrollHomeToTop(automation, context);
