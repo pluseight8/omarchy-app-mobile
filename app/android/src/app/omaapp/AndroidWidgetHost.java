@@ -283,7 +283,13 @@ public final class AndroidWidgetHost {
             pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
             pendingRecordId = "";
             pendingPage = 0;
-            host.deleteAppWidgetId(widgetId);
+            try {
+                host.deleteAppWidgetId(widgetId);
+            } catch (RuntimeException error) {
+                // Startup recovery releases IDs that could not be tracked durably.
+                Log.e(TAG, "Could not release an Android widget ID after its pending state failed to persist.",
+                        error);
+            }
             return false;
         }
         Intent pick = new Intent(AppWidgetManager.ACTION_APPWIDGET_PICK);

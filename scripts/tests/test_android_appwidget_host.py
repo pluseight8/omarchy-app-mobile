@@ -120,6 +120,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("resultCode == Activity.RESULT_OK && widgetId != AppWidgetManager.INVALID_APPWIDGET_ID", host)
         self.assertIn("deletePendingWidget(activity)", host)
         self.assertIn("host.deleteAppWidgetId(widgetId)", host)
+        picker_start = host.index("private static boolean requestWidgetPickerForRecord")
+        picker_end = host.index("static boolean onActivityResult", picker_start)
+        picker = host[picker_start:picker_end]
+        self.assertIn("if (!pendingSaved)", picker)
+        self.assertIn("after its pending state failed to persist", picker)
         self.assertIn("PENDING_ID_KEY", host)
         self.assertIn("MAX_WIDGETS = 8", host)
 
@@ -464,7 +469,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('x: Number(modelData.xDp) || 0', qml)
         self.assertIn('y: Number(modelData.yDp) || 0', qml)
         self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.92f)', instrumentation)
-        self.assertIn('" + x + " " + Math.round(height * toRatio)', instrumentation)
+        self.assertIn("runInputSwipe(automation, x, Math.round(height * fromRatio),", instrumentation)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
         instrumentation = (
@@ -486,10 +491,15 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         resize_drag_end = instrumentation.index("private static boolean awaitWidgetDimensions",
                                                 resize_drag_start)
         resize_drag = instrumentation[resize_drag_start:resize_drag_end]
-        self.assertIn('String command = "input swipe " + startX', resize_drag)
+        self.assertIn("runInputSwipe(getUiAutomation(), startX, startY, endX, endY)", resize_drag)
         self.assertNotIn("MotionEvent.ACTION_MOVE", resize_drag)
         self.assertIn("awaitWidgetDimensions(context, expectedProvider, handleResizedWidth",
                       instrumentation)
+        swipe_start = instrumentation.index("private static void runInputSwipe")
+        swipe_end = instrumentation.index("private static void transferFiles", swipe_start)
+        input_swipe = instrumentation[swipe_start:swipe_end]
+        self.assertIn("ParcelFileDescriptor.AutoCloseInputStream", input_swipe)
+        self.assertIn("while (output.read(buffer) != -1)", input_swipe)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
         setup_start = instrumentation.index("private void ensureSecondHomePage")
@@ -502,7 +512,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
         self.assertIn("swipeHomePage(automation, context, page == 1)", instrumentation)
-        self.assertIn('String command = "input swipe " + fromX', instrumentation)
+        self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
         self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
         self.assertIn(
             'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',

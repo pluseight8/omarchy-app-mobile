@@ -23,6 +23,7 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.os.PersistableBundle;
 import android.util.Base64;
@@ -1756,8 +1757,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         reportStage("android_widget_host_qml_controls_passed");
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 10_000L, context);
-        int handleResizedWidth = Math.min(1200, resizedWidth + 24);
-        int handleResizedHeight = Math.min(1200, resizedHeight + 24);
+        JSONObject widgetBeforeHandleResize = requireWidgetRecord(context, expectedProvider);
+        if (widgetBeforeHandleResize.optInt("widthDp", -1) != resizedWidth
+                || widgetBeforeHandleResize.optInt("heightDp", -1) != resizedHeight) {
+            throw new IllegalStateException("The widget size changed before the native resize test: "
+                    + widgetBeforeHandleResize);
+        }
+        Method snapWidgetSize = AndroidWidgetHost.class.getDeclaredMethod("snapWidgetSize", int.class);
+        snapWidgetSize.setAccessible(true);
+        int handleResizedWidth = Math.max(widgetBeforeHandleResize.getInt("minWidthDp"),
+                (Integer) snapWidgetSize.invoke(null, Math.min(1200, resizedWidth + 24)));
+        int handleResizedHeight = Math.max(widgetBeforeHandleResize.getInt("minHeightDp"),
+                (Integer) snapWidgetSize.invoke(null, Math.min(1200, resizedHeight + 24)));
         if (!dragResizeHandle(context, widgetId, 24, 24)) {
             throw new IllegalStateException("The native Android resize handle was not available.");
         }
@@ -1883,9 +1894,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int y = Math.max(100, Math.min(height - 100, Math.round(height * 0.5f)));
         int fromX = forward ? right : left;
         int toX = forward ? left : right;
-        String command = "input swipe " + fromX + " " + y + " " + toX + " " + y + " 250";
         try {
-            automation.executeShellCommand(command).close();
+            runInputSwipe(automation, fromX, y, toX, y);
         } catch (Exception error) {
             throw new IllegalStateException("Could not inject the Home page gesture.", error);
         }
@@ -2215,10 +2225,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int startY = bounds[1] + bounds[3] / 2;
         int endX = Math.round(startX + deltaWidthDp * density);
         int endY = Math.round(startY + deltaHeightDp * density);
-        String command = "input swipe " + startX + " " + startY + " " + endX + " " + endY
-                + " 250";
         try {
-            getUiAutomation().executeShellCommand(command).close();
+            runInputSwipe(getUiAutomation(), startX, startY, endX, endY);
             return true;
         } catch (Exception error) {
             throw new IllegalStateException("Could not inject the Android widget resize gesture.",
@@ -2504,12 +2512,24 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int width = context.getResources().getDisplayMetrics().widthPixels;
         int height = context.getResources().getDisplayMetrics().heightPixels;
         int x = Math.max(1, Math.min(width - 2, Math.round(width * xRatio)));
-        String command = "input swipe " + x + " " + Math.round(height * fromRatio)
-                + " " + x + " " + Math.round(height * toRatio) + " 250";
         try {
-            automation.executeShellCommand(command).close();
+            runInputSwipe(automation, x, Math.round(height * fromRatio),
+                    x, Math.round(height * toRatio));
         } catch (Exception error) {
             Log.w(TAG, "Could not scroll the Android widget accessibility surface.", error);
+        }
+    }
+
+    private static void runInputSwipe(UiAutomation automation, int startX, int startY,
+                                      int endX, int endY) throws IOException {
+        String command = "input swipe " + startX + " " + startY + " " + endX + " " + endY
+                + " 250";
+        try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(
+                automation.executeShellCommand(command))) {
+            byte[] buffer = new byte[128];
+            while (output.read(buffer) != -1) {
+                // Wait for Android's input command to finish before injecting another gesture.
+            }
         }
     }
 
