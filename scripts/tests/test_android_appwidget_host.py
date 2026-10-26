@@ -61,6 +61,35 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         import_end = owl.index("bool OwlModel::isCustomId", import_start)
         self.assertIn("if (!saveStore(installed, custom))", owl[import_start:import_end])
 
+    def test_backup_recovery_marshals_android_view_mutations_to_the_main_thread(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        clear_start = host.index("private static void clearWidgetViewsForBackupRestore()")
+        clear_end = host.index("private static boolean hasWidgetBackupRestoreJournal", clear_start)
+        clear_views = host[clear_start:clear_end]
+        self.assertIn("Looper.myLooper() != Looper.getMainLooper()", clear_views)
+        self.assertIn("activity.runOnUiThread", clear_views)
+        self.assertIn("activityRef.get() == activity", clear_views)
+
+        restore_start = host.index("private static void restoreWidgets(Context context)")
+        restore_end = host.index("private static boolean hostOwnsId", restore_start)
+        restore_views = host[restore_start:restore_end]
+        self.assertIn("Looper.myLooper() != Looper.getMainLooper()", restore_views)
+        self.assertIn("activity.runOnUiThread", restore_views)
+        self.assertIn("activityRef.get() == activity", restore_views)
+
+        self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
+        self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context)',
+                      instrumentation)
+        self.assertIn("CalledFromWrongThreadException", smoke)
+
     def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"

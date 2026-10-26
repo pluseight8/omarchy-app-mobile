@@ -12,6 +12,7 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -808,6 +809,18 @@ public final class AndroidWidgetHost {
     }
 
     private static void clearWidgetViewsForBackupRestore() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            OmaAppActivity activity = activityRef.get();
+            if (activity == null || activity.isFinishing()) {
+                return;
+            }
+            activity.runOnUiThread(() -> {
+                if (activityRef.get() == activity && !activity.isFinishing()) {
+                    clearWidgetViewsForBackupRestore();
+                }
+            });
+            return;
+        }
         for (FrameLayout clip : new ArrayList<>(clips.values())) {
             if (clip.getParent() instanceof ViewGroup) {
                 ((ViewGroup) clip.getParent()).removeView(clip);
@@ -1145,6 +1158,18 @@ public final class AndroidWidgetHost {
     }
 
     private static void restoreWidgets(Context context) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            OmaAppActivity activity = activityRef.get();
+            if (activity == null || activity.isFinishing()) {
+                return;
+            }
+            activity.runOnUiThread(() -> {
+                if (activityRef.get() == activity && !activity.isFinishing()) {
+                    restoreWidgets(context);
+                }
+            });
+            return;
+        }
         if (host == null || overlay == null || overlay.getParent() == null) {
             return;
         }

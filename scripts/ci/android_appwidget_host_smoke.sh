@@ -103,7 +103,7 @@ test -s "$artifacts/widget-home-layout.png"
 test -s "$artifacts/widget-rebind-placeholder.png"
 stop_logcat_capture
 test -s "$artifacts/appwidget-host-logcat.txt"
-if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|ANR in app\.omaapp|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
+if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|CalledFromWrongThreadException|ANR in app\.omaapp|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
   "$artifacts/appwidget-host-logcat.txt"; then
   printf 'Android widget host smoke found a fatal app or QML error; see appwidget-host-logcat.txt.\n' >&2
   exit 1
