@@ -238,6 +238,10 @@ jobs:
             } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true
             timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
               > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true
+            timeout 10s adb shell screencap -p /sdcard/omaapp-ci-failure-screen.png \
+              >/dev/null 2>&1 || true
+            timeout 10s adb pull /sdcard/omaapp-ci-failure-screen.png \
+              "$smoke_artifacts/failure-screen.png" >/dev/null 2>&1 || true
             return "$exit_status"
           }
           trap capture_smoke_failure ERR

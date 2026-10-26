@@ -1889,23 +1889,136 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
         }
         String expected = "Current Home page " + (page + 1) + " of 2";
-        if (!awaitAccessibilityText(automation, expected, 250L)) {
-            String navigationControl = page == 1
-                    ? "Next Home page 1" : "Previous Home page 2";
+        String navigationControl = page == 1
+                ? "Next Home page 1" : "Previous Home page 2";
+        String pageDotControl = "Go to home page " + (page + 1);
+        if (!awaitHomePageSelectionTarget(automation, expected, navigationControl,
+                pageDotControl, 10_000L)) {
+            throw new IllegalStateException("Home did not publish a visible, ready accessibility node "
+                    + "for page " + (page + 1) + " after the Android widget activity returned.\n"
+                    + accessibilityTree(automation));
+        }
+        if (!hasVisibleAccessibleText(automation, expected)) {
             boolean clicked = clickAccessibleControl(automation, navigationControl);
             if (!clicked) {
-                clicked = clickAccessibleControl(automation, "Go to home page " + (page + 1));
+                clicked = clickAccessibleControl(automation, pageDotControl);
             }
             if (!clicked) {
-                throw new IllegalStateException("Home did not expose an accessible control to switch to page "
-                        + (page + 1) + ".\n" + accessibilityTree(automation));
+                throw new IllegalStateException("Home exposed page navigation but could not activate "
+                        + "the control for page " + (page + 1) + ".\n" + accessibilityTree(automation));
             }
-            if (!awaitAccessibilityText(automation, expected, 10_000L)) {
+            if (!awaitVisibleAccessibleText(automation, expected, 10_000L)) {
                 throw new IllegalStateException("Home did not switch to page " + (page + 1)
                         + " after activating its accessible page control.\n" + accessibilityTree(automation));
             }
         }
         scrollHomeToTop(automation, context);
+    }
+
+    private static boolean awaitHomePageSelectionTarget(UiAutomation automation,
+            String currentPage, String navigationControl, String pageDotControl,
+            long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        do {
+            if (hasVisibleAccessibleText(automation, currentPage)
+                    || hasVisibleClickableControl(automation, navigationControl)
+                    || hasVisibleClickableControl(automation, pageDotControl)) {
+                return true;
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                return false;
+            }
+            SystemClock.sleep(100L);
+        } while (true);
+    }
+
+    private static boolean awaitVisibleAccessibleText(UiAutomation automation, String text,
+            long timeoutMillis) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMillis;
+        do {
+            if (hasVisibleAccessibleText(automation, text)) {
+                return true;
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                return false;
+            }
+            SystemClock.sleep(100L);
+        } while (true);
+    }
+
+    private static boolean hasVisibleAccessibleText(UiAutomation automation, String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && nodeText.toString().contains(expected))
+                        || (nodeDescription != null
+                                && nodeDescription.toString().contains(expected));
+                if (matches && node.isVisibleToUser()) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        found = true;
+                        break;
+                    }
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
+    }
+
+    private static boolean hasVisibleClickableControl(UiAutomation automation, String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = accessibilityRoots(automation);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && expected.contentEquals(nodeText))
+                        || (nodeDescription != null && expected.contentEquals(nodeDescription));
+                if (matches && node.isVisibleToUser() && node.isEnabled() && node.isClickable()) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        found = true;
+                        break;
+                    }
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
     }
 
     private static void swipeHomePage(UiAutomation automation, Context context,

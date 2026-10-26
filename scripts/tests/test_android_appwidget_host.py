@@ -135,6 +135,20 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertNotIn("swipeHomePage(", selection)
         self.assertIn('"Next Home page 1" : "Previous Home page 2"', selection)
         self.assertIn('"Go to home page " + (page + 1)', selection)
+        self.assertIn("awaitHomePageSelectionTarget(automation, expected", selection)
+        self.assertIn("hasVisibleAccessibleText(automation, expected)", selection)
+        ready_start = instrumentation.index("private static boolean awaitHomePageSelectionTarget")
+        ready_end = instrumentation.index("private static void swipeHomePage", ready_start)
+        ready = instrumentation[ready_start:ready_end]
+        self.assertIn("node.isVisibleToUser()", ready)
+        self.assertIn("node.getBoundsInScreen(bounds)", ready)
+        self.assertIn("if (!bounds.isEmpty())", ready)
+        self.assertIn("SystemClock.sleep(100L)", ready)
+
+    def test_android_failure_artifact_captures_actual_device_screen(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("adb shell screencap -p /sdcard/omaapp-ci-failure-screen.png", workflow)
+        self.assertIn('"$smoke_artifacts/failure-screen.png"', workflow)
 
     def test_native_resize_grip_reports_a_reversible_size_change(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
@@ -641,7 +655,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("clickAccessibleControl(automation, navigationControl)", instrumentation)
         self.assertNotIn("swipeHomePage(automation, context, page == 1)", instrumentation)
         self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
-        self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
+        self.assertIn('awaitVisibleAccessibleText(automation, expected, 10_000L)', instrumentation)
         self.assertIn(
             'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',
             second_page_setup,
