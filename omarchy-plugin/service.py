@@ -1881,6 +1881,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             if path == "/v1/files":
                 directory = _transfer_directory()
+                try:
+                    _private_directory(directory)
+                except OSError:
+                    self._reply(503, {"error": "destination_unavailable"})
+                    return
                 files = []
                 try:
                     for candidate in sorted(directory.iterdir(), key=lambda item: item.name.casefold())[:100]:
@@ -1893,14 +1898,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 and metadata.st_size <= MAX_TRANSFER_BYTES:
                             files.append({"name": name, "size": metadata.st_size})
                 except OSError:
-                    pass
+                    self._reply(503, {"error": "destination_unavailable"})
+                    return
                 self._reply(200, {"files": files})
                 return
             name = _safe_transfer_name(unquote(path.removeprefix("/v1/files/")))
             if not name or "/" in path.removeprefix("/v1/files/"):
                 self._reply(404, {"error": "file_unavailable"})
                 return
-            self._send_local_file(_transfer_directory() / name, name)
+            directory = _transfer_directory()
+            try:
+                _private_directory(directory)
+            except OSError:
+                self._reply(503, {"error": "destination_unavailable"})
+                return
+            self._send_local_file(directory / name, name)
             return
         if path == "/v1/wallpaper":
             authenticated = self._authenticated()

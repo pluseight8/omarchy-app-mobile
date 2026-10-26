@@ -812,6 +812,26 @@ class PairingServiceTests(unittest.TestCase):
         self.assertEqual(list(outside.iterdir()), [])
         self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
 
+    def test_file_send_rejects_symlink_source_directory(self):
+        auth = self.enable_device({"files.send": True})
+        downloads = Path(self.temp_dir.name) / "downloads"
+        downloads.mkdir()
+        outside = Path(self.temp_dir.name) / "outside"
+        outside.mkdir(mode=0o755)
+        (outside / "private.txt").write_text("must stay local", encoding="utf-8")
+        (downloads / "OmaApp").symlink_to(outside, target_is_directory=True)
+
+        with patch.dict(os.environ, {"XDG_DOWNLOAD_DIR": str(downloads)}):
+            status, listing = self.get("/v1/files", auth)
+            file_status, body, _content_type = self.get_bytes("/v1/files/private.txt", auth)
+
+        self.assertEqual(status, 503)
+        self.assertEqual(listing, {"error": "destination_unavailable"})
+        self.assertEqual(file_status, 503)
+        self.assertEqual(json.loads(body), {"error": "destination_unavailable"})
+        self.assertEqual((outside / "private.txt").read_text(encoding="utf-8"), "must stay local")
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
+
     def test_user_commands_run_only_host_configured_argument_vectors(self):
         auth = self.enable_device({"commands": True})
         config_root = Path(self.temp_dir.name) / "config"
