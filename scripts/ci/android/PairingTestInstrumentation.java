@@ -1691,6 +1691,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         JSONObject originalWidget = requireWidgetRecord(context, expectedProvider);
         verifyWidgetSchemaTwoMigration(context, originalWidget);
         originalWidget = requireWidgetRecord(context, expectedProvider);
+        verifyCorruptWidgetRecordPreservesIds(context, originalWidget);
+        originalWidget = requireWidgetRecord(context, expectedProvider);
         String widgetRecordId = originalWidget.getString("recordId");
         int widgetId = originalWidget.getInt("id");
         int resizedWidth = Math.max(originalWidget.getInt("minWidthDp"), 320);
@@ -1960,6 +1962,97 @@ public final class PairingTestInstrumentation extends Instrumentation {
         reportStage("android_widget_host_schema_migration_passed");
     }
 
+    private void verifyCorruptWidgetRecordPreservesIds(Context context, JSONObject validWidget)
+            throws Exception {
+        AtomicReference<Exception> failure = new AtomicReference<>();
+        runOnMainSync(() -> {
+            android.content.SharedPreferences preferences = context.getSharedPreferences(
+                    "android_widget_host", Context.MODE_PRIVATE);
+            boolean hadPrevious = preferences.contains("widgets");
+            String previous = preferences.getString("widgets", "");
+            AppWidgetHost host = null;
+            int orphanCandidate = AppWidgetManager.INVALID_APPWIDGET_ID;
+            Method restoreWidgets = null;
+            try {
+                Field hostField = AndroidWidgetHost.class.getDeclaredField("host");
+                hostField.setAccessible(true);
+                host = (AppWidgetHost) hostField.get(null);
+                if (host == null) {
+                    throw new IllegalStateException("Android widget host was not initialized.");
+                }
+                orphanCandidate = host.allocateAppWidgetId();
+                JSONObject stored = new JSONObject(previous);
+                JSONArray entries = stored.getJSONArray("widgets");
+                entries.put(new JSONObject()
+                        .put("recordId", "ci-corrupt-record")
+                        .put("id", orphanCandidate)
+                        .put("provider", "not-a-component")
+                        .put("label", "Corrupt CI record")
+                        .put("page", 0)
+                        .put("order", 7)
+                        .put("xDp", 0)
+                        .put("yDp", 0)
+                        .put("minWidthDp", 160)
+                        .put("minHeightDp", 120)
+                        .put("widthDp", 400)
+                        .put("heightDp", 240)
+                        .put("state", "ready"));
+                String corruptState = stored.toString();
+                if (!preferences.edit().putString("widgets", corruptState).commit()) {
+                    throw new IllegalStateException("Could not seed one malformed widget record.");
+                }
+                restoreWidgets = AndroidWidgetHost.class.getDeclaredMethod(
+                        "restoreWidgets", Context.class);
+                restoreWidgets.setAccessible(true);
+                restoreWidgets.invoke(null, context);
+                Method hostOwnsId = AndroidWidgetHost.class.getDeclaredMethod(
+                        "hostOwnsId", int.class);
+                hostOwnsId.setAccessible(true);
+                if (!(Boolean) hostOwnsId.invoke(null, orphanCandidate)
+                        || !(Boolean) hostOwnsId.invoke(null, validWidget.getInt("id"))) {
+                    throw new IllegalStateException(
+                            "A partially corrupt widget store caused Android host IDs to be released.");
+                }
+                if (!"[]".equals(AndroidWidgetHost.listWidgets(context))
+                        || !corruptState.equals(preferences.getString("widgets", ""))) {
+                    throw new IllegalStateException(
+                            "A partially corrupt widget store was exposed as partial state or rewritten.");
+                }
+            } catch (Exception error) {
+                failure.set(error);
+            } finally {
+                android.content.SharedPreferences.Editor editor = preferences.edit();
+                if (hadPrevious) {
+                    editor.putString("widgets", previous);
+                } else {
+                    editor.remove("widgets");
+                }
+                if (!editor.commit()) {
+                    failure.compareAndSet(null,
+                            new IllegalStateException("Could not restore widget preferences after corruption test."));
+                }
+                try {
+                    if (orphanCandidate > 0 && host != null) {
+                        host.deleteAppWidgetId(orphanCandidate);
+                    }
+                } catch (Exception cleanupError) {
+                    failure.compareAndSet(null, cleanupError);
+                }
+                try {
+                    if (restoreWidgets != null) {
+                        restoreWidgets.invoke(null, context);
+                    }
+                } catch (Exception cleanupError) {
+                    failure.compareAndSet(null, cleanupError);
+                }
+            }
+        });
+        if (failure.get() != null) {
+            throw new IllegalStateException("Corrupt widget state check failed.", failure.get());
+        }
+        reportStage("android_widget_host_corrupt_records_preserve_ids_passed");
+    }
+
     private void runAndroidWidgetHostRestore(Context context) throws Exception {
         reportStage("android_widget_host_restore_started");
         ComponentName expectedProvider = new ComponentName(
@@ -1996,9 +2089,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + "QtActivity in process " + android.os.Process.myPid() + ".");
         }
         reportStage("android_widget_host_restore_activity_ready");
-        if (!hasWidgetRecord(context, expectedProvider)) {
-            throw new IllegalStateException("The Android widget ID/provider record did not survive process death.");
+        if (!awaitWidgetBinding(context, expectedProvider, 15_000L)) {
+            throw new IllegalStateException("The Android widget ID/provider record did not recover "
+                    + "after process death. widgets=" + AndroidWidgetHost.listWidgets(context)
+                    + "; " + widgetBindingDiagnostics(context, expectedProvider));
         }
+        reportStage("android_widget_host_backup_recovery_passed");
         String exportedBackup = context.getSharedPreferences("ci_appwidget_backup", Context.MODE_PRIVATE)
                 .getString("json", "");
         JSONArray backupWidgets = new JSONObject(exportedBackup).optJSONArray("widgets");
@@ -2031,6 +2127,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The restored widget provider disappeared after its click action.");
         }
+    }
+
+    private static boolean awaitWidgetBinding(Context context, ComponentName provider,
+                                              long timeoutMillis) {
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
+        do {
+            if (hasWidgetRecord(context, provider)) {
+                return true;
+            }
+            SystemClock.sleep(100L);
+        } while (SystemClock.elapsedRealtime() < deadline);
+        return false;
     }
 
     private void runAndroidWidgetHostRemove(Context context) throws Exception {

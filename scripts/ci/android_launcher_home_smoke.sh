@@ -171,7 +171,8 @@ for attempt in 1 2 3; do
   read -r pin_x pin_y <<< "$pin_target"
   printf 'Long-pressing launcher app at %s,%s (attempt %s/3)\n' \
     "$pin_x" "$pin_y" "$attempt"
-  adb shell input swipe "$pin_x" "$pin_y" "$pin_x" "$pin_y" 1200
+  # Keep the held pointer inside the same icon target with a minimal, nonzero path.
+  adb shell input swipe "$pin_x" "$pin_y" "$((pin_x + 1))" "$((pin_y + 1))" 1200
   sleep 2
   adb exec-out screencap -p > "$smoke_artifacts/launcher-after-pin.png"
   adb logcat -d -v threadtime --pid="$app_pid" -t 5000 > "$smoke_artifacts/pinned-logcat.txt"
@@ -181,6 +182,12 @@ for attempt in 1 2 3; do
   if [[ "${pinned_count:-0}" -gt 0 ]]; then
     pin_succeeded=1
     break
+  fi
+  if (( attempt < 3 )); then
+    # If the long-press was delivered as a click, it opened the app. Return to
+    # OmaApp before retrying so every advertised attempt reaches the launcher.
+    adb shell input keyevent 4
+    sleep 1
   fi
 done
 if (( pin_succeeded == 0 )); then

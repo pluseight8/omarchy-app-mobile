@@ -80,11 +80,15 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("android_widget_host_backup_transaction_rollback_passed", instrumentation)
         self.assertIn("android_widget_host_backup_transaction_commit_passed", instrumentation)
         self.assertIn("android_widget_host_backup_recovery_prepared", instrumentation)
+        self.assertIn('awaitWidgetBinding(context, expectedProvider, 15_000L)', instrumentation)
+        self.assertIn('private static boolean awaitWidgetBinding', instrumentation)
+        self.assertIn("android_widget_host_backup_recovery_passed", instrumentation)
         self.assertIn("recoverAndroidWidgetBackupRestore()", (
             ROOT / "app/qml/Main.qml"
         ).read_text(encoding="utf-8"))
         self.assertIn("android_widget_host_backup_transaction_rollback_passed", smoke)
         self.assertIn("android_widget_host_backup_transaction_commit_passed", smoke)
+        self.assertIn("android_widget_host_backup_recovery_passed", smoke)
 
     def test_native_resize_grip_reports_a_reversible_size_change(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
@@ -200,9 +204,35 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("Saved Android widget state is unreadable; leaving it untouched.", host)
+        self.assertIn(
+            "Saved Android widget state contains an invalid entry; leaving it untouched.", host
+        )
         self.assertIn("if (widgets == null) {\n            // Do not interpret corrupt preferences", host)
         self.assertIn('(recordId.isEmpty() && widgets.size() >= MAX_WIDGETS)', host)
         self.assertIn("savedWidgets == null || findWidget(savedWidgets, widgetId) == null", host)
+
+    def test_partial_widget_corruption_keeps_allocated_ids_and_preferences(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            'if (item == null) {\n                Log.e(TAG, "Saved Android widget state contains a non-object entry',
+            host,
+        )
+        self.assertIn('Method restoreWidgets = null;', instrumentation)
+        self.assertIn(
+            'verifyCorruptWidgetRecordPreservesIds(context, originalWidget)', instrumentation
+        )
+        self.assertIn("hostOwnsId.invoke(null, orphanCandidate)", instrumentation)
+        self.assertIn('boolean hadPrevious = preferences.contains("widgets")', instrumentation)
+        self.assertIn('corruptState.equals(preferences.getString("widgets", ""))', instrumentation)
+        self.assertIn("android_widget_host_corrupt_records_preserve_ids_passed", smoke)
 
     def test_qt_activity_overlay_maps_and_clips_live_qml_slot_geometry(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(

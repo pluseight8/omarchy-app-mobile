@@ -1400,7 +1400,8 @@ public final class AndroidWidgetHost {
         for (int index = 0; index < array.length() && result.size() < MAX_WIDGETS; ++index) {
             JSONObject item = array.optJSONObject(index);
             if (item == null) {
-                continue;
+                Log.e(TAG, "Saved Android widget state contains a non-object entry; leaving it untouched.");
+                return null;
             }
             int id = item.optInt("id", 0);
             String recordId = item.optString("recordId", "");
@@ -1412,14 +1413,17 @@ public final class AndroidWidgetHost {
                     || provider.length() > 512 || ComponentName.unflattenFromString(provider) == null
                     || label.length() > 160 || page < 0 || page >= 5
                     || order < 0 || order >= MAX_WIDGETS) {
-                continue;
+                Log.e(TAG, "Saved Android widget state contains an invalid entry; leaving it untouched.");
+                return null;
             }
             if (recordId.isEmpty()) {
                 // Keep identity stable if SharedPreferences is temporarily read-only.
                 recordId = id > 0 ? "legacy-" + id : UUID.randomUUID().toString();
             }
             if (recordId.length() > 64 || !recordIds.add(recordId)) {
-                continue;
+                Log.e(TAG,
+                        "Saved Android widget state contains a duplicate or invalid record ID; leaving it untouched.");
+                return null;
             }
             int minWidth = boundedProviderSize(item.optInt("minWidthDp", 160));
             int minHeight = boundedProviderSize(item.optInt("minHeightDp", 120));

@@ -62,6 +62,19 @@ class AndroidLauncherHomeSmokeTests(unittest.TestCase):
         self.assertLess(icon_assertion, home_selection)
         self.assertIn("sleep 1", restart[bounded_wait:icon_assertion])
 
+    def test_long_press_retries_after_returning_from_an_accidental_app_launch(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        pin_start = smoke.index("pin_succeeded=0")
+        pin_end = smoke.index("if (( pin_succeeded == 0 ))", pin_start)
+        pin = smoke[pin_start:pin_end]
+
+        self.assertIn('"$((pin_x + 1))" "$((pin_y + 1))" 1200', pin)
+        self.assertIn("adb shell input keyevent 4", pin)
+        self.assertIn("if (( attempt < 3 )); then", pin)
+        self.assertIn("for attempt in 1 2 3", pin)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -48,6 +48,8 @@ grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_recovery_prepa
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_schema_migration_passed' \
   "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_corrupt_records_preserve_ids_passed' \
+  "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_qml_controls_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_resize_handle_passed' \
@@ -79,6 +81,8 @@ if [[ -n "$pid_after_force_stop" ]]; then
 fi
 printf '%s\n' "$pid_after_force_stop" > "$artifacts/pid-after-force-stop.txt"
 run_stage restore android_widget_host_process_restore_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_recovery_passed' \
+  "$artifacts/restore-instrumentation.txt"
 pid_after_start="$(sed -n 's/^INSTRUMENTATION_RESULT: processId=//p' \
   "$artifacts/restore-instrumentation.txt" | tail -n 1)"
 if [[ -z "$pid_after_start" || "$pid_after_start" == "$pid_before" ]]; then
