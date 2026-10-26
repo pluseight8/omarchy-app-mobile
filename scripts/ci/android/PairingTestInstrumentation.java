@@ -1873,7 +1873,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (!awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)) {
             throw new IllegalStateException("Home did not return to its first selected page.");
         }
-        selectHomePage(automation, context, 1);
+        // Exercise the real horizontal Home gesture before there is an Android
+        // AppWidgetHostView on top of the Qt scene. A live RemoteViews control
+        // owns touches that begin inside the widget, so post-picker navigation
+        // uses Home's accessible page control instead of swiping across it.
+        swipeHomePage(automation, context, true);
+        if (!awaitAccessibilityText(automation, "Current Home page 2 of 2", 10_000L)) {
+            throw new IllegalStateException("Home did not switch to page 2 after a horizontal gesture on the empty page.");
+        }
         reportStage("android_widget_host_second_home_page_ready");
     }
 
@@ -1883,10 +1890,19 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         String expected = "Current Home page " + (page + 1) + " of 2";
         if (!awaitAccessibilityText(automation, expected, 250L)) {
-            swipeHomePage(automation, context, page == 1);
+            String navigationControl = page == 1
+                    ? "Next Home page 1" : "Previous Home page 2";
+            boolean clicked = clickAccessibleControl(automation, navigationControl);
+            if (!clicked) {
+                clicked = clickAccessibleControl(automation, "Go to home page " + (page + 1));
+            }
+            if (!clicked) {
+                throw new IllegalStateException("Home did not expose an accessible control to switch to page "
+                        + (page + 1) + ".\n" + accessibilityTree(automation));
+            }
             if (!awaitAccessibilityText(automation, expected, 10_000L)) {
                 throw new IllegalStateException("Home did not switch to page " + (page + 1)
-                        + " after the horizontal Home gesture.\n" + accessibilityTree(automation));
+                        + " after activating its accessible page control.\n" + accessibilityTree(automation));
             }
         }
         scrollHomeToTop(automation, context);

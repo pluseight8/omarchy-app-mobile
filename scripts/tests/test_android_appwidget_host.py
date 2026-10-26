@@ -90,6 +90,23 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("android_widget_host_backup_transaction_commit_passed", smoke)
         self.assertIn("android_widget_host_backup_recovery_passed", smoke)
 
+    def test_widget_page_navigation_swipes_empty_home_and_uses_accessible_controls_with_widget(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        empty_page_start = instrumentation.index("private void ensureSecondHomePage")
+        empty_page_end = instrumentation.index("private void selectHomePage", empty_page_start)
+        empty_page = instrumentation[empty_page_start:empty_page_end]
+        self.assertIn("swipeHomePage(automation, context, true)", empty_page)
+        self.assertIn('"Current Home page 2 of 2"', empty_page)
+
+        selection_start = instrumentation.index("private void selectHomePage")
+        selection_end = instrumentation.index("private static void swipeHomePage", selection_start)
+        selection = instrumentation[selection_start:selection_end]
+        self.assertNotIn("swipeHomePage(", selection)
+        self.assertIn('"Next Home page 1" : "Previous Home page 2"', selection)
+        self.assertIn('"Go to home page " + (page + 1)', selection)
+
     def test_native_resize_grip_reports_a_reversible_size_change(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
             encoding="utf-8"
@@ -590,8 +607,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
         self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
-        self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
-        self.assertIn("swipeHomePage(automation, context, page == 1)", instrumentation)
+        self.assertIn("swipeHomePage(automation, context, true)", second_page_setup)
+        self.assertIn('"Current Home page 2 of 2"', second_page_setup)
+        self.assertIn("clickAccessibleControl(automation, navigationControl)", instrumentation)
+        self.assertNotIn("swipeHomePage(automation, context, page == 1)", instrumentation)
         self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
         self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
         self.assertIn(
