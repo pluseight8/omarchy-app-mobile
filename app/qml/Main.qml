@@ -1693,8 +1693,20 @@ ApplicationWindow {
                                 Repeater {
                                     model: launcher.androidWidgets
                                     delegate: Item {
+                                        id: androidWidgetDelegate
                                         required property var modelData
                                         required property int index
+                                        property int nativeWidgetId: modelData && modelData.id !== undefined
+                                            ? modelData.id : 0
+                                        property int lastValidNativeWidgetId: 0
+                                        Component.onCompleted: {
+                                            if (nativeWidgetId > 0)
+                                                lastValidNativeWidgetId = nativeWidgetId
+                                        }
+                                        onNativeWidgetIdChanged: {
+                                            if (nativeWidgetId > 0)
+                                                lastValidNativeWidgetId = nativeWidgetId
+                                        }
                                         readonly property int pageWidgetCount:
                                             launcher.androidWidgets.filter(function(widget) {
                                                 return widget.page === modelData.page
@@ -1879,7 +1891,8 @@ ApplicationWindow {
                                                 Accessible.name: modelData.name
 
                                                 function syncNativeWidgetFrame() {
-                                                    if (!launcher.platformSupported)
+                                                    const widgetId = androidWidgetDelegate.nativeWidgetId
+                                                    if (!launcher.platformSupported || widgetId <= 0)
                                                         return
                                                     const widgetPoint = mapToItem(null, 0, 0)
                                                     const scrollPoint = homePageFlickable.mapToItem(null, 0, 0)
@@ -1893,22 +1906,28 @@ ApplicationWindow {
                                                     const frameVisible = visible && window.selectedPage === 0
                                                             && window.selectedHomePage === homePagePage.pageIndex
                                                             && !window.androidWidgetModalVisible
-                                                    launcher.setAndroidWidgetFrame(modelData.id,
+                                                    launcher.setAndroidWidgetFrame(widgetId,
                                                         widgetPoint.x, widgetPoint.y, width, height,
                                                         clipX, clipY, Math.max(0, clipRight - clipX),
                                                         Math.max(0, clipBottom - clipY), frameVisible)
                                                 }
 
-                                                Component.onCompleted: Qt.callLater(function() {
-                                                    nativeWidgetSlot.syncNativeWidgetFrame()
-                                                })
+                                                Timer {
+                                                    interval: 0
+                                                    Component.onCompleted: start()
+                                                    onTriggered: nativeWidgetSlot.syncNativeWidgetFrame()
+                                                }
                                                 onXChanged: syncNativeWidgetFrame()
                                                 onYChanged: syncNativeWidgetFrame()
                                                 onWidthChanged: syncNativeWidgetFrame()
                                                 onHeightChanged: syncNativeWidgetFrame()
                                                 onVisibleChanged: syncNativeWidgetFrame()
-                                                Component.onDestruction: launcher.setAndroidWidgetFrame(
-                                                    modelData.id, 0, 0, 0, 0, 0, 0, 0, 0, false)
+                                                Component.onDestruction: {
+                                                    const widgetId = androidWidgetDelegate.lastValidNativeWidgetId
+                                                    if (widgetId > 0)
+                                                        launcher.setAndroidWidgetFrame(
+                                                            widgetId, 0, 0, 0, 0, 0, 0, 0, 0, false)
+                                                }
 
                                                 Connections {
                                                     target: homePageFlickable

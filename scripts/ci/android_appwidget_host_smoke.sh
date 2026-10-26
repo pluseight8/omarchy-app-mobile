@@ -6,6 +6,7 @@ artifacts="${2:?usage: android_appwidget_host_smoke.sh FIXTURE_APK ARTIFACT_DIR}
 package="app.omaapp.widgetfixture"
 instrumentation="app.omaapp/app.omaapp.PairingTestInstrumentation"
 mkdir -p "$artifacts"
+adb logcat -c
 
 if ! adb shell pm list packages "$package" | tr -d '\r' | grep -Fq "package:$package"; then
   adb install "$fixture_apk"
@@ -85,4 +86,10 @@ adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-rebind-placehold
   "$artifacts/widget-rebind-placeholder.png"
 test -s "$artifacts/widget-home-layout.png"
 test -s "$artifacts/widget-rebind-placeholder.png"
+adb logcat -b all -d -v threadtime -t 12000 > "$artifacts/appwidget-host-logcat.txt"
+if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|ANR in app\.omaapp|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
+  "$artifacts/appwidget-host-logcat.txt"; then
+  printf 'Android widget host smoke found a fatal app or QML error; see appwidget-host-logcat.txt.\n' >&2
+  exit 1
+fi
 adb uninstall "$package"

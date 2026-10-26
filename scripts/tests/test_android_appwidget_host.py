@@ -7,6 +7,25 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppWidgetHostTests(unittest.TestCase):
+    def test_widget_frame_cleanup_cannot_read_destroyed_model_data(self):
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("id: androidWidgetDelegate", qml)
+        self.assertIn("property int lastValidNativeWidgetId: 0", qml)
+        self.assertIn("const widgetId = androidWidgetDelegate.nativeWidgetId", qml)
+        self.assertIn("if (!launcher.platformSupported || widgetId <= 0)", qml)
+        self.assertIn("Component.onDestruction: {", qml)
+        self.assertIn("androidWidgetDelegate.lastValidNativeWidgetId", qml)
+        self.assertIn("Timer {\n                                                    interval: 0", qml)
+        self.assertNotIn("Qt.callLater(function() {\n                                                    nativeWidgetSlot.syncNativeWidgetFrame()",
+                         qml)
+        self.assertNotIn("launcher.setAndroidWidgetFrame(modelData.id", qml)
+        self.assertIn('adb logcat -c', smoke)
+        self.assertIn('appwidget-host-logcat.txt', smoke)
+        self.assertIn("TypeError|ReferenceError", smoke)
+
     def test_layout_backup_restore_uses_a_recoverable_cross_store_journal(self):
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         model = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
