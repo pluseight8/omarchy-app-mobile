@@ -23,6 +23,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
                          qml)
         self.assertNotIn("launcher.setAndroidWidgetFrame(modelData.id", qml)
         self.assertIn('adb logcat -c', smoke)
+        self.assertIn('adb logcat -b all -v threadtime > "$artifacts/appwidget-host-logcat.txt" &', smoke)
+        self.assertIn("stop_logcat_capture", smoke)
         self.assertIn('appwidget-host-logcat.txt', smoke)
         self.assertIn("TypeError|ReferenceError", smoke)
 
