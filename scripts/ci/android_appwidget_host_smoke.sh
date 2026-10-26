@@ -44,42 +44,36 @@ grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_resize_undo_passed' \
   "$artifacts/setup-instrumentation.txt"
 adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-home-layout.png \
   "$artifacts/widget-home-layout.png"
-# Some Android builds terminate the target Qt process when the instrumentation
-# runner exits. An empty PID here is a valid already-stopped starting state.
-pid_before="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
+pid_before="$(sed -n 's/^INSTRUMENTATION_RESULT: processId=//p' \
+  "$artifacts/setup-instrumentation.txt" | tail -n 1)"
+if [[ -z "$pid_before" ]]; then
+  printf 'The widget setup instrumentation did not report its process ID.\n' >&2
+  exit 1
+fi
 printf '%s\n' "$pid_before" > "$artifacts/pid-before-process-death.txt"
 adb shell am force-stop app.omaapp
-pid_after_force_stop="$pid_before"
-if [[ -n "$pid_before" ]]; then
-  for attempt in {1..40}; do
-    pid_after_force_stop="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
-    if [[ "$pid_after_force_stop" != "$pid_before" ]]; then
-      break
-    fi
-    sleep 0.25
-  done
-  if [[ "$pid_after_force_stop" == "$pid_before" ]]; then
-    printf 'Android did not terminate or restart the OmaApp process after force-stop.\n' >&2
-    exit 1
-  fi
-fi
-printf '%s\n' "$pid_after_force_stop" > "$artifacts/pid-after-force-stop.txt"
-adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity \
-  > "$artifacts/relaunch-after-widget-host.txt"
-pid_after_start=""
+pid_after_force_stop=""
 for attempt in {1..40}; do
-  pid_after_start="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
-  if [[ -n "$pid_after_start" ]]; then
+  pid_after_force_stop="$(adb shell pidof app.omaapp | tr -d '\r' || true)"
+  if [[ -z "$pid_after_force_stop" ]]; then
     break
   fi
   sleep 0.25
 done
+if [[ -n "$pid_after_force_stop" ]]; then
+  printf 'Android kept the OmaApp process alive after force-stop: %s\n' \
+    "$pid_after_force_stop" >&2
+  exit 1
+fi
+printf '%s\n' "$pid_after_force_stop" > "$artifacts/pid-after-force-stop.txt"
+run_stage restore android_widget_host_process_restore_passed
+pid_after_start="$(sed -n 's/^INSTRUMENTATION_RESULT: processId=//p' \
+  "$artifacts/restore-instrumentation.txt" | tail -n 1)"
 if [[ -z "$pid_after_start" || "$pid_after_start" == "$pid_before" ]]; then
-  printf 'OmaApp did not relaunch in a new process after AppWidgetHost force-stop.\n' >&2
+  printf 'OmaApp did not restore in a new process after AppWidgetHost force-stop.\n' >&2
   exit 1
 fi
 printf '%s\n' "$pid_after_start" > "$artifacts/pid-after-relaunch.txt"
-run_stage restore android_widget_host_process_restore_passed
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_geometry_restore_passed' \
   "$artifacts/restore-instrumentation.txt"
 run_stage remove android_widget_host_id_release_passed

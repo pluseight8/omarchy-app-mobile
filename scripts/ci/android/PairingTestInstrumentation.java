@@ -103,6 +103,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ("setup".equals(widgetHostMode)) {
                 runAndroidWidgetHostSetup(context);
                 result.putString("stage", "android_widget_host_picker_bind_touch_passed");
+                result.putInt("processId", android.os.Process.myPid());
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -110,6 +111,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if ("restore".equals(widgetHostMode)) {
                 runAndroidWidgetHostRestore(context);
                 result.putString("stage", "android_widget_host_process_restore_passed");
+                result.putInt("processId", android.os.Process.myPid());
                 sendStatus(2, result);
                 finish(Activity.RESULT_OK, result);
                 return;
@@ -1963,17 +1965,35 @@ public final class PairingTestInstrumentation extends Instrumentation {
         ComponentName expectedProvider = new ComponentName(
                 "app.omaapp.widgetfixture",
                 "app.omaapp.widgetfixture.CiInteractiveWidgetProvider");
+        Intent launch = new Intent(context, OmaAppActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        ActivityMonitor monitor = new ActivityMonitor(
+                OmaAppActivity.class.getName(), null, false);
+        addMonitor(monitor);
+        Activity launchedActivity;
+        try {
+            context.startActivity(launch);
+            launchedActivity = monitor.waitForActivityWithTimeout(15_000L);
+        } finally {
+            removeMonitor(monitor);
+        }
+        if (!(launchedActivity instanceof OmaAppActivity) || launchedActivity.isFinishing()) {
+            throw new IllegalStateException("OmaApp did not launch a cold-started QtActivity "
+                    + "inside the restore instrumentation process (pid="
+                    + android.os.Process.myPid() + ").");
+        }
         Activity activity = null;
         long activityDeadline = SystemClock.elapsedRealtime() + 15_000L;
         while (SystemClock.elapsedRealtime() < activityDeadline) {
             activity = AndroidWidgetHost.currentActivityForInstrumentation();
-            if (activity instanceof OmaAppActivity && !activity.isFinishing()) {
+            if (activity == launchedActivity && !activity.isFinishing()) {
                 break;
             }
             SystemClock.sleep(100L);
         }
-        if (!(activity instanceof OmaAppActivity)) {
-            throw new IllegalStateException("OmaApp did not attach its cold-started QtActivity after process restart.");
+        if (activity != launchedActivity || activity.isFinishing()) {
+            throw new IllegalStateException("AndroidWidgetHost did not attach the cold-started "
+                    + "QtActivity in process " + android.os.Process.myPid() + ".");
         }
         reportStage("android_widget_host_restore_activity_ready");
         if (!hasWidgetRecord(context, expectedProvider)) {
