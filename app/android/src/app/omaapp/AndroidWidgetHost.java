@@ -1086,8 +1086,17 @@ public final class AndroidWidgetHost {
         TextView resizeHandle = resizeHandles.get(view.getAppWidgetId());
         if (resizeHandle != null) {
             int handleSize = Math.round(48f * density);
-            int handleLeft = Math.round(view.getTranslationX()) + width - handleSize;
-            int handleTop = Math.round(view.getTranslationY()) + height - handleSize;
+            int handleMargin = Math.round(8f * density);
+            int viewLeft = Math.round(view.getTranslationX());
+            int viewTop = Math.round(view.getTranslationY());
+            int visibleRight = Math.min(clipWidth, viewLeft + width);
+            int visibleBottom = Math.min(clipHeight, viewTop + height);
+            int visibleLeft = Math.max(0, viewLeft);
+            int visibleTop = Math.max(0, viewTop);
+            boolean handleFits = visible && visibleRight - visibleLeft >= handleSize + handleMargin
+                    && visibleBottom - visibleTop >= handleSize + handleMargin;
+            int handleLeft = visibleRight - handleSize - handleMargin;
+            int handleTop = visibleBottom - handleSize - handleMargin;
             FrameLayout.LayoutParams handleParams =
                     (FrameLayout.LayoutParams) resizeHandle.getLayoutParams();
             if (handleParams == null) {
@@ -1101,7 +1110,7 @@ public final class AndroidWidgetHost {
                 handleParams.topMargin = handleTop;
                 resizeHandle.setLayoutParams(handleParams);
             }
-            resizeHandle.setVisibility(visible ? View.VISIBLE : View.GONE);
+            resizeHandle.setVisibility(handleFits ? View.VISIBLE : View.GONE);
         }
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
             String sizeKey = Math.round(frame.widthDp) + "x" + Math.round(frame.heightDp);

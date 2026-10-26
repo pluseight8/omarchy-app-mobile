@@ -1623,8 +1623,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
         ensureSecondHomePage(automation, context);
         // Keep the picker launch on the page being tested. Android's accessibility
         // bridge can report off-screen QML delegates as visible, so use the page-specific label.
-        if (!clickAccessibleControl(automation, "Add Android widget to Home page 2")) {
-            throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
+        String pickerControl = "Add Android widget to Home page 2";
+        if (!awaitAccessibleControlClick(automation, pickerControl, 10_000L)) {
+            throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home."
+                    + " windows=" + describeInteractiveWindows(automation)
+                    + "; visible accessibility tree: " + accessibilityTree(automation));
         }
         reportStage("android_widget_host_picker_opened");
 
@@ -2214,7 +2217,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
             int[] point = new int[2];
             handle.getLocationOnScreen(point);
-            location.set(new int[]{point[0], point[1], handle.getWidth(), handle.getHeight()});
+            View root = handle.getRootView();
+            int[] rootLocation = new int[2];
+            root.getLocationOnScreen(rootLocation);
+            location.set(new int[]{point[0], point[1], handle.getWidth(), handle.getHeight(),
+                    rootLocation[0], rootLocation[1], root.getWidth(), root.getHeight()});
         });
         int[] bounds = location.get();
         if (bounds == null) {
@@ -2225,6 +2232,20 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int startY = bounds[1] + bounds[3] / 2;
         int endX = Math.round(startX + deltaWidthDp * density);
         int endY = Math.round(startY + deltaHeightDp * density);
+        int rootRight = bounds[4] + bounds[6];
+        int rootBottom = bounds[5] + bounds[7];
+        if (bounds[0] < bounds[4] || bounds[1] < bounds[5]
+                || bounds[0] + bounds[2] > rootRight || bounds[1] + bounds[3] > rootBottom
+                || startX < bounds[4] || startY < bounds[5]
+                || endX < bounds[4] || endY < bounds[5]
+                || startX >= rootRight || endX >= rootRight
+                || startY >= rootBottom || endY >= rootBottom) {
+            throw new IllegalStateException("Android widget resize handle gesture is outside the "
+                    + "visible app window: handle=[" + bounds[0] + "," + bounds[1] + ","
+                    + bounds[2] + "x" + bounds[3] + "], window=[" + bounds[4] + ","
+                    + bounds[5] + "," + bounds[6] + "x" + bounds[7] + "], gesture=["
+                    + startX + "," + startY + "] to [" + endX + "," + endY + "].");
+        }
         try {
             runInputSwipe(getUiAutomation(), startX, startY, endX, endY);
             return true;

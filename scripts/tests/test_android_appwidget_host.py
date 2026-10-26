@@ -80,6 +80,31 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("function onAndroidWidgetResizeFinished", qml)
         self.assertIn("window.rememberAndroidWidgetLayout({", qml)
 
+    def test_native_resize_grip_stays_inside_clipped_widget_and_screen(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        handle_start = host.index("TextView resizeHandle = resizeHandles.get")
+        handle_end = host.index("if (android.os.Build.VERSION.SDK_INT", handle_start)
+        handle_layout = host[handle_start:handle_end]
+        self.assertIn("Math.min(clipWidth, viewLeft + width)", handle_layout)
+        self.assertIn("Math.min(clipHeight, viewTop + height)", handle_layout)
+        self.assertIn("handleSize + handleMargin", handle_layout)
+        self.assertIn("visibleRight - handleSize - handleMargin", handle_layout)
+        self.assertIn("resizeHandle.setVisibility(handleFits ? View.VISIBLE : View.GONE)",
+                      handle_layout)
+        resize_start = instrumentation.index("private boolean dragResizeHandle")
+        resize_end = instrumentation.index("private static boolean awaitWidgetDimensions",
+                                           resize_start)
+        resize = instrumentation[resize_start:resize_end]
+        self.assertIn("handle.getRootView()", resize)
+        self.assertIn("endX >= rootRight", resize)
+        self.assertIn("endY >= rootBottom", resize)
+        self.assertIn("visible app window", resize)
+
     def test_widget_provider_visibility_is_scoped_to_widget_update_receivers(self):
         manifest_path = ROOT / "app/android/AndroidManifest.xml"
         manifest = ET.parse(manifest_path).getroot()
@@ -523,7 +548,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
         widget_setup_end = instrumentation.index("private void ensureSecondHomePage", widget_setup_start)
         widget_setup = instrumentation[widget_setup_start:widget_setup_end]
-        self.assertIn('clickAccessibleControl(automation, "Add Android widget to Home page 2")', widget_setup)
+        self.assertIn('awaitAccessibleControlClick(automation, pickerControl, 10_000L)',
+                      widget_setup)
+        self.assertIn('describeInteractiveWindows(automation)', widget_setup)
         self.assertNotIn('clickAccessibleText(automation, "Add Android widget to Home page 2")', widget_setup)
         placement_stage = widget_setup.index(
             'reportStage("android_widget_host_second_page_placement_passed")'
