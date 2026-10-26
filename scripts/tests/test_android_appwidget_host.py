@@ -405,6 +405,14 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         widget_setup = instrumentation[widget_setup_start:widget_setup_end]
         self.assertIn('clickAccessibleControl(automation, "Add Android widget to Home page 2")', widget_setup)
         self.assertNotIn('clickAccessibleText(automation, "Add Android widget to Home page 2")', widget_setup)
+        placement_stage = widget_setup.index(
+            'reportStage("android_widget_host_second_page_placement_passed")'
+        )
+        ready_check = widget_setup.index('awaitAccessibilityText(automation, "CI_WIDGET_READY"')
+        self.assertLess(
+            widget_setup.index('selectHomePage(automation, context, 1);', placement_stage),
+            ready_check,
+        )
         self.assertIn("exportWidgetBackup(context)", instrumentation)
         self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
         self.assertIn('"needs_rebind"', instrumentation)
