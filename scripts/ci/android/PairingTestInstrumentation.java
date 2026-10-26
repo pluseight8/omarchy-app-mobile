@@ -819,6 +819,34 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (pending.isEmpty()) {
             return false;
         }
+        Rect activeWindowBounds = new Rect();
+        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
+        if (activeRoot != null) {
+            try {
+                activeRoot.getBoundsInScreen(activeWindowBounds);
+            } finally {
+                activeRoot.recycle();
+            }
+        }
+        if (activeWindowBounds.isEmpty()) {
+            List<AccessibilityWindowInfo> windows = automation.getWindows();
+            if (windows != null) {
+                try {
+                    for (AccessibilityWindowInfo window : windows) {
+                        if (window.isActive() || window.isFocused()) {
+                            window.getBoundsInScreen(activeWindowBounds);
+                            if (!activeWindowBounds.isEmpty()) {
+                                break;
+                            }
+                        }
+                    }
+                } finally {
+                    for (AccessibilityWindowInfo window : windows) {
+                        window.recycle();
+                    }
+                }
+            }
+        }
         boolean clicked = false;
         try {
             for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
@@ -827,16 +855,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 CharSequence nodeDescription = node.getContentDescription();
                 boolean matches = (nodeText != null && label.contentEquals(nodeText))
                         || (nodeDescription != null && label.contentEquals(nodeDescription));
-                if (matches && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
+                if (matches && isInsideActiveWindow(node, activeWindowBounds)
+                        && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
                         && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     clicked = true;
                     break;
                 }
-                if (matches) {
+                if (matches && isInsideActiveWindow(node, activeWindowBounds)) {
                     AccessibilityNodeInfo parent = node.getParent();
                     try {
                         for (int depth = 0; parent != null && depth < 8; depth++) {
-                            if (parent.isVisibleToUser() && parent.isEnabled()
+                            if (isInsideActiveWindow(parent, activeWindowBounds)
+                                    && parent.isVisibleToUser() && parent.isEnabled()
                                     && parent.isClickable()
                                     && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                                 clicked = true;
@@ -869,6 +899,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return clicked;
+    }
+
+    private static boolean isInsideActiveWindow(AccessibilityNodeInfo node, Rect windowBounds) {
+        if (node == null || windowBounds == null || windowBounds.isEmpty()) {
+            return false;
+        }
+        Rect nodeBounds = new Rect();
+        node.getBoundsInScreen(nodeBounds);
+        return nodeBounds.intersect(windowBounds);
     }
 
     private static ArrayList<AccessibilityNodeInfo> accessibilityRoots(UiAutomation automation) {
@@ -1621,9 +1660,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not open OmaApp Home for widget hosting.");
         }
         ensureSecondHomePage(automation, context);
-        // Every Home page exposes the same control name. Only click the visible
-        // control so the system picker inherits the page that is currently shown.
-        if (!clickAccessibleControl(automation, "Add Android widget")) {
+        // Keep the picker launch on the page being tested. Android's accessibility
+        // bridge can report off-screen QML delegates as visible, so page-specific
+        // labels and active-window bounds prevent selecting a hidden page control.
+        if (!clickAccessibleControl(automation, "Add Android widget to Home page 2")) {
             throw new IllegalStateException("Could not open the Android widget picker from OmaApp Home.");
         }
         reportStage("android_widget_host_picker_opened");
@@ -1727,8 +1767,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + requireWidgetRecord(context, expectedProvider));
         }
         reportStage("android_widget_host_cross_page_move_passed");
-        swipeHomePage(automation, context, false);
-        awaitAccessibilityText(automation, "Home page 1 of 2", 10_000L, context);
+        selectHomePage(automation, context, 0);
         if (!AndroidWidgetHost.placeWidgetRecord(context, widgetRecordId, 0,
                     0, 72, 2)) {
             throw new IllegalStateException("The widget grid rejected an on-page position update.");
@@ -1797,9 +1836,30 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not enable a second Home page in the launcher.");
         }
         awaitAccessibilityText(automation, "Home page 1 of 2", 15_000L, context);
-        swipeHomePage(automation, context, true);
-        awaitAccessibilityText(automation, "Home page 2 of 2", 10_000L, context);
+        selectHomePage(automation, context, 1);
         reportStage("android_widget_host_second_home_page_ready");
+    }
+
+    private void selectHomePage(UiAutomation automation, Context context, int page) {
+        if (page < 0 || page >= 5) {
+            throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
+        }
+        for (int attempt = 0; attempt < 4; attempt++) {
+            // Use the blank edge gutter so vertical scrolling does not begin a QML
+            // app/widget drag before opening Android's external widget picker.
+            executeSwipe(automation, context, 0.84f, 0.38f, 0.05f);
+            SystemClock.sleep(200L);
+        }
+        String target = "Go to home page " + (page + 1);
+        if (!clickAccessibleControl(automation, target)) {
+            throw new IllegalStateException("Could not select Home page " + (page + 1)
+                    + " using the visible page indicator.");
+        }
+        String expected = "Home page " + (page + 1) + " of 2";
+        if (!awaitAccessibilityText(automation, expected, 10_000L, context)) {
+            throw new IllegalStateException("Home did not switch to page " + (page + 1) + ".");
+        }
+        scrollHomeToTop(automation, context);
     }
 
     private static void verifyWidgetGridCollisionRules() throws Exception {
@@ -2406,22 +2466,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
             executeSwipe(automation, context, 0.38f, 0.84f, 0.05f);
             SystemClock.sleep(200L);
         }
-    }
-
-    private static void swipeHomePage(UiAutomation automation, Context context,
-                                      boolean forward) {
-        int width = context.getResources().getDisplayMetrics().widthPixels;
-        int height = context.getResources().getDisplayMetrics().heightPixels;
-        int startX = Math.round(width * (forward ? 0.84f : 0.16f));
-        int endX = Math.round(width * (forward ? 0.16f : 0.84f));
-        int y = Math.round(height * 0.48f);
-        String command = "input swipe " + startX + " " + y + " " + endX + " " + y + " 300";
-        try {
-            automation.executeShellCommand(command).close();
-        } catch (Exception error) {
-            Log.w(TAG, "Could not switch Android widget Home pages.", error);
-        }
-        SystemClock.sleep(350L);
     }
 
     private static void executeSwipe(UiAutomation automation, Context context,

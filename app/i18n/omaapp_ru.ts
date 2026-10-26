@@ -151,8 +151,8 @@
             <translation>Масштаб текста Android для доступности: %1×</translation>
         </message>
         <message>
-            <source>Add Android widget</source>
-            <translation>Добавить виджет Android</translation>
+            <source>Add Android widget to Home page %1</source>
+            <translation>Добавить виджет Android на страницу %1</translation>
         </message>
         <message>
             <source>Add widget</source>

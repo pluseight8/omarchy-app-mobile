@@ -36,6 +36,8 @@ ApplicationWindow {
     property string editingWidgetId: ""
     property string widgetMessage: ""
     property string androidWidgetMessage: ""
+    property int pendingAndroidWidgetPage: -1
+    property string pendingAndroidWidgetRecordId: ""
     property string draggingWidgetRecordId: ""
     property string deletingAndroidWidgetRecordId: ""
     property string deletingAndroidWidgetName: ""
@@ -54,6 +56,21 @@ ApplicationWindow {
         id: androidWidgetUndoTimer
         interval: 7000
         onTriggered: window.androidWidgetLayoutUndo = null
+    }
+
+    Timer {
+        id: androidWidgetPickerLaunchTimer
+        interval: 50
+        onTriggered: {
+            const recordId = window.pendingAndroidWidgetRecordId
+            window.pendingAndroidWidgetRecordId = ""
+            const accepted = recordId.length > 0
+                    ? launcher.rebindAndroidWidget(recordId)
+                    : launcher.addAndroidWidgetOnPage(window.pendingAndroidWidgetPage)
+            window.pendingAndroidWidgetPage = -1
+            window.androidWidgetMessage = accepted
+                    ? "" : qsTr("Android widget picker could not be opened.")
+        }
     }
 
     Timer {
@@ -1399,12 +1416,15 @@ ApplicationWindow {
                                 Item { Layout.fillWidth: true }
                                 Button {
                                     text: qsTr("Add widget")
-                                    Accessible.name: qsTr("Add Android widget")
+                                    Accessible.name: qsTr("Add Android widget to Home page %1")
+                                                         .arg(homePagePage.pageIndex + 1)
                                     enabled: launcher.androidWidgets.length < 8
+                                             && !androidWidgetPickerLaunchTimer.running
                                     onClicked: {
-                                        window.androidWidgetMessage = launcher.addAndroidWidgetOnPage(
-                                            homePagePage.pageIndex)
-                                                ? "" : qsTr("Android widget picker could not be opened.")
+                                        window.androidWidgetMessage = ""
+                                        window.pendingAndroidWidgetPage = homePagePage.pageIndex
+                                        window.pendingAndroidWidgetRecordId = ""
+                                        androidWidgetPickerLaunchTimer.restart()
                                     }
                                 }
                             }
@@ -1668,9 +1688,11 @@ ApplicationWindow {
                                                     Button {
                                                         text: qsTr("Rebind")
                                                         Accessible.name: qsTr("Rebind Android widget %1").arg(modelData.name)
+                                                        enabled: !androidWidgetPickerLaunchTimer.running
                                                         onClicked: {
-                                                            window.androidWidgetMessage = launcher.rebindAndroidWidget(
-                                                                modelData.recordId) ? "" : qsTr("Android widget picker could not be opened.")
+                                                            window.androidWidgetMessage = ""
+                                                            window.pendingAndroidWidgetRecordId = modelData.recordId
+                                                            androidWidgetPickerLaunchTimer.restart()
                                                         }
                                                     }
                                                 }
