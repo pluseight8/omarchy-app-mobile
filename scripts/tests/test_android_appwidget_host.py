@@ -119,15 +119,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("android_widget_host_backup_transaction_commit_passed", smoke)
         self.assertIn("android_widget_host_backup_recovery_passed", smoke)
 
-    def test_widget_page_navigation_swipes_empty_home_and_uses_accessible_controls_with_widget(self):
+    def test_widget_page_navigation_swipes_clear_home_area_and_uses_accessible_controls_with_widget(self):
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8")
-        empty_page_start = instrumentation.index("private void ensureSecondHomePage")
-        empty_page_end = instrumentation.index("private void selectHomePage", empty_page_start)
-        empty_page = instrumentation[empty_page_start:empty_page_end]
-        self.assertIn("swipeHomePage(automation, context, true)", empty_page)
-        self.assertIn('"Current Home page 2 of 2"', empty_page)
+        page_setup_start = instrumentation.index("private void ensureSecondHomePage")
+        page_setup_end = instrumentation.index("private void selectHomePage", page_setup_start)
+        page_setup = instrumentation[page_setup_start:page_setup_end]
+        self.assertIn("swipeHomePage(automation, context, true)", page_setup)
+        self.assertIn('"Current Home page 2 of 2"', page_setup)
+        self.assertIn('"Accessibility tree:\\n" + accessibilityTree(automation)', page_setup)
 
         selection_start = instrumentation.index("private void selectHomePage")
         selection_end = instrumentation.index("private static void swipeHomePage", selection_start)
@@ -641,6 +642,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("ParcelFileDescriptor.AutoCloseInputStream", input_swipe)
         self.assertIn("while (output.read(buffer) != -1)", input_swipe)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
+        self.assertIn("android_widget_host_home_page_count_restore_passed", instrumentation)
+        self.assertIn('"Current Home page 1 of 2", 15_000L, context', instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
         setup_start = instrumentation.index("private void ensureSecondHomePage")
         setup_end = instrumentation.index(
@@ -655,6 +658,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("clickAccessibleControl(automation, navigationControl)", instrumentation)
         self.assertNotIn("swipeHomePage(automation, context, page == 1)", instrumentation)
         self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
+        swipe_start = instrumentation.index("private static void swipeHomePage")
+        swipe_end = instrumentation.index("private static void verifyWidgetGridCollisionRules", swipe_start)
+        swipe = instrumentation[swipe_start:swipe_end]
+        self.assertIn("height * 0.18f", swipe)
+        self.assertNotIn("height * 0.5f", swipe)
         self.assertIn('awaitVisibleAccessibleText(automation, expected, 10_000L)', instrumentation)
         self.assertIn(
             'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',

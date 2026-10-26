@@ -92,6 +92,8 @@ fi
 printf '%s\n' "$pid_after_start" > "$artifacts/pid-after-relaunch.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_geometry_restore_passed' \
   "$artifacts/restore-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_home_page_count_restore_passed' \
+  "$artifacts/restore-instrumentation.txt"
 run_stage remove android_widget_host_id_release_passed
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_placeholder_passed' \
   "$artifacts/remove-instrumentation.txt"

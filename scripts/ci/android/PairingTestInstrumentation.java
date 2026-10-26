@@ -1879,7 +1879,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // uses Home's accessible page control instead of swiping across it.
         swipeHomePage(automation, context, true);
         if (!awaitAccessibilityText(automation, "Current Home page 2 of 2", 10_000L)) {
-            throw new IllegalStateException("Home did not switch to page 2 after a horizontal gesture on the empty page.");
+            throw new IllegalStateException("Home did not switch to page 2 after a horizontal gesture. "
+                    + "Accessibility tree:\n" + accessibilityTree(automation));
         }
         reportStage("android_widget_host_second_home_page_ready");
     }
@@ -2027,7 +2028,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int height = context.getResources().getDisplayMetrics().heightPixels;
         int left = Math.max(24, Math.round(width * 0.2f));
         int right = Math.min(width - 24, Math.round(width * 0.8f));
-        int y = Math.max(100, Math.min(height - 100, Math.round(height * 0.5f)));
+        // The screen center can land on an OWL card whose DragHandler owns horizontal motion.
+        // Keep the real page swipe in the noninteractive widget-placement grid above those cards.
+        int y = Math.max(100, Math.min(height - 100, Math.round(height * 0.18f)));
         int fromX = forward ? right : left;
         int toX = forward ? left : right;
         try {
@@ -2248,6 +2251,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 10_000L);
         reportStage("android_widget_host_geometry_restore_passed");
         UiAutomation automation = getUiAutomation();
+        awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L, context);
+        reportStage("android_widget_host_home_page_count_restore_passed");
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
         if (!clickAccessibleText(automation, "CI_WIDGET_ACTION")) {
             throw new IllegalStateException("The restored Android widget stopped receiving touch after process death.");
