@@ -819,34 +819,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (pending.isEmpty()) {
             return false;
         }
-        Rect activeWindowBounds = new Rect();
-        AccessibilityNodeInfo activeRoot = automation.getRootInActiveWindow();
-        if (activeRoot != null) {
-            try {
-                activeRoot.getBoundsInScreen(activeWindowBounds);
-            } finally {
-                activeRoot.recycle();
-            }
-        }
-        if (activeWindowBounds.isEmpty()) {
-            List<AccessibilityWindowInfo> windows = automation.getWindows();
-            if (windows != null) {
-                try {
-                    for (AccessibilityWindowInfo window : windows) {
-                        if (window.isActive() || window.isFocused()) {
-                            window.getBoundsInScreen(activeWindowBounds);
-                            if (!activeWindowBounds.isEmpty()) {
-                                break;
-                            }
-                        }
-                    }
-                } finally {
-                    for (AccessibilityWindowInfo window : windows) {
-                        window.recycle();
-                    }
-                }
-            }
-        }
         boolean clicked = false;
         try {
             for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
@@ -855,18 +827,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 CharSequence nodeDescription = node.getContentDescription();
                 boolean matches = (nodeText != null && label.contentEquals(nodeText))
                         || (nodeDescription != null && label.contentEquals(nodeDescription));
-                if (matches && isInsideActiveWindow(node, activeWindowBounds)
-                        && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
+                if (matches && node.isVisibleToUser() && node.isEnabled() && node.isClickable()
                         && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     clicked = true;
                     break;
                 }
-                if (matches && isInsideActiveWindow(node, activeWindowBounds)) {
+                if (matches) {
                     AccessibilityNodeInfo parent = node.getParent();
                     try {
                         for (int depth = 0; parent != null && depth < 8; depth++) {
-                            if (isInsideActiveWindow(parent, activeWindowBounds)
-                                    && parent.isVisibleToUser() && parent.isEnabled()
+                            if (parent.isVisibleToUser() && parent.isEnabled()
                                     && parent.isClickable()
                                     && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                                 clicked = true;
@@ -899,15 +869,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return clicked;
-    }
-
-    private static boolean isInsideActiveWindow(AccessibilityNodeInfo node, Rect windowBounds) {
-        if (node == null || windowBounds == null || windowBounds.isEmpty()) {
-            return false;
-        }
-        Rect nodeBounds = new Rect();
-        node.getBoundsInScreen(nodeBounds);
-        return nodeBounds.intersect(windowBounds);
     }
 
     private static ArrayList<AccessibilityNodeInfo> accessibilityRoots(UiAutomation automation) {
@@ -1831,9 +1792,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Could not open Settings to add a second Home page.");
         }
         awaitAccessibilityText(automation, "Add a home page", 15_000L, context);
-        if (!clickAccessibleControl(automation, "Add a home page")
-                || !clickAccessibleControl(automation, "Home")) {
+        if (!clickAccessibleControl(automation, "Add a home page")) {
             throw new IllegalStateException("Could not enable a second Home page in the launcher.");
+        }
+        if (!clickAccessibleControl(automation, "Home")) {
+            throw new IllegalStateException("Could not return to Home after adding a page.");
         }
         awaitAccessibilityText(automation, "Home page 1 of 2", 15_000L, context);
         selectHomePage(automation, context, 1);

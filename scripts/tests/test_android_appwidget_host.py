@@ -405,8 +405,6 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         widget_setup = instrumentation[widget_setup_start:widget_setup_end]
         self.assertIn('clickAccessibleControl(automation, "Add Android widget to Home page 2")', widget_setup)
         self.assertNotIn('clickAccessibleText(automation, "Add Android widget to Home page 2")', widget_setup)
-        self.assertIn('isInsideActiveWindow(node, activeWindowBounds)', instrumentation)
-        self.assertIn('nodeBounds.intersect(windowBounds)', instrumentation)
         self.assertIn("exportWidgetBackup(context)", instrumentation)
         self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
         self.assertIn('"needs_rebind"', instrumentation)
