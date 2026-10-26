@@ -170,8 +170,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("setAndroidWidgetFrame", model)
         self.assertIn('qsTr("Android widgets")', qml)
         self.assertIn('Accessible.name: qsTr("Add Android widget to Home page %1")', qml)
-        self.assertIn('Accessible.name: qsTr("Next Home page")', qml)
-        self.assertIn('Accessible.name: qsTr("Previous Home page")', qml)
+        self.assertIn('Accessible.name: qsTr("Next Home page %1").arg(index + 1)', qml)
+        self.assertIn('Accessible.name: qsTr("Previous Home page %1").arg(index + 1)', qml)
         self.assertIn('qsTr("Current Home page %1 of %2")', qml)
         self.assertIn('id: androidWidgetPickerLaunchTimer', qml)
         self.assertIn('androidWidgetPickerLaunchTimer.restart()', qml)
@@ -488,7 +488,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
         self.assertIn(
-            'String direction = page == 0 ? "Previous Home page" : "Next Home page"',
+            '"Previous Home page 2" : "Next Home page 1"',
             instrumentation,
         )
         self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
