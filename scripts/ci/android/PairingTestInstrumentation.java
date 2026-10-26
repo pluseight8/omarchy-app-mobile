@@ -1862,19 +1862,30 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         String expected = "Current Home page " + (page + 1) + " of 2";
         if (!awaitAccessibilityText(automation, expected, 250L)) {
-            String direction = page == 0
-                    ? "Previous Home page 2" : "Next Home page 1";
-            if (!clickAccessibleControl(automation, direction)) {
-                throw new IllegalStateException("Could not switch to Home page " + (page + 1)
-                        + "; current page marker or visible " + direction + " control is missing.\n"
-                        + accessibilityTree(automation));
-            }
+            swipeHomePage(automation, context, page == 1);
             if (!awaitAccessibilityText(automation, expected, 10_000L)) {
                 throw new IllegalStateException("Home did not switch to page " + (page + 1)
-                        + " after using its visible page control.\n" + accessibilityTree(automation));
+                        + " after the horizontal Home gesture.\n" + accessibilityTree(automation));
             }
         }
         scrollHomeToTop(automation, context);
+    }
+
+    private static void swipeHomePage(UiAutomation automation, Context context,
+                                      boolean forward) {
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        int left = Math.max(24, Math.round(width * 0.2f));
+        int right = Math.min(width - 24, Math.round(width * 0.8f));
+        int y = Math.max(100, Math.min(height - 100, Math.round(height * 0.5f)));
+        int fromX = forward ? right : left;
+        int toX = forward ? left : right;
+        String command = "input swipe " + fromX + " " + y + " " + toX + " " + y + " 250";
+        try {
+            automation.executeShellCommand(command).close();
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not inject the Home page gesture.", error);
+        }
     }
 
     private static void verifyWidgetGridCollisionRules() throws Exception {

@@ -172,6 +172,12 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('Accessible.name: qsTr("Add Android widget to Home page %1")', qml)
         self.assertIn('Accessible.name: qsTr("Next Home page %1").arg(index + 1)', qml)
         self.assertIn('Accessible.name: qsTr("Previous Home page %1").arg(index + 1)', qml)
+        self.assertIn("visible: index === homePageView.currentIndex && index > 0", qml)
+        self.assertIn(
+            "visible: index === homePageView.currentIndex\n"
+            "                                                 && index + 1 < launcher.homePageCount",
+            qml,
+        )
         self.assertIn('qsTr("Current Home page %1 of %2")', qml)
         self.assertIn('id: androidWidgetPickerLaunchTimer', qml)
         self.assertIn('androidWidgetPickerLaunchTimer.restart()', qml)
@@ -487,17 +493,14 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
         self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
         self.assertIn("selectHomePage(automation, context, 1)", second_page_setup)
-        self.assertIn(
-            '"Previous Home page 2" : "Next Home page 1"',
-            instrumentation,
-        )
+        self.assertIn("swipeHomePage(automation, context, page == 1)", instrumentation)
+        self.assertIn('String command = "input swipe " + fromX', instrumentation)
         self.assertIn('awaitAccessibilityText(automation, expected, 10_000L)', instrumentation)
         self.assertIn(
             'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',
             second_page_setup,
         )
         self.assertIn('"Current Home page " + (page + 1) + " of 2"', instrumentation)
-        self.assertNotIn("swipeHomePage(", instrumentation)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
         widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
         widget_setup_end = instrumentation.index("private void ensureSecondHomePage", widget_setup_start)

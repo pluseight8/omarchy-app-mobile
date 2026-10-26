@@ -1361,7 +1361,7 @@ ApplicationWindow {
                                 RowLayout {
                                     spacing: Theme.space(2)
                                     ToolButton {
-                                        visible: index > 0
+                                        visible: index === homePageView.currentIndex && index > 0
                                         text: "‹"
                                         Accessible.name: qsTr("Previous Home page %1").arg(index + 1)
                                         onClicked: homePageView.currentIndex = index - 1
@@ -1377,7 +1377,8 @@ ApplicationWindow {
                                                 .arg(index + 1).arg(launcher.homePageCount)
                                     }
                                     ToolButton {
-                                        visible: index + 1 < launcher.homePageCount
+                                        visible: index === homePageView.currentIndex
+                                                 && index + 1 < launcher.homePageCount
                                         text: "›"
                                         Accessible.name: qsTr("Next Home page %1").arg(index + 1)
                                         onClicked: homePageView.currentIndex = index + 1
