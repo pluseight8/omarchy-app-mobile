@@ -28,7 +28,6 @@ import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
-import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -1759,10 +1758,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 10_000L, context);
         int handleResizedWidth = Math.min(1200, resizedWidth + 24);
         int handleResizedHeight = Math.min(1200, resizedHeight + 24);
-        if (!dragResizeHandle(context, widgetId, 24, 24)
-                || !awaitWidgetDimensions(context, expectedProvider, handleResizedWidth,
-                        handleResizedHeight, 10_000L)) {
-            throw new IllegalStateException("The native Android resize handle did not persist its drag.");
+        if (!dragResizeHandle(context, widgetId, 24, 24)) {
+            throw new IllegalStateException("The native Android resize handle was not available.");
+        }
+        if (!awaitWidgetDimensions(context, expectedProvider, handleResizedWidth,
+                handleResizedHeight, 10_000L)) {
+            throw new IllegalStateException("The native Android resize handle did not persist its drag."
+                    + " Expected " + handleResizedWidth + "x" + handleResizedHeight
+                    + " dp; saved widget: " + requireWidgetRecord(context, expectedProvider));
         }
         awaitWidgetOptions(context, widgetId, handleResizedWidth, handleResizedHeight, 10_000L);
         reportStage("android_widget_host_resize_handle_passed");
@@ -2210,27 +2213,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
         float density = context.getResources().getDisplayMetrics().density;
         int startX = bounds[0] + bounds[2] / 2;
         int startY = bounds[1] + bounds[3] / 2;
-        float endX = startX + deltaWidthDp * density;
-        float endY = startY + deltaHeightDp * density;
-        long downTime = SystemClock.uptimeMillis();
-        MotionEvent down = MotionEvent.obtain(downTime, downTime,
-                MotionEvent.ACTION_DOWN, startX, startY, 0);
-        MotionEvent move = MotionEvent.obtain(downTime, downTime + 80,
-                MotionEvent.ACTION_MOVE, endX, endY, 0);
-        MotionEvent up = MotionEvent.obtain(downTime, downTime + 160,
-                MotionEvent.ACTION_UP, endX, endY, 0);
-        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-        move.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-        up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        int endX = Math.round(startX + deltaWidthDp * density);
+        int endY = Math.round(startY + deltaHeightDp * density);
+        String command = "input swipe " + startX + " " + startY + " " + endX + " " + endY
+                + " 250";
         try {
-            UiAutomation automation = getUiAutomation();
-            return automation.injectInputEvent(down, true)
-                    && automation.injectInputEvent(move, true)
-                    && automation.injectInputEvent(up, true);
-        } finally {
-            down.recycle();
-            move.recycle();
-            up.recycle();
+            getUiAutomation().executeShellCommand(command).close();
+            return true;
+        } catch (Exception error) {
+            throw new IllegalStateException("Could not inject the Android widget resize gesture.",
+                    error);
         }
     }
 

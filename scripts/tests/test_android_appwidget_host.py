@@ -482,6 +482,14 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("android_widget_host_resize_handle_passed", instrumentation)
         self.assertIn("android_widget_host_resize_undo_passed", instrumentation)
         self.assertIn("dragResizeHandle(context, widgetId, 24, 24)", instrumentation)
+        resize_drag_start = instrumentation.index("private boolean dragResizeHandle")
+        resize_drag_end = instrumentation.index("private static boolean awaitWidgetDimensions",
+                                                resize_drag_start)
+        resize_drag = instrumentation[resize_drag_start:resize_drag_end]
+        self.assertIn('String command = "input swipe " + startX', resize_drag)
+        self.assertNotIn("MotionEvent.ACTION_MOVE", resize_drag)
+        self.assertIn("awaitWidgetDimensions(context, expectedProvider, handleResizedWidth",
+                      instrumentation)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
         setup_start = instrumentation.index("private void ensureSecondHomePage")
