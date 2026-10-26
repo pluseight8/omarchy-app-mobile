@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 17048)
-Total output lines: 1339
-
 <?xml version='1.0' encoding='utf-8'?>
 <TS version="2.1" language="ru_RU" sourcelanguage="en">
     <context>
@@ -493,7 +490,424 @@ Total output lines: 1339
             <source>Home layout restored. Android widget cleanup will retry when OmaApp starts.</source>
             <translation>Раскладка восстановлена. Очистка виджетов Android повторится при следующем запуске OmaApp.</translation>
         </message>
-        <…5048 tokens truncated… command %1</source>
+        <message>
+            <source>Home restore needs recovery</source>
+            <translation>Требуется восстановить раскладку</translation>
+        </message>
+        <message>
+            <source>Home page %1 of %2</source>
+            <translation>Страница главного экрана %1 из %2</translation>
+        </message>
+        <message>
+            <source>Home page %1%2</source>
+            <translation>Страница главного экрана %1%2</translation>
+        </message>
+        <message>
+            <source>Home pages</source>
+            <translation>Страницы главного экрана</translation>
+        </message>
+        <message>
+            <source>Home pages, pinned apps, folders, widget choices, and grid columns are saved on this device. They remain available when the computer is offline.</source>
+            <translation>Страницы, закреплённые приложения, папки, виджеты и столбцы сетки сохраняются на этом устройстве и доступны без подключения к компьютеру.</translation>
+        </message>
+        <message>
+            <source>Home widgets</source>
+            <translation>Виджеты главного экрана</translation>
+        </message>
+        <message>
+            <source>Hyprland animations</source>
+            <translation>Анимации Hyprland</translation>
+        </message>
+        <message>
+            <source>Hyprland did not provide animation data in the last sync.</source>
+            <translation>В последней синхронизации нет данных об анимациях Hyprland.</translation>
+        </message>
+        <message>
+            <source>Hyprland workspaces</source>
+            <translation>Рабочие пространства Hyprland</translation>
+        </message>
+        <message>
+            <source>Increase border width</source>
+            <translation>Увеличить толщину рамки</translation>
+        </message>
+        <message>
+            <source>Increase corner radius</source>
+            <translation>Увеличить радиус скругления</translation>
+        </message>
+        <message>
+            <source>Increase rounding power</source>
+            <translation>Увеличить степень скругления</translation>
+        </message>
+        <message>
+            <source>Install local widgets, edit your own source, or make an editable copy of a built-in. Widget data stays on this phone.</source>
+            <translation>Устанавливайте локальные виджеты, редактируйте их код или создавайте копии встроенных виджетов. Данные хранятся на телефоне.</translation>
+        </message>
+        <message>
+            <source>Installed Android apps appear here when OmaApp runs on Android.</source>
+            <translation>Здесь отображаются установленные приложения Android, когда OmaApp запущен на Android.</translation>
+        </message>
+        <message>
+            <source>LOCAL TIME</source>
+            <translation>МЕСТНОЕ ВРЕМЯ</translation>
+        </message>
+        <message>
+            <source>Language</source>
+            <translation>Язык</translation>
+        </message>
+        <message>
+            <source>Launch %1</source>
+            <translation>Запустить %1</translation>
+        </message>
+        <message>
+            <source>Layout backup</source>
+            <translation>Резервная копия раскладки</translation>
+        </message>
+        <message>
+            <source>Layout backup JSON to restore</source>
+            <translation>JSON резервной копии для восстановления</translation>
+        </message>
+        <message>
+            <source>License texts are available offline.</source>
+            <translation>Тексты лицензий доступны без подключения к сети.</translation>
+        </message>
+        <message>
+            <source>License texts could not be loaded.</source>
+            <translation>Не удалось загрузить тексты лицензий.</translation>
+        </message>
+        <message>
+            <source>Live preview</source>
+            <translation>Предпросмотр</translation>
+        </message>
+        <message>
+            <source>Load %1 · Memory %2 / %3 GiB · Battery %4</source>
+            <translation>Нагрузка %1 · Память %2 / %3 ГиБ · Батарея %4</translation>
+        </message>
+        <message>
+            <source>Local clock and date</source>
+            <translation>Местное время и дата</translation>
+        </message>
+        <message>
+            <source>Long press a Home shortcut to move or remove it</source>
+            <translation>Удерживайте ярлык на главном экране, чтобы переместить или удалить его</translation>
+        </message>
+        <message>
+            <source>Long press an app to pin or unpin it</source>
+            <translation>Удерживайте приложение, чтобы закрепить или открепить его</translation>
+        </message>
+        <message>
+            <source>Make an editable copy of %1</source>
+            <translation>Создать копию %1 для редактирования</translation>
+        </message>
+        <message>
+            <source>Manage</source>
+            <translation>Управление</translation>
+        </message>
+        <message>
+            <source>Manage OWL widgets</source>
+            <translation>Управление виджетами OWL</translation>
+        </message>
+        <message>
+            <source>Media</source>
+            <translation>Мультимедиа</translation>
+        </message>
+        <message>
+            <source>Move %1</source>
+            <translation>Переместить %1</translation>
+        </message>
+        <message>
+            <source>Move %1 to home page %2</source>
+            <translation>Переместить %1 на страницу главного экрана %2</translation>
+        </message>
+        <message>
+            <source>My widget</source>
+            <translation>Мой виджет</translation>
+        </message>
+        <message>
+            <source>NOT PAIRED</source>
+            <translation>НЕ СОПРЯЖЕНО</translation>
+        </message>
+        <message>
+            <source>New</source>
+            <translation>Создать</translation>
+        </message>
+        <message>
+            <source>New folder name</source>
+            <translation>Имя новой папки</translation>
+        </message>
+        <message>
+            <source>Next</source>
+            <translation>Далее</translation>
+        </message>
+        <message>
+            <source>Next Home page %1</source>
+            <translation>Следующая страница рабочего стола %1</translation>
+        </message>
+        <message>
+            <source>Next track on %1</source>
+            <translation>Следующий трек: %1</translation>
+        </message>
+        <message>
+            <source>No active media player on the computer.</source>
+            <translation>На компьютере нет активного медиаплеера.</translation>
+        </message>
+        <message>
+            <source>No apps match this search.</source>
+            <translation>Ничего не найдено.</translation>
+        </message>
+        <message>
+            <source>No apps on this page yet. Long-press an app in All apps to pin it here.</source>
+            <translation>На этой странице пока нет приложений. Удерживайте приложение в разделе «Все приложения», чтобы закрепить его здесь.</translation>
+        </message>
+        <message>
+            <source>No user commands are configured on the computer.</source>
+            <translation>На компьютере не настроены пользовательские команды.</translation>
+        </message>
+        <message>
+            <source>OFF</source>
+            <translation>ВЫКЛ.</translation>
+        </message>
+        <message>
+            <source>OFFLINE</source>
+            <translation>НЕ В СЕТИ</translation>
+        </message>
+        <message>
+            <source>OFFLINE · CACHED THEME</source>
+            <translation>НЕ В СЕТИ · СОХРАНЁННАЯ ТЕМА</translation>
+        </message>
+        <message>
+            <source>OMA / APP</source>
+            <translation>OMA / APP</translation>
+        </message>
+        <message>
+            <source>OMARCHY COMPUTER</source>
+            <translation>КОМПЬЮТЕР OMARCHY</translation>
+        </message>
+        <message>
+            <source>OMARCHY SURFACE</source>
+            <translation>ПОВЕРХНОСТЬ OMARCHY</translation>
+        </message>
+        <message>
+            <source>ON</source>
+            <translation>ВКЛ.</translation>
+        </message>
+        <message>
+            <source>OWL widget source editor</source>
+            <translation>Редактор кода виджета OWL</translation>
+        </message>
+        <message>
+            <source>OWL widget store</source>
+            <translation>Каталог виджетов OWL</translation>
+        </message>
+        <message>
+            <source>OWL widgets</source>
+            <translation>Виджеты OWL</translation>
+        </message>
+        <message>
+            <source>OmaApp</source>
+            <translation>OmaApp</translation>
+        </message>
+        <message>
+            <source>OmaApp layout backup JSON</source>
+            <translation>JSON-копия раскладки OmaApp</translation>
+        </message>
+        <message>
+            <source>An interrupted Home restore could not be completed. Keep OmaApp installed; free device storage if it is low, then retry recovery.</source>
+            <translation>Не удалось завершить восстановление главного экрана. Не удаляйте OmaApp; при нехватке места освободите его и повторите восстановление.</translation>
+        </message>
+        <message>
+            <source>Omarchy computer status</source>
+            <translation>Состояние компьютера Omarchy</translation>
+        </message>
+        <message>
+            <source>One shell.</source>
+            <translation>Одна оболочка.</translation>
+        </message>
+        <message>
+            <source>Open %1 folder, %2 apps</source>
+            <translation>Открыть папку %1, приложений: %2</translation>
+        </message>
+        <message>
+            <source>Open all installed apps</source>
+            <translation>Открыть список приложений</translation>
+        </message>
+        <message>
+            <source>Open connected devices</source>
+            <translation>Открыть подключённые устройства</translation>
+        </message>
+        <message>
+            <source>Open devices</source>
+            <translation>Открыть устройства</translation>
+        </message>
+        <message>
+            <source>Open-source license texts</source>
+            <translation>Тексты лицензий открытого кода</translation>
+        </message>
+        <message>
+            <source>Open-source notices and licenses</source>
+            <translation>Уведомления и лицензии открытого кода</translation>
+        </message>
+        <message>
+            <source>Pair a computer to see its live animation settings.</source>
+            <translation>Подключите компьютер, чтобы увидеть его текущие настройки анимации.</translation>
+        </message>
+        <message>
+            <source>Pair an Omarchy computer</source>
+            <translation>Сопрячь с компьютером Omarchy</translation>
+        </message>
+        <message>
+            <source>Pair an Omarchy computer to sync its theme and use PC controls.</source>
+            <translation>Сопрягите компьютер Omarchy, чтобы синхронизировать тему и управлять компьютером.</translation>
+        </message>
+        <message>
+            <source>Pair computer</source>
+            <translation>Сопрячь компьютер</translation>
+        </message>
+        <message>
+            <source>Pair with</source>
+            <translation>Подключиться к</translation>
+        </message>
+        <message>
+            <source>Pair with your Omarchy computer to sync its live theme and wallpaper.</source>
+            <translation>Сопрягите телефон с компьютером Omarchy, чтобы синхронизировать тему и обои.</translation>
+        </message>
+        <message>
+            <source>Paste a JSON backup copied from OmaApp. Restoring replaces Home pages, pinned apps, folders, built-in and OWL widgets, widget order and source, grid, gesture preferences and haptic feedback.</source>
+            <translation>Вставьте JSON-копию из OmaApp. Восстановление заменит страницы, закреплённые приложения, папки, встроенные виджеты и OWL, их порядок и код, сетку, настройки жестов и виброотклика.</translation>
+        </message>
+        <message>
+            <source>Paste from clipboard</source>
+            <translation>Вставить из буфера обмена</translation>
+        </message>
+        <message>
+            <source>Pause</source>
+            <translation>Пауза</translation>
+        </message>
+        <message>
+            <source>Pause %1</source>
+            <translation>Приостановить: %1</translation>
+        </message>
+        <message>
+            <source>Pinned apps</source>
+            <translation>Закреплённые приложения</translation>
+        </message>
+        <message>
+            <source>Play</source>
+            <translation>Воспроизвести</translation>
+        </message>
+        <message>
+            <source>Play %1</source>
+            <translation>Воспроизвести: %1</translation>
+        </message>
+        <message>
+            <source>Previous Home page %1</source>
+            <translation>Предыдущая страница рабочего стола %1</translation>
+        </message>
+        <message>
+            <source>Power %1  •  Radius %2 px</source>
+            <translation>Степень %1  •  Радиус %2 пикс.</translation>
+        </message>
+        <message>
+            <source>Preview Omarchy colors and adjust rounded-surface values on this phone.</source>
+            <translation>Просматривайте цвета Omarchy и настраивайте скругление поверхностей на телефоне.</translation>
+        </message>
+        <message>
+            <source>Preview values stay local until a computer is paired.</source>
+            <translation>До сопряжения с компьютером параметры предпросмотра хранятся только на телефоне.</translation>
+        </message>
+        <message>
+            <source>Quick actions</source>
+            <translation>Быстрые действия</translation>
+        </message>
+        <message>
+            <source>Quickshell tokens · %1× spacing · %2 px base font · %3% control fill · %4% launcher opacity</source>
+            <translation>Маркеры Quickshell · интервалы ×%1 · базовый шрифт %2 пикс. · заливка элементов %3% · непрозрачность оболочки %4%</translation>
+        </message>
+        <message>
+            <source>REVOKING ACCESS</source>
+            <translation>ОТЗЫВ ДОСТУПА</translation>
+        </message>
+        <message>
+            <source>Read computer clipboard</source>
+            <translation>Читать буфер обмена компьютера</translation>
+        </message>
+        <message>
+            <source>Reconnect</source>
+            <translation>Подключиться повторно</translation>
+        </message>
+        <message>
+            <source>Reconnect to</source>
+            <translation>Повторно подключиться к</translation>
+        </message>
+        <message>
+            <source>Refresh installed apps</source>
+            <translation>Обновить список приложений</translation>
+        </message>
+        <message>
+            <source>Remove</source>
+            <translation>Удалить</translation>
+        </message>
+        <message>
+            <source>Remove %1 from %2</source>
+            <translation>Удалить %1 из %2</translation>
+        </message>
+        <message>
+            <source>Remove %1 from Home</source>
+            <translation>Убрать %1 с главного экрана</translation>
+        </message>
+        <message>
+            <source>Remove a home page</source>
+            <translation>Удалить страницу главного экрана</translation>
+        </message>
+        <message>
+            <source>Remove from Home</source>
+            <translation>Убрать с главного экрана</translation>
+        </message>
+        <message>
+            <source>Rename folder</source>
+            <translation>Переименовать папку</translation>
+        </message>
+        <message>
+            <source>Restore</source>
+            <translation>Восстановить</translation>
+        </message>
+        <message>
+            <source>Restore Home layout</source>
+            <translation>Восстановить раскладку главного экрана</translation>
+        </message>
+        <message>
+            <source>Restore Home layout from JSON backup</source>
+            <translation>Восстановить раскладку главного экрана из JSON-копии</translation>
+        </message>
+        <message>
+            <source>Restore layout</source>
+            <translation>Восстановить раскладку</translation>
+        </message>
+        <message>
+            <source>Revoke</source>
+            <translation>Отозвать</translation>
+        </message>
+        <message>
+            <source>Retry</source>
+            <translation>Повторить подключение</translation>
+        </message>
+        <message>
+            <source>Retry recovery</source>
+            <translation>Повторить восстановление</translation>
+        </message>
+        <message>
+            <source>Rounding power</source>
+            <translation>Степень скругления</translation>
+        </message>
+        <message>
+            <source>Rounding power %1</source>
+            <translation>Степень скругления: %1</translation>
+        </message>
+        <message>
+            <source>Rounding power %1 preview</source>
+            <translation>Предпросмотр степени скругления: %1</translation>
+        </message>
+        <message>
+            <source>Run approved computer command %1</source>
             <translation>Запустить разрешённую команду на компьютере: %1</translation>
         </message>
         <message>
