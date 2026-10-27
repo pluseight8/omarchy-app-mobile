@@ -2915,7 +2915,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 // RemoteViews may be below the initial Home viewport even while its label
                 // remains exposed to accessibility. Scroll the real page until the button
                 // itself is visible and inside the host view's clipping rectangle.
-                scrollHome(automation, context);
+                scrollHome(automation, activity);
                 SystemClock.sleep(200L);
             }
         }
