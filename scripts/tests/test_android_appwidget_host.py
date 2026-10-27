@@ -517,7 +517,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("candidate.getGlobalVisibleRect(bounds)", tap_helper)
         self.assertIn("hostView.getGlobalVisibleRect(hostBounds)", tap_helper)
         self.assertIn("clippedBounds.intersect(hostBounds)", tap_helper)
-        self.assertIn("scrollHome(automation, context)", tap_helper)
+        self.assertIn("scrollHome(automation, activity)", tap_helper)
         self.assertIn("scrollAttempt <= 4", tap_helper)
         home_scroll_start = instrumentation.index("private static void scrollHome(")
         home_scroll_end = instrumentation.index("private static void executeSwipe(", home_scroll_start)
