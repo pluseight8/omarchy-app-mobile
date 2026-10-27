@@ -190,7 +190,8 @@ class TranslationCatalogTests(unittest.TestCase):
         navigation = qml.rsplit('model: [', 1)[1].split("            }", 1)[0]
         self.assertIn('appTranslations.language === "ru"', navigation)
         self.assertIn("modelData.compactLabel", navigation)
-        self.assertIn("Accessible.name: modelData.label", navigation)
+        self.assertIn("Accessible.name: modelData.page === 4", navigation)
+        self.assertIn('qsTr("Settings tab") : modelData.label', navigation)
         for label in (
             "Apps compact", "Devices compact", "Home compact",
             "Settings compact", "Style compact",

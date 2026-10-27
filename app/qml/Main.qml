@@ -3991,7 +3991,8 @@ ApplicationWindow {
                           ? modelData.compactLabel : modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
-                    Accessible.name: modelData.label
+                    Accessible.name: modelData.page === 4
+                                      ? qsTr("Settings tab") : modelData.label
                     onClicked: window.selectedPage = modelData.page
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface

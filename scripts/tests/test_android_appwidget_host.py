@@ -136,14 +136,13 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertNotIn("swipeHomePage(", selection)
         self.assertIn('"Next Home page 1" : "Previous Home page 2"', selection)
         self.assertIn('"Go to home page " + (page + 1)', selection)
-        self.assertIn("awaitHomePageSelectionTarget(automation, expected", selection)
-        self.assertIn("hasVisibleAccessibleText(automation, expected)", selection)
+        self.assertIn("awaitHomePageSelectionTarget(automation, context, expected", selection)
+        self.assertIn("hasVisibleAccessibleText(automation, context, expected)", selection)
         ready_start = instrumentation.index("private static boolean awaitHomePageSelectionTarget")
         ready_end = instrumentation.index("private static void swipeHomePage", ready_start)
         ready = instrumentation[ready_start:ready_end]
-        self.assertIn("node.isVisibleToUser()", ready)
-        self.assertIn("node.getBoundsInScreen(bounds)", ready)
-        self.assertIn("if (!bounds.isEmpty())", ready)
+        self.assertIn("appAccessibilityTreeContains(automation, context, expected)", ready)
+        self.assertNotIn("accessibilityRoots(automation)", ready)
         self.assertIn("SystemClock.sleep(100L)", ready)
 
     def test_android_failure_artifact_captures_actual_device_screen(self):
@@ -643,19 +642,26 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("while (output.read(buffer) != -1)", input_swipe)
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn("android_widget_host_home_page_count_restore_passed", instrumentation)
-        self.assertIn('"Current Home page 1 of 2", 15_000L, context', instrumentation)
+        self.assertIn('"Current Home page 1 of 2", 15_000L))', instrumentation)
         self.assertIn("android_widget_host_backup_placeholder_passed", instrumentation)
         setup_start = instrumentation.index("private void ensureSecondHomePage")
         setup_end = instrumentation.index(
             "private static void verifyWidgetGridCollisionRules", setup_start
         )
         second_page_setup = instrumentation[setup_start:setup_end]
-        self.assertIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
-        self.assertIn('clickAccessibleControl(automation, "Add a home page")', second_page_setup)
-        self.assertIn('clickAccessibleControl(automation, "Home")', second_page_setup)
+        self.assertIn('clickAppAccessibleControl(automation, context, "Settings tab")',
+                      second_page_setup)
+        self.assertIn('clickAppAccessibleControl(automation, context, "Add a home page")',
+                      second_page_setup)
+        self.assertIn('clickAppAccessibleControl(automation, context, "Home")',
+                      second_page_setup)
+        self.assertIn('awaitAppAccessibilityText(automation, context, "Add a home page",',
+                      second_page_setup)
+        self.assertNotIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
         self.assertIn("swipeHomePage(automation, context, true)", second_page_setup)
         self.assertIn('"Current Home page 2 of 2"', second_page_setup)
-        self.assertIn("clickAccessibleControl(automation, navigationControl)", instrumentation)
+        self.assertIn("clickAppAccessibleControl(automation, context, navigationControl)",
+                      instrumentation)
         self.assertNotIn("swipeHomePage(automation, context, page == 1)", instrumentation)
         self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
         swipe_start = instrumentation.index("private static void swipeHomePage")
@@ -663,13 +669,39 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         swipe = instrumentation[swipe_start:swipe_end]
         self.assertIn("height * 0.18f", swipe)
         self.assertNotIn("height * 0.5f", swipe)
-        self.assertIn('awaitVisibleAccessibleText(automation, expected, 10_000L)', instrumentation)
+        self.assertIn('awaitVisibleAccessibleText(automation, context, expected, 10_000L)',
+                      instrumentation)
         self.assertIn(
-            'awaitAccessibilityText(automation, "Current Home page 1 of 2", 15_000L)',
+            'awaitAppAccessibilityText(automation, context, "Current Home page 1 of 2", 15_000L)',
             second_page_setup,
         )
         self.assertIn('"Current Home page " + (page + 1) + " of 2"', instrumentation)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
+        app_roots_start = instrumentation.index(
+            "private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots"
+        )
+        app_roots_end = instrumentation.index(
+            "private static ArrayList<AccessibilityNodeInfo> accessibilityRoots", app_roots_start
+        )
+        app_roots = instrumentation[app_roots_start:app_roots_end]
+        self.assertIn("automation.getRootInActiveWindow()", app_roots)
+        self.assertIn("context.getPackageName().contentEquals(packageName)", app_roots)
+        self.assertIn("activeRoot.recycle()", app_roots)
+        app_tree_start = instrumentation.index("private static boolean appAccessibilityTreeContains")
+        app_tree_end = instrumentation.index("private static String describeInteractiveWindows",
+                                             app_tree_start)
+        app_tree = instrumentation[app_tree_start:app_tree_end]
+        self.assertIn("isVisibleOnScreen(node)", app_tree)
+        self.assertIn("getBoundsInScreen(bounds)", instrumentation[
+            instrumentation.index("private static boolean isVisibleOnScreen"):
+            app_tree_start
+        ])
+        page_selection_start = instrumentation.index("private void selectHomePage")
+        page_selection_end = instrumentation.index("private static void swipeHomePage",
+                                                    page_selection_start)
+        page_selection = instrumentation[page_selection_start:page_selection_end]
+        self.assertIn("appAccessibilityTreeContains(automation, context, expected)", page_selection)
+        self.assertNotIn("accessibilityRoots(automation)", page_selection)
         widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
         widget_setup_end = instrumentation.index("private void ensureSecondHomePage", widget_setup_start)
         widget_setup = instrumentation[widget_setup_start:widget_setup_end]

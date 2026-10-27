@@ -975,6 +975,10 @@
             <translation>Настр.</translation>
         </message>
         <message>
+            <source>Settings tab</source>
+            <translation>Вкладка настроек</translation>
+        </message>
+        <message>
             <source>Show %1 on Home</source>
             <translation>Показывать %1 на главном экране</translation>
         </message>
