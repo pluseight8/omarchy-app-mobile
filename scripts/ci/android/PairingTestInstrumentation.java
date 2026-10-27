@@ -20,6 +20,7 @@ import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -31,7 +32,9 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import android.widget.FrameLayout;
@@ -1809,7 +1812,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // on its first page; select the saved page before checking RemoteViews.
         selectHomePage(automation, context, 1);
         tapHostedRemoteViewsAction(automation, selectedWidget.getInt("id"),
-                "CI_WIDGET_ACTION", "CI_WIDGET_READY");
+                "CI_WIDGET_ACTION", "CI_WIDGET_READY", 30_000L);
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
         reportStage("android_widget_host_remoteviews_provider_action_passed");
         if (!hasWidgetRecord(context, expectedProvider)) {
@@ -2520,7 +2523,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         reportStage("android_widget_host_home_page_count_restore_passed");
         tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),
-                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED");
+                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED", 30_000L);
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE", 15_000L, context);
         reportStage("android_widget_host_remoteviews_action_after_process_restore_passed");
         if (!hasWidgetRecord(context, expectedProvider)) {
@@ -2682,7 +2685,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + rebound);
         }
         tapHostedRemoteViewsAction(automation, reboundId,
-                "CI_WIDGET_ACTION", "CI_WIDGET_READY");
+                "CI_WIDGET_ACTION", "CI_WIDGET_READY", 15_000L);
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
         reportStage("android_widget_host_remoteviews_action_after_rebind_passed");
         String emptyBackup = new JSONObject().put("schemaVersion", 2)
@@ -2918,7 +2921,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     /** Sends a real screen touch to a visible button inside the hosted RemoteViews tree. */
     private void tapHostedRemoteViewsAction(UiAutomation automation, int widgetId, String label,
-                                           String expectedText) throws Exception {
+                                           String expectedText, long timeoutMillis) throws Exception {
         Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         if (activity == null || activity.isFinishing()) {
             throw new IllegalStateException("OmaApp's widget host Activity is unavailable for "
@@ -2928,7 +2931,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         AtomicReference<Rect> actionBounds = new AtomicReference<>();
         AtomicReference<Boolean> expectedTextVisible = new AtomicReference<>(false);
         AtomicReference<String> diagnostics = new AtomicReference<>("No host view was inspected.");
-        long deadline = SystemClock.elapsedRealtime() + 30_000L;
+        long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
         int scrollAttempts = 0;
         do {
             actionBounds.set(null);
@@ -3300,7 +3303,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             float fromRatio, float toRatio) {
         int width = context.getResources().getDisplayMetrics().widthPixels;
         int height = context.getResources().getDisplayMetrics().heightPixels;
-        int x = Math.max(2, Math.min(width - 3, Math.round(width * 0.02f)));
+        int x = homeScrollGestureX(context, width);
         int fromY = Math.max(1, Math.min(height - 2, Math.round(height * fromRatio)));
         int toY = Math.max(1, Math.min(height - 2, Math.round(height * toRatio)));
         try {
@@ -3308,6 +3311,23 @@ public final class PairingTestInstrumentation extends Instrumentation {
         } catch (Exception error) {
             Log.w(TAG, "Could not scroll the Home page outside the Android widget overlay.", error);
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private static int homeScrollGestureX(Context context, int width) {
+        int gestureInset = ViewConfiguration.get(context).getScaledEdgeSlop();
+        Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
+        WindowInsets insets = activity == null || activity.getWindow() == null
+                ? null : activity.getWindow().getDecorView().getRootWindowInsets();
+        // Keep vertical drags outside Android's edge-back gesture strip.
+        if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            gestureInset = insets.getInsets(WindowInsets.Type.systemGestures()).left;
+        } else if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            gestureInset = insets.getSystemGestureInsets().left;
+        }
+        int safeInset = Math.min(width - 3, gestureInset + 1);
+        return Math.max(2, Math.min(width - 3, Math.max(safeInset,
+                Math.round(width * 0.02f))));
     }
 
     private static void executeSwipe(UiAutomation automation, Context context,

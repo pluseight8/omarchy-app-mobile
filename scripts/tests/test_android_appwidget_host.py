@@ -87,7 +87,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
 
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
         self.assertIn('tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),\n'
-                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED")', instrumentation)
+                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED", 30_000L)', instrumentation)
         self.assertIn("CalledFromWrongThreadException", smoke)
 
     def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
@@ -497,7 +497,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("AndroidWidgetHost.currentActivityForInstrumentation()", widget_restore)
         self.assertNotIn("startActivitySync", widget_restore)
         self.assertIn('tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),\n'
-                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED")',
+                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED", 30_000L)',
                       widget_restore)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', widget_restore)
         remove_start = instrumentation.index("private void runAndroidWidgetHostRemove")
@@ -534,7 +534,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("hostView.findViewsWithText(matches, label", tap_helper)
         self.assertIn("hostView.findViewsWithText(textMatches, expectedText", tap_helper)
         self.assertIn("expectedTextVisible.get()", tap_helper)
-        self.assertIn("30_000L", tap_helper)
+        self.assertIn("long timeoutMillis", tap_helper)
+        self.assertIn("+ timeoutMillis", tap_helper)
+        self.assertNotIn("30_000L", tap_helper)
         self.assertIn("candidate.isClickable()", tap_helper)
         self.assertIn("candidate.isEnabled()", tap_helper)
         self.assertIn("candidate.getGlobalVisibleRect(bounds)", tap_helper)
@@ -547,6 +549,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         home_scroll = instrumentation[home_scroll_start:home_scroll_end]
         self.assertIn("runHomeVerticalSwipe(automation, context, 0.84f, 0.38f)", home_scroll)
         self.assertIn("runHomeVerticalSwipe(automation, context, 0.38f, 0.84f)", home_scroll)
+        self.assertIn("homeScrollGestureX(context, width)", home_scroll)
+        self.assertIn("ViewConfiguration.get(context).getScaledEdgeSlop()", home_scroll)
+        self.assertIn("insets.getInsets(WindowInsets.Type.systemGestures()).left", home_scroll)
+        self.assertIn("insets.getSystemGestureInsets().left", home_scroll)
         self.assertIn("width * 0.02f", home_scroll)
         self.assertNotIn("0.92f", home_scroll)
         self.assertIn("sendPointerSync(down)", tap_helper)
@@ -882,12 +888,18 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         widget_setup = instrumentation[widget_setup_start:widget_setup_end]
         self.assertIn('awaitAccessibleControlClick(automation, pickerControl, 10_000L)',
                       widget_setup)
+        self.assertIn('"CI_WIDGET_ACTION", "CI_WIDGET_READY", 30_000L)', widget_setup)
+        widget_remove_start = instrumentation.index("private void runAndroidWidgetHostRemove")
+        widget_remove_end = instrumentation.index("private static JSONObject requireWidgetRecord",
+                                                  widget_remove_start)
+        widget_remove = instrumentation[widget_remove_start:widget_remove_end]
+        self.assertIn('"CI_WIDGET_ACTION", "CI_WIDGET_READY", 15_000L)', widget_remove)
         self.assertIn('describeInteractiveWindows(automation)', widget_setup)
         self.assertNotIn('clickAccessibleText(automation, "Add Android widget to Home page 2")', widget_setup)
         placement_stage = widget_setup.index(
             'reportStage("android_widget_host_second_page_placement_passed")'
         )
-        ready_check = widget_setup.index('"CI_WIDGET_ACTION", "CI_WIDGET_READY")')
+        ready_check = widget_setup.index('"CI_WIDGET_ACTION", "CI_WIDGET_READY",')
         self.assertLess(
             widget_setup.index('selectHomePage(automation, context, 1);', placement_stage),
             ready_check,
