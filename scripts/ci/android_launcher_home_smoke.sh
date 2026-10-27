@@ -278,7 +278,7 @@ python3 scripts/ci/android_accessibility_dump.py \
 select_home_when_needed "$smoke_artifacts/window-home-before-owl-store.xml" \
   /sdcard/omaapp-home-before-owl-store.xml
 settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-home-before-owl-store.xml" 'Settings')"
+  "$smoke_artifacts/window-home-before-owl-store.xml" 'Settings tab')"
 read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1
@@ -322,7 +322,7 @@ python3 scripts/ci/android_accessibility_dump.py \
 select_home_when_needed "$smoke_artifacts/window-home-before-widget-editor.xml" \
   /sdcard/omaapp-home-before-widget-editor.xml
 settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-  "$smoke_artifacts/window-home-before-widget-editor.xml" 'Settings')"
+  "$smoke_artifacts/window-home-before-widget-editor.xml" 'Settings tab')"
 read -r settings_x settings_y <<< "$settings_target"
 adb shell input tap "$settings_x" "$settings_y"
 sleep 1

@@ -6,6 +6,15 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidLauncherHomeSmokeTests(unittest.TestCase):
+    def test_settings_navigation_uses_the_unique_accessible_tab_name(self):
+        smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertEqual(smoke.count("window-home-before-owl-store.xml\" 'Settings tab'"), 1)
+        self.assertEqual(smoke.count("window-home-before-widget-editor.xml\" 'Settings tab'"), 1)
+        self.assertNotIn("window-home-before-owl-store.xml\" 'Settings'", smoke)
+        self.assertNotIn("window-home-before-widget-editor.xml\" 'Settings'", smoke)
+
     def test_tab_selection_refreshes_accessibility_tree_before_pin_target(self):
         smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
             encoding="utf-8"
