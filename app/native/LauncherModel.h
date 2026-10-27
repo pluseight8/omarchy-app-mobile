@@ -22,6 +22,8 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
     Q_PROPERTY(QVariantList androidWidgets READ androidWidgets NOTIFY androidWidgetsChanged)
+    Q_PROPERTY(bool androidWidgetStorageError READ androidWidgetStorageError
+               NOTIFY androidWidgetStorageErrorChanged)
     Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
     Q_PROPERTY(bool hapticFeedbackEnabled READ hapticFeedbackEnabled
                NOTIFY hapticFeedbackEnabledChanged)
@@ -53,6 +55,7 @@ public:
     int homePageCount() const;
     QVariantMap homeWidgets() const;
     QVariantList androidWidgets() const;
+    bool androidWidgetStorageError() const;
     QVariantMap gestures() const;
     bool hapticFeedbackEnabled() const;
     void setFilter(const QString &filter);
@@ -119,6 +122,7 @@ signals:
     void homePagesChanged();
     void homeWidgetsChanged();
     void androidWidgetsChanged();
+    void androidWidgetStorageErrorChanged();
     void gesturesChanged();
     void hapticFeedbackEnabledChanged();
     void systemFontScaleChanged();
@@ -148,6 +152,7 @@ private:
     int m_homePageCount = 1;
     QVariantMap m_homeWidgets;
     QVariantList m_androidWidgets;
+    bool m_androidWidgetStorageError = false;
     QVariantMap m_gestures;
     bool m_hapticFeedbackEnabled = false;
     mutable QHash<QString, QString> m_iconUrls;

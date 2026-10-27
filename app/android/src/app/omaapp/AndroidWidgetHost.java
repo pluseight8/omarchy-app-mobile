@@ -441,7 +441,9 @@ public final class AndroidWidgetHost {
         }
         List<JSONObject> widgets = readWidgets(context);
         if (widgets == null) {
-            return "[]";
+            // Keep unreadable state distinct from a genuinely empty widget list so the
+            // launcher can surface a recoverable, non-destructive error to the user.
+            return "{\"status\":\"storage_error\"}";
         }
         JSONArray result = new JSONArray();
         for (JSONObject widget : widgets) {
@@ -766,18 +768,35 @@ public final class AndroidWidgetHost {
     /** Completes the persisted choice when startup finds an Android journal without a Qt journal. */
     public static boolean recoverWidgetBackupRestore(Context context) {
         if (context == null) {
+            Log.e(TAG, "Could not recover Android widget backup state without an application context.");
             return false;
         }
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        String state = preferences.getString(RESTORE_STATE_KEY, "");
-        if (state.isEmpty() && !preferences.contains(RESTORE_PREVIOUS_KEY)) {
-            return true;
-        }
-        if ("prepared".equals(state)) {
-            return rollbackWidgetBackupRestore(context);
-        }
-        if ("committing".equals(state)) {
-            return commitWidgetBackupRestore(context);
+        try {
+            String state = preferences.getString(RESTORE_STATE_KEY, "");
+            boolean hasPrevious = preferences.contains(RESTORE_PREVIOUS_KEY);
+            if (state.isEmpty() && !hasPrevious) {
+                Log.i(TAG, "No interrupted Android widget backup restore needs recovery.");
+                return true;
+            }
+            if ("prepared".equals(state)) {
+                boolean recovered = rollbackWidgetBackupRestore(context);
+                if (!recovered) {
+                    Log.e(TAG, "Could not roll back the prepared Android widget restore journal.");
+                }
+                return recovered;
+            }
+            if ("committing".equals(state)) {
+                boolean recovered = commitWidgetBackupRestore(context);
+                if (!recovered) {
+                    Log.e(TAG, "Could not complete the committed Android widget restore journal.");
+                }
+                return recovered;
+            }
+            Log.e(TAG, "Unrecognized Android widget restore journal state; preserving it. "
+                    + "state=" + state + ", hasPrevious=" + hasPrevious);
+        } catch (RuntimeException error) {
+            Log.e(TAG, "Could not read Android widget restore journal state; preserving it.", error);
         }
         return false;
     }
@@ -785,21 +804,30 @@ public final class AndroidWidgetHost {
     /** Restores the exact previous host records without discarding their system widget IDs. */
     public static boolean rollbackWidgetBackupRestore(Context context) {
         if (context == null) {
+            Log.e(TAG, "Could not roll back an Android widget restore without an application context.");
             return false;
         }
         SharedPreferences preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!preferences.contains(RESTORE_STATE_KEY) && !preferences.contains(RESTORE_PREVIOUS_KEY)) {
             return true;
         }
-        if (!"prepared".equals(preferences.getString(RESTORE_STATE_KEY, ""))) {
+        String state = preferences.getString(RESTORE_STATE_KEY, "");
+        if (!"prepared".equals(state)) {
+            Log.e(TAG, "Cannot roll back Android widget restore journal in state: " + state);
             return false;
         }
         List<JSONObject> previous = parseStoredWidgetRecords(
                 preferences.getString(RESTORE_PREVIOUS_KEY, ""));
-        if (previous == null || !writeWidgets(context, previous)) {
+        if (previous == null) {
+            Log.e(TAG, "The previous Android widget records in the restore journal are invalid.");
+            return false;
+        }
+        if (!writeWidgets(context, previous)) {
+            Log.e(TAG, "Could not restore the previous Android widget records.");
             return false;
         }
         if (!clearWidgetBackupRestoreJournal(preferences)) {
+            Log.e(TAG, "Could not clear the rolled-back Android widget restore journal.");
             return false;
         }
         clearWidgetViewsForBackupRestore();

@@ -191,6 +191,10 @@
             <translation>Виджеты Android</translation>
         </message>
         <message>
+            <source>Android widget data could not be read. Existing bindings were left untouched.</source>
+            <translation>Не удалось прочитать данные виджетов Android. Существующие системные привязки не изменены.</translation>
+        </message>
+        <message>
             <source>Android widgets you add here stay on this phone and work offline.</source>
             <translation>Добавленные здесь виджеты Android сохраняются на этом телефоне и работают без подключения.</translation>
         </message>

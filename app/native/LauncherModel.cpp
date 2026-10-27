@@ -232,6 +232,11 @@ QVariantList LauncherModel::androidWidgets() const
     return m_androidWidgets;
 }
 
+bool LauncherModel::androidWidgetStorageError() const
+{
+    return m_androidWidgetStorageError;
+}
+
 QVariantMap LauncherModel::gestures() const
 {
     return m_gestures;
@@ -316,6 +321,27 @@ void LauncherModel::refreshAndroidWidgets()
         "app/omaapp/AndroidWidgetHost", "listWidgets",
         "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
     const QJsonDocument document = QJsonDocument::fromJson(json.toString().toUtf8());
+    if (document.isObject()
+        && document.object().value(QStringLiteral("status")).toString()
+            == QStringLiteral("storage_error")) {
+        if (!m_androidWidgetStorageError) {
+            m_androidWidgetStorageError = true;
+            emit androidWidgetStorageErrorChanged();
+        }
+        // Retain the last known-good entries. AndroidWidgetHost deliberately leaves
+        // unreadable preferences and allocated IDs untouched for a later recovery.
+        emit androidWidgetsChanged();
+        return;
+    }
+    if (!document.isArray()) {
+        qWarning() << "OmaApp: Android widget storage returned an invalid response";
+        if (!m_androidWidgetStorageError) {
+            m_androidWidgetStorageError = true;
+            emit androidWidgetStorageErrorChanged();
+        }
+        emit androidWidgetsChanged();
+        return;
+    }
     QVariantList widgets;
     QSet<int> knownIds;
     QSet<QString> knownRecords;
@@ -383,6 +409,10 @@ void LauncherModel::refreshAndroidWidgets()
     });
     if (m_androidWidgets != widgets)
         m_androidWidgets = std::move(widgets);
+    if (m_androidWidgetStorageError) {
+        m_androidWidgetStorageError = false;
+        emit androidWidgetStorageErrorChanged();
+    }
     emit androidWidgetsChanged();
 #endif
 }

@@ -31,12 +31,24 @@ run_stage() {
       2>&1 | tee "$output"; then
     adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-settings-failure.png \
       "$artifacts/$mode-settings-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-page-selection-failure.png \
+      "$artifacts/$mode-page-selection-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-startup-recovery-failure.png \
+      "$artifacts/$mode-startup-recovery-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-action-failure.png \
+      "$artifacts/$mode-action-failure.png" >/dev/null 2>&1 || true
     return 1
   fi
   if ! grep -F "INSTRUMENTATION_STATUS: stage=$expected" "$output" \
       || ! grep -F 'INSTRUMENTATION_CODE: -1' "$output"; then
     adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-settings-failure.png \
       "$artifacts/$mode-settings-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-page-selection-failure.png \
+      "$artifacts/$mode-page-selection-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-startup-recovery-failure.png \
+      "$artifacts/$mode-startup-recovery-failure.png" >/dev/null 2>&1 || true
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-action-failure.png \
+      "$artifacts/$mode-action-failure.png" >/dev/null 2>&1 || true
     return 1
   fi
 }
@@ -59,6 +71,8 @@ grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_recovery_prepa
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_schema_migration_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_corrupt_records_preserve_ids_passed' \
+  "$artifacts/setup-instrumentation.txt"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_corrupt_records_visible_in_launcher_passed' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_qml_controls_passed' \
   "$artifacts/setup-instrumentation.txt"
@@ -119,7 +133,7 @@ test -s "$artifacts/widget-home-layout.png"
 test -s "$artifacts/widget-rebind-placeholder.png"
 stop_logcat_capture
 test -s "$artifacts/appwidget-host-logcat.txt"
-if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|CalledFromWrongThreadException|ANR in app\.omaapp|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
+if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|CalledFromWrongThreadException|ANR in app\.omaapp|Home restore recovery failed during startup|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
   "$artifacts/appwidget-host-logcat.txt"; then
   printf 'Android widget host smoke found a fatal app or QML error; see appwidget-host-logcat.txt.\n' >&2
   exit 1

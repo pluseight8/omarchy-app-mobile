@@ -1190,7 +1190,10 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        const startupRestorePhase = launcher.layoutRestoreJournalPhase()
         if (!recoverLayoutBackupRestore()) {
+            console.error("OmaApp: Home restore recovery failed during startup (journal phase: "
+                         + (startupRestorePhase.length > 0 ? startupRestorePhase : "empty") + ")")
             layoutRestoreRecoveryFailed = true
             layoutMessage = qsTr("An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.")
         }
@@ -1591,7 +1594,8 @@ ApplicationWindow {
                                     text: qsTr("Add widget")
                                     Accessible.name: qsTr("Add Android widget to Home page %1")
                                                          .arg(homePagePage.pageIndex + 1)
-                                    enabled: launcher.androidWidgets.length < 8
+                                    enabled: !launcher.androidWidgetStorageError
+                                             && launcher.androidWidgets.length < 8
                                              && !androidWidgetPickerLaunchTimer.running
                                     onClicked: {
                                         window.androidWidgetMessage = ""
@@ -1600,6 +1604,16 @@ ApplicationWindow {
                                         androidWidgetPickerLaunchTimer.restart()
                                     }
                                 }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: launcher.platformSupported && launcher.androidWidgetStorageError
+                                text: qsTr("Android widget data could not be read. Existing bindings were left untouched.")
+                                Accessible.name: text
+                                color: Theme.urgent
+                                font.pixelSize: Theme.fontSize(12)
+                                wrapMode: Text.WordWrap
                             }
 
                             Text {

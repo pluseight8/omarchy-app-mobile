@@ -147,8 +147,24 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
 
     def test_android_failure_artifact_captures_actual_device_screen(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("adb shell screencap -p /sdcard/omaapp-ci-failure-screen.png", workflow)
         self.assertIn('"$smoke_artifacts/failure-screen.png"', workflow)
+        self.assertIn("omaapp-appwidget-startup-recovery-failure.png", smoke)
+
+    def test_widget_backup_recovery_logs_the_failed_rollback_stage(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("No interrupted Android widget backup restore needs recovery.", host)
+        self.assertIn("The previous Android widget records in the restore journal are invalid.", host)
+        self.assertIn("Could not restore the previous Android widget records.", host)
+        self.assertIn("Home showed its recovery overlay on the initial launch", instrumentation)
 
     def test_native_resize_grip_reports_a_reversible_size_change(self):
         activity = (ROOT / "app/android/src/app/omaapp/OmaAppActivity.java").read_text(
@@ -285,10 +301,13 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             'if (item == null) {\n                Log.e(TAG, "Saved Android widget state contains a non-object entry',
             host,
         )
-        self.assertIn('Method restoreWidgets = null;', instrumentation)
         self.assertIn(
-            'verifyCorruptWidgetRecordPreservesIds(context, originalWidget)', instrumentation
+            'verifyCorruptWidgetRecordPreservesIds(context, originalWidget, automation)',
+            instrumentation,
         )
+        self.assertIn("AtomicReference<Method> restoreWidgetsRef", instrumentation)
+        self.assertIn('"storage_error".equals(unreadable.optString("status"))', instrumentation)
+        self.assertIn("Existing bindings were left untouched.", instrumentation)
         self.assertIn("hostOwnsId.invoke(null, orphanCandidate)", instrumentation)
         self.assertIn('boolean hadPrevious = preferences.contains("widgets")', instrumentation)
         self.assertIn('corruptState.equals(preferences.getString("widgets", ""))', instrumentation)
@@ -588,6 +607,64 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("hasPlacementConflict", host)
         self.assertIn("nextWidgetY", host)
         self.assertIn("normalizePageOrders(result)", host)
+
+    def test_unreadable_widget_storage_is_reported_without_clearing_last_good_entries(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        native = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        header = (ROOT / "app/native/LauncherModel.h").read_text(encoding="utf-8")
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn('return "{\\"status\\":\\"storage_error\\"}";', host)
+        refresh_start = native.index("void LauncherModel::refreshAndroidWidgets()")
+        refresh_end = native.index("bool LauncherModel::addAndroidWidget()", refresh_start)
+        refresh = native[refresh_start:refresh_end]
+        self.assertIn('QStringLiteral("storage_error")', refresh)
+        error_start = refresh.index('== QStringLiteral("storage_error")')
+        error_end = refresh.index("if (!document.isArray())", error_start)
+        error_branch = refresh[error_start:error_end]
+        self.assertIn("Retain the last known-good entries", error_branch)
+        self.assertNotIn("m_androidWidgets =", error_branch)
+        self.assertIn("Q_PROPERTY(bool androidWidgetStorageError", header)
+        self.assertIn("androidWidgetStorageErrorChanged();", refresh)
+        self.assertIn("Existing bindings were left untouched.", qml)
+        self.assertIn("Accessible.name: text", qml)
+        self.assertIn("!launcher.androidWidgetStorageError", qml)
+        self.assertIn("android_widget_host_corrupt_records_visible_in_launcher_passed",
+                      instrumentation)
+
+    def test_widget_smoke_preserves_live_failure_evidence_for_geometry_and_recovery(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        recover_start = host.index("public static boolean recoverWidgetBackupRestore(Context context)")
+        recover_end = host.index("/** Restores the exact previous host records", recover_start)
+        recovery = host[recover_start:recover_end]
+        self.assertIn("Unrecognized Android widget restore journal state; preserving it", recovery)
+        self.assertIn("Could not read Android widget restore journal state; preserving it.", recovery)
+        self.assertIn("Home restore recovery failed during startup", qml)
+        self.assertIn("omaapp-appwidget-page-selection-failure.png", instrumentation)
+        self.assertIn("omaapp-appwidget-action-failure.png", instrumentation)
+        self.assertIn('hasVisibleAccessibleText(automation, context, "Retry recovery")',
+                      instrumentation)
+        self.assertIn("Home is blocked by its backup recovery overlay", instrumentation)
+        self.assertIn("appendViewGeometry(inspected, \"decor\", decor)", instrumentation)
+        self.assertIn("appendWidgetFrameGeometry(inspected, widgetId)", instrumentation)
+        self.assertIn("getLocationOnScreen(screen)", instrumentation)
+        self.assertIn("widgetFrame={", instrumentation)
+        self.assertIn("$artifacts/$mode-page-selection-failure.png", smoke)
+        self.assertIn("$artifacts/$mode-action-failure.png", smoke)
+        self.assertIn("Home restore recovery failed during startup", smoke)
 
     def test_cross_page_move_keeps_position_when_the_target_space_is_free(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(

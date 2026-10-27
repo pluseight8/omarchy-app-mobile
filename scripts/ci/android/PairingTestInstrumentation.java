@@ -1728,6 +1728,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + describeInteractiveWindows(automation) + "; accessibility tree:\n"
                     + accessibilityTree(automation));
         }
+        if (hasVisibleAccessibleText(automation, context, "Retry recovery")) {
+            Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
+            if (activity instanceof OmaAppActivity) {
+                saveAppWidgetScreenshot((OmaAppActivity) activity, automation,
+                        "omaapp-appwidget-startup-recovery-failure.png");
+            }
+            throw new IllegalStateException("Home showed its recovery overlay on the initial launch, "
+                    + "before opening Android's widget picker. " + describeInteractiveWindows(automation)
+                    + "; accessibility tree:\n" + accessibilityTree(automation));
+        }
         reportStage("android_widget_host_home_ready");
         Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         if (!(activity instanceof OmaAppActivity)) {
@@ -1809,7 +1819,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         JSONObject originalWidget = requireWidgetRecord(context, expectedProvider);
         verifyWidgetSchemaTwoMigration(context, originalWidget);
         originalWidget = requireWidgetRecord(context, expectedProvider);
-        verifyCorruptWidgetRecordPreservesIds(context, originalWidget);
+        verifyCorruptWidgetRecordPreservesIds(context, originalWidget, automation);
         originalWidget = requireWidgetRecord(context, expectedProvider);
         String widgetRecordId = originalWidget.getString("recordId");
         int widgetId = originalWidget.getInt("id");
@@ -2020,14 +2030,38 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (page < 0 || page >= 2) {
             throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
         }
+        if (hasVisibleAccessibleText(automation, context, "Retry recovery")) {
+            Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
+            if (activity instanceof OmaAppActivity) {
+                try {
+                    saveAppWidgetScreenshot((OmaAppActivity) activity, automation,
+                            "omaapp-appwidget-page-selection-failure.png");
+                } catch (Exception error) {
+                    Log.e(TAG, "Could not save the blocked Home recovery screenshot.", error);
+                }
+            }
+            throw new IllegalStateException("Home is blocked by its backup recovery overlay after "
+                    + "the Android widget Activity returned. " + describeInteractiveWindows(automation)
+                    + "; accessibility tree:\n" + accessibilityTree(automation));
+        }
         String expected = "Current Home page " + (page + 1) + " of 2";
         String navigationControl = page == 1
                 ? "Next Home page 1" : "Previous Home page 2";
         String pageDotControl = "Go to home page " + (page + 1);
         if (!awaitHomePageSelectionTarget(automation, context, expected, navigationControl,
                 pageDotControl, 10_000L)) {
+            Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
+            if (activity instanceof OmaAppActivity) {
+                try {
+                    saveAppWidgetScreenshot((OmaAppActivity) activity, automation,
+                            "omaapp-appwidget-page-selection-failure.png");
+                } catch (Exception error) {
+                    Log.e(TAG, "Could not save the failed Home page selection screenshot.", error);
+                }
+            }
             throw new IllegalStateException("Home did not publish a visible, ready accessibility node "
                     + "for page " + (page + 1) + " after the Android widget activity returned.\n"
+                    + describeInteractiveWindows(automation) + "; accessibility tree:\n"
                     + accessibilityTree(automation));
         }
         if (!hasVisibleAccessibleText(automation, context, expected)) {
@@ -2284,65 +2318,101 @@ public final class PairingTestInstrumentation extends Instrumentation {
         reportStage("android_widget_host_schema_migration_passed");
     }
 
-    private void verifyCorruptWidgetRecordPreservesIds(Context context, JSONObject validWidget)
-            throws Exception {
+    private void verifyCorruptWidgetRecordPreservesIds(Context context, JSONObject validWidget,
+            UiAutomation automation) throws Exception {
         AtomicReference<Exception> failure = new AtomicReference<>();
-        runOnMainSync(() -> {
-            android.content.SharedPreferences preferences = context.getSharedPreferences(
-                    "android_widget_host", Context.MODE_PRIVATE);
-            boolean hadPrevious = preferences.contains("widgets");
-            String previous = preferences.getString("widgets", "");
-            AppWidgetHost host = null;
-            int orphanCandidate = AppWidgetManager.INVALID_APPWIDGET_ID;
-            Method restoreWidgets = null;
-            try {
-                Field hostField = AndroidWidgetHost.class.getDeclaredField("host");
-                hostField.setAccessible(true);
-                host = (AppWidgetHost) hostField.get(null);
-                if (host == null) {
-                    throw new IllegalStateException("Android widget host was not initialized.");
+        AtomicReference<android.content.SharedPreferences> preferencesRef = new AtomicReference<>();
+        AtomicReference<String> previousRef = new AtomicReference<>("");
+        AtomicReference<Boolean> hadPreviousRef = new AtomicReference<>(false);
+        AtomicReference<AppWidgetHost> hostRef = new AtomicReference<>();
+        AtomicReference<Integer> orphanCandidateRef = new AtomicReference<>(
+                AppWidgetManager.INVALID_APPWIDGET_ID);
+        AtomicReference<Method> restoreWidgetsRef = new AtomicReference<>();
+        try {
+            runOnMainSync(() -> {
+                android.content.SharedPreferences preferences = context.getSharedPreferences(
+                        "android_widget_host", Context.MODE_PRIVATE);
+                boolean hadPrevious = preferences.contains("widgets");
+                String previous = preferences.getString("widgets", "");
+                preferencesRef.set(preferences);
+                hadPreviousRef.set(hadPrevious);
+                previousRef.set(previous);
+                try {
+                    Field hostField = AndroidWidgetHost.class.getDeclaredField("host");
+                    hostField.setAccessible(true);
+                    AppWidgetHost host = (AppWidgetHost) hostField.get(null);
+                    if (host == null) {
+                        throw new IllegalStateException("Android widget host was not initialized.");
+                    }
+                    hostRef.set(host);
+                    int orphanCandidate = host.allocateAppWidgetId();
+                    orphanCandidateRef.set(orphanCandidate);
+                    JSONObject stored = new JSONObject(previous);
+                    JSONArray entries = stored.getJSONArray("widgets");
+                    entries.put(new JSONObject()
+                            .put("recordId", "ci-corrupt-record")
+                            .put("id", orphanCandidate)
+                            .put("provider", "not-a-component")
+                            .put("label", "Corrupt CI record")
+                            .put("page", 0)
+                            .put("order", 7)
+                            .put("xDp", 0)
+                            .put("yDp", 0)
+                            .put("minWidthDp", 160)
+                            .put("minHeightDp", 120)
+                            .put("widthDp", 400)
+                            .put("heightDp", 240)
+                            .put("state", "ready"));
+                    String corruptState = stored.toString();
+                    if (!preferences.edit().putString("widgets", corruptState).commit()) {
+                        throw new IllegalStateException("Could not seed one malformed widget record.");
+                    }
+                    Method restoreWidgets = AndroidWidgetHost.class.getDeclaredMethod(
+                            "restoreWidgets", Context.class);
+                    restoreWidgets.setAccessible(true);
+                    restoreWidgetsRef.set(restoreWidgets);
+                    restoreWidgets.invoke(null, context);
+                    Method hostOwnsId = AndroidWidgetHost.class.getDeclaredMethod(
+                            "hostOwnsId", int.class);
+                    hostOwnsId.setAccessible(true);
+                    if (!(Boolean) hostOwnsId.invoke(null, orphanCandidate)
+                            || !(Boolean) hostOwnsId.invoke(null, validWidget.getInt("id"))) {
+                        throw new IllegalStateException(
+                                "A partially corrupt widget store caused Android host IDs to be released.");
+                    }
+                    JSONObject unreadable = new JSONObject(AndroidWidgetHost.listWidgets(context));
+                    if (!"storage_error".equals(unreadable.optString("status"))
+                            || !corruptState.equals(preferences.getString("widgets", ""))) {
+                        throw new IllegalStateException(
+                                "A partially corrupt widget store was not reported safely or was rewritten.");
+                    }
+                } catch (Exception error) {
+                    failure.set(error);
                 }
-                orphanCandidate = host.allocateAppWidgetId();
-                JSONObject stored = new JSONObject(previous);
-                JSONArray entries = stored.getJSONArray("widgets");
-                entries.put(new JSONObject()
-                        .put("recordId", "ci-corrupt-record")
-                        .put("id", orphanCandidate)
-                        .put("provider", "not-a-component")
-                        .put("label", "Corrupt CI record")
-                        .put("page", 0)
-                        .put("order", 7)
-                        .put("xDp", 0)
-                        .put("yDp", 0)
-                        .put("minWidthDp", 160)
-                        .put("minHeightDp", 120)
-                        .put("widthDp", 400)
-                        .put("heightDp", 240)
-                        .put("state", "ready"));
-                String corruptState = stored.toString();
-                if (!preferences.edit().putString("widgets", corruptState).commit()) {
-                    throw new IllegalStateException("Could not seed one malformed widget record.");
+            });
+            if (failure.get() == null) {
+                OmaAppActivity.notifyAndroidWidgetsChanged();
+                if (!awaitAppAccessibilityText(automation, context,
+                        "Android widget data could not be read. Existing bindings were left untouched.",
+                        5_000L)) {
+                    failure.set(new IllegalStateException(
+                            "OmaApp did not show its non-destructive widget storage error state.\n"
+                                    + accessibilityTree(automation)));
                 }
-                restoreWidgets = AndroidWidgetHost.class.getDeclaredMethod(
-                        "restoreWidgets", Context.class);
-                restoreWidgets.setAccessible(true);
-                restoreWidgets.invoke(null, context);
-                Method hostOwnsId = AndroidWidgetHost.class.getDeclaredMethod(
-                        "hostOwnsId", int.class);
-                hostOwnsId.setAccessible(true);
-                if (!(Boolean) hostOwnsId.invoke(null, orphanCandidate)
-                        || !(Boolean) hostOwnsId.invoke(null, validWidget.getInt("id"))) {
-                    throw new IllegalStateException(
-                            "A partially corrupt widget store caused Android host IDs to be released.");
+            }
+        } catch (Exception error) {
+            failure.compareAndSet(null, error);
+        } finally {
+            runOnMainSync(() -> {
+                android.content.SharedPreferences preferences = preferencesRef.get();
+                if (preferences == null) {
+                    return;
                 }
-                if (!"[]".equals(AndroidWidgetHost.listWidgets(context))
-                        || !corruptState.equals(preferences.getString("widgets", ""))) {
-                    throw new IllegalStateException(
-                            "A partially corrupt widget store was exposed as partial state or rewritten.");
-                }
-            } catch (Exception error) {
-                failure.set(error);
-            } finally {
+                boolean hadPrevious = hadPreviousRef.get();
+                String previous = previousRef.get();
+                AppWidgetHost host = hostRef.get();
+                int orphanCandidate = orphanCandidateRef.get();
+                Method restoreWidgets = restoreWidgetsRef.get();
                 android.content.SharedPreferences.Editor editor = preferences.edit();
                 if (hadPrevious) {
                     editor.putString("widgets", previous);
@@ -2367,12 +2437,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 } catch (Exception cleanupError) {
                     failure.compareAndSet(null, cleanupError);
                 }
-            }
-        });
+                OmaAppActivity.notifyAndroidWidgetsChanged();
+            });
+        }
         if (failure.get() != null) {
             throw new IllegalStateException("Corrupt widget state check failed.", failure.get());
         }
         reportStage("android_widget_host_corrupt_records_preserve_ids_passed");
+        reportStage("android_widget_host_corrupt_records_visible_in_launcher_passed");
     }
 
     private void runAndroidWidgetHostRestore(Context context) throws Exception {
@@ -2876,6 +2948,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         .append(" hostBounds=").append(hostBounds)
                         .append(" label=").append(label)
                         .append(" matchingViews=").append(matches.size());
+                appendViewGeometry(inspected, "decor", decor);
+                appendViewGeometry(inspected, "host", hostView);
+                View content = activity.findViewById(android.R.id.content);
+                appendViewGeometry(inspected, "content", content);
+                appendWidgetFrameGeometry(inspected, widgetId);
                 for (View match : matches) {
                     View candidate = match;
                     for (int depth = 0; candidate != null && depth < 8; depth++) {
@@ -2891,6 +2968,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                                 .append(" visible=").append(visible)
                                 .append(" withinHost=").append(withinHost)
                                 .append(" bounds=").append(bounds);
+                        appendViewGeometry(inspected, "candidate", candidate);
                         if (candidate.isEnabled() && candidate.isClickable()
                                 && visible && withinHost) {
                             actionBounds.set(clippedBounds);
@@ -2922,6 +3000,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         Rect bounds = actionBounds.get();
         if (bounds == null || bounds.isEmpty()) {
+            try {
+                saveAppWidgetScreenshot(activity, automation,
+                        "omaapp-appwidget-action-failure.png");
+            } catch (Exception error) {
+                diagnostics.set(diagnostics.get() + "; screenshotError=" + error.getMessage());
+            }
             throw new IllegalStateException("The real RemoteViews action did not become visibly "
                     + "clickable after scrolling Home. " + diagnostics.get() + "; accessibility tree: "
                     + accessibilityTree(automation));
@@ -2961,6 +3045,62 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return null;
+    }
+
+    private static void appendViewGeometry(StringBuilder output, String label, View view) {
+        if (view == null) {
+            output.append("; ").append(label).append("View=null");
+            return;
+        }
+        int[] screen = new int[2];
+        int[] window = new int[2];
+        view.getLocationOnScreen(screen);
+        view.getLocationInWindow(window);
+        output.append("; ").append(label).append("Geometry={class=")
+                .append(view.getClass().getName())
+                .append(",parent=").append(view.getParent() == null
+                        ? "null" : view.getParent().getClass().getName())
+                .append(",left=").append(view.getLeft())
+                .append(",top=").append(view.getTop())
+                .append(",width=").append(view.getWidth())
+                .append(",height=").append(view.getHeight())
+                .append(",screen=").append(screen[0]).append(',').append(screen[1])
+                .append(",window=").append(window[0]).append(',').append(window[1])
+                .append(",translation=").append(view.getTranslationX()).append(',')
+                .append(view.getTranslationY())
+                .append(",scroll=").append(view.getScrollX()).append(',')
+                .append(view.getScrollY())
+                .append(",clip=").append(view.getClipBounds())
+                .append(",shown=").append(view.isShown())
+                .append('}');
+    }
+
+    private static void appendWidgetFrameGeometry(StringBuilder output, int widgetId) {
+        try {
+            Field framesField = AndroidWidgetHost.class.getDeclaredField("frames");
+            framesField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<Integer, Object> frames = (java.util.Map<Integer, Object>) framesField.get(null);
+            Object frame = frames.get(widgetId);
+            if (frame == null) {
+                output.append("; widgetFrame=null");
+                return;
+            }
+            String[] fields = {"xDp", "yDp", "widthDp", "heightDp", "clipXdp",
+                    "clipYdp", "clipWidthDp", "clipHeightDp", "visible"};
+            output.append("; widgetFrame={");
+            for (int index = 0; index < fields.length; index++) {
+                if (index > 0) {
+                    output.append(',');
+                }
+                Field field = frame.getClass().getDeclaredField(fields[index]);
+                field.setAccessible(true);
+                output.append(fields[index]).append('=').append(field.get(frame));
+            }
+            output.append('}');
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            output.append("; widgetFrameError=").append(error.getClass().getSimpleName());
+        }
     }
 
     private static boolean clickAccessibleNode(UiAutomation automation, AccessibilityNodeInfo node,
