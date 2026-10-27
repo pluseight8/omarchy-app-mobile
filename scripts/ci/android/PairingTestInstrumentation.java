@@ -825,6 +825,49 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return clickAccessibleControl(appAccessibilityRoots(automation, context), label);
     }
 
+    private static boolean tapAppAccessibleControl(UiAutomation automation, Context context,
+            String label) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean tapped = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && label.contentEquals(nodeText))
+                        || (nodeDescription != null && label.contentEquals(nodeDescription));
+                if (matches && isWithinDisplayBounds(node, context)
+                        && node.isEnabled() && node.isClickable()) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    try {
+                        runInputTap(automation, bounds.centerX(), bounds.centerY());
+                    } catch (IOException error) {
+                        throw new IllegalStateException(
+                                "Could not tap the on-screen OmaApp control " + label + ".", error);
+                    }
+                    tapped = true;
+                    break;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return tapped;
+    }
+
     private static boolean clickAccessibleControl(ArrayList<AccessibilityNodeInfo> pending,
             String label) {
         if (pending.isEmpty()) {
@@ -889,6 +932,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
         Rect bounds = new Rect();
         node.getBoundsInScreen(bounds);
         return !bounds.isEmpty();
+    }
+
+    private static boolean isWithinDisplayBounds(AccessibilityNodeInfo node, Context context) {
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        return !bounds.isEmpty() && bounds.left >= 0 && bounds.top >= 0
+                && bounds.right <= width && bounds.bottom <= height;
     }
 
     private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots(
@@ -1960,7 +2012,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + describeInteractiveWindows(automation) + "; accessibility tree:\n"
                     + accessibilityTree(automation));
         }
-        if (!clickAppAccessibleControl(automation, context, "Add a home page")) {
+        if (!tapAppAccessibleControl(automation, context, "Add a home page")) {
             throw new IllegalStateException("Could not enable a second Home page in the launcher.");
         }
         if (!clickAppAccessibleControl(automation, context, "Home")
@@ -1991,13 +2043,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int startY = Math.round(height * 0.32f);
         int endY = Math.round(height * 0.75f);
         for (int attempt = 0; attempt < 8; attempt++) {
-            if (hasVisibleClickableControl(automation, context, "Add a home page")) {
+            if (hasOnDisplayClickableControl(automation, context, "Add a home page")) {
                 return true;
             }
             runInputSwipe(automation, x, startY, x, endY);
             SystemClock.sleep(200L);
         }
-        return hasVisibleClickableControl(automation, context, "Add a home page");
+        return hasOnDisplayClickableControl(automation, context, "Add a home page");
     }
 
     private void selectHomePage(UiAutomation automation, Context context, int page) {
@@ -2123,6 +2175,41 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 boolean matches = (nodeText != null && expected.contentEquals(nodeText))
                         || (nodeDescription != null && expected.contentEquals(nodeDescription));
                 if (matches && isVisibleOnScreen(node)
+                        && node.isEnabled() && node.isClickable()) {
+                    found = true;
+                    break;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
+    }
+
+    private static boolean hasOnDisplayClickableControl(UiAutomation automation, Context context,
+            String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && expected.contentEquals(nodeText))
+                        || (nodeDescription != null && expected.contentEquals(nodeDescription));
+                if (matches && isWithinDisplayBounds(node, context)
                         && node.isEnabled() && node.isClickable()) {
                     found = true;
                     break;
@@ -2971,6 +3058,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
             byte[] buffer = new byte[128];
             while (output.read(buffer) != -1) {
                 // Wait for Android's input command to finish before injecting another gesture.
+            }
+        }
+    }
+
+    private static void runInputTap(UiAutomation automation, int x, int y) throws IOException {
+        String command = "input tap " + x + " " + y;
+        try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(
+                automation.executeShellCommand(command))) {
+            byte[] buffer = new byte[256];
+            while (output.read(buffer) != -1) {
             }
         }
     }

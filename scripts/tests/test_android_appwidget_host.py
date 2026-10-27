@@ -679,7 +679,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         second_page_setup = instrumentation[setup_start:setup_end]
         self.assertIn('clickAppAccessibleControl(automation, context, "Settings tab")',
                       second_page_setup)
-        self.assertIn('clickAppAccessibleControl(automation, context, "Add a home page")',
+        self.assertIn('tapAppAccessibleControl(automation, context, "Add a home page")',
                       second_page_setup)
         self.assertIn('clickAppAccessibleControl(automation, context, "Home")',
                       second_page_setup)
@@ -691,8 +691,18 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertNotIn('awaitAppAccessibilityText(automation, context, "Add a home page"',
                          second_page_setup)
         self.assertIn("describeInteractiveWindows(automation)", second_page_setup)
-        self.assertNotIn("tapAppAccessibleControl", instrumentation)
         self.assertNotIn("isVisibleWithinDisplay", instrumentation)
+        tap_start = instrumentation.index("private static boolean tapAppAccessibleControl")
+        tap_end = instrumentation.index("private static boolean clickAccessibleControl(", tap_start)
+        self.assertIn("isWithinDisplayBounds(node, context)", instrumentation[tap_start:tap_end])
+        self.assertIn("runInputTap(automation, bounds.centerX(), bounds.centerY())",
+                      instrumentation[tap_start:tap_end])
+        visible_bounds_start = instrumentation.index("private static boolean isWithinDisplayBounds")
+        visible_bounds_end = instrumentation.index(
+            "private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots",
+            visible_bounds_start,
+        )
+        self.assertNotIn("isVisibleToUser", instrumentation[visible_bounds_start:visible_bounds_end])
         self.assertNotIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
         self.assertIn("swipeHomePage(automation, context, true)", second_page_setup)
         self.assertIn('"Current Home page 2 of 2"', second_page_setup)
@@ -788,7 +798,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         )
         scroll_end = instrumentation.index("private void selectHomePage", scroll_start)
         settings_scroll = instrumentation[scroll_start:scroll_end]
-        self.assertIn('hasVisibleClickableControl(automation, context, "Add a home page")',
+        self.assertIn('hasOnDisplayClickableControl(automation, context, "Add a home page")',
                       settings_scroll)
         self.assertIn("attempt < 8", settings_scroll)
         self.assertIn("runInputSwipe(automation, x, startY, x, endY)", settings_scroll)
@@ -804,6 +814,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             "isVisibleOnScreen(node)",
             instrumentation[clickable_start:clickable_end],
         )
+        on_display_start = instrumentation.index("private static boolean hasOnDisplayClickableControl")
+        on_display_end = instrumentation.index("private static void swipeHomePage", on_display_start)
+        self.assertIn("isWithinDisplayBounds(node, context)",
+                      instrumentation[on_display_start:on_display_end])
 
     def test_pairing_smoke_restores_widget_test_display_configuration(self):
         pairing_smoke = (ROOT / "scripts/ci/android_pairing_smoke.py").read_text(
