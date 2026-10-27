@@ -515,6 +515,17 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("candidate.isClickable()", tap_helper)
         self.assertIn("candidate.isEnabled()", tap_helper)
         self.assertIn("candidate.getGlobalVisibleRect(bounds)", tap_helper)
+        self.assertIn("hostView.getGlobalVisibleRect(hostBounds)", tap_helper)
+        self.assertIn("clippedBounds.intersect(hostBounds)", tap_helper)
+        self.assertIn("scrollHome(automation, context)", tap_helper)
+        self.assertIn("scrollAttempt <= 4", tap_helper)
+        home_scroll_start = instrumentation.index("private static void scrollHome(")
+        home_scroll_end = instrumentation.index("private static void executeSwipe(", home_scroll_start)
+        home_scroll = instrumentation[home_scroll_start:home_scroll_end]
+        self.assertIn("runHomeVerticalSwipe(automation, context, 0.84f, 0.38f)", home_scroll)
+        self.assertIn("runHomeVerticalSwipe(automation, context, 0.38f, 0.84f)", home_scroll)
+        self.assertIn("width * 0.02f", home_scroll)
+        self.assertNotIn("0.92f", home_scroll)
         self.assertIn("sendPointerSync(down)", tap_helper)
         self.assertIn("sendPointerSync(up)", tap_helper)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED"', instrumentation)
@@ -662,8 +673,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("androidWidgetGridStep: 24", qml)
         self.assertIn('x: Number(modelData.xDp) || 0', qml)
         self.assertIn('y: Number(modelData.yDp) || 0', qml)
-        self.assertIn('executeSwipe(automation, context, 0.84f, 0.38f, 0.92f)', instrumentation)
-        self.assertIn("runInputSwipe(automation, x, Math.round(height * fromRatio),", instrumentation)
+        self.assertIn("runHomeVerticalSwipe(automation, context, 0.84f, 0.38f)", instrumentation)
+        self.assertIn("runInputSwipe(automation, x, fromY, x, toY)", instrumentation)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
         instrumentation = (
@@ -735,9 +746,15 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertNotIn("swipeHomePage(automation, context, page == 1)", instrumentation)
         self.assertIn("runInputSwipe(automation, fromX, y, toX, y)", instrumentation)
         swipe_start = instrumentation.index("private static void swipeHomePage")
-        swipe_end = instrumentation.index("private static void verifyWidgetGridCollisionRules", swipe_start)
+        swipe_end = instrumentation.index(
+            "private static Rect scrollHomeToBottomAndFindEmptyHint", swipe_start
+        )
         swipe = instrumentation[swipe_start:swipe_end]
-        self.assertIn("height * 0.18f", swipe)
+        self.assertIn("scrollHomeToBottomAndFindEmptyHint(automation, context)", swipe)
+        self.assertIn("emptyWidgetGridHint.centerY()", swipe)
+        self.assertIn("has no click or drag handler", swipe)
+        self.assertIn("Android widgets you add here stay on this phone and work offline.",
+                      instrumentation)
         self.assertNotIn("height * 0.5f", swipe)
         self.assertIn('awaitVisibleAccessibleText(automation, context, expected, 10_000L)',
                       instrumentation)
