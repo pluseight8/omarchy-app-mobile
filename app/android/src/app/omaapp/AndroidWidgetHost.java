@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Looper;
@@ -18,6 +19,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -132,6 +134,12 @@ public final class AndroidWidgetHost {
                 detachOverlay();
                 overlay = new FrameLayout(activity);
                 overlay.setBackgroundColor(Color.TRANSPARENT);
+                overlay.setOutlineProvider(new ViewOutlineProvider() {
+                    @Override
+                    public void getOutline(View view, Outline outline) {
+                        outline.setEmpty();
+                    }
+                });
                 overlay.setClipChildren(true);
                 overlay.setClipToPadding(true);
                 overlay.setClickable(false);
@@ -148,6 +156,16 @@ public final class AndroidWidgetHost {
             // Qt can restore its own view order after the widget picker Activity returns.
             // Reassert the native overlay's z-order on every Activity attach, not only when
             // the FrameLayout parent changes, so RemoteViews remain touchable after resume.
+            float highestSiblingZ = 0f;
+            for (int index = 0; index < contentRoot.getChildCount(); ++index) {
+                View sibling = contentRoot.getChildAt(index);
+                if (sibling != overlay) {
+                    highestSiblingZ = Math.max(highestSiblingZ, sibling.getZ());
+                }
+            }
+            overlay.setTranslationZ(0f);
+            overlay.setElevation(highestSiblingZ
+                    + 16.0f * activity.getResources().getDisplayMetrics().density);
             overlay.bringToFront();
             restoreWidgets(activity);
         });

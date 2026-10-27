@@ -72,9 +72,20 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             "            }\n            // Qt can restore its own view order after the widget picker Activity returns.\n"
             "            // Reassert the native overlay's z-order on every Activity attach, not only when\n"
             "            // the FrameLayout parent changes, so RemoteViews remain touchable after resume.\n"
+            "            float highestSiblingZ = 0f;\n"
+            "            for (int index = 0; index < contentRoot.getChildCount(); ++index) {\n"
+            "                View sibling = contentRoot.getChildAt(index);\n"
+            "                if (sibling != overlay) {\n"
+            "                    highestSiblingZ = Math.max(highestSiblingZ, sibling.getZ());\n"
+            "                }\n"
+            "            }\n"
+            "            overlay.setTranslationZ(0f);\n"
+            "            overlay.setElevation(highestSiblingZ\n"
+            "                    + 16.0f * activity.getResources().getDisplayMetrics().density);\n"
             "            overlay.bringToFront();\n            restoreWidgets(activity);",
             attach,
         )
+        self.assertIn("outline.setEmpty()", attach)
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8")
@@ -497,6 +508,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("Injecting RemoteViews click", instrumentation)
         self.assertIn("target.setOnTouchListener", instrumentation)
         self.assertIn("RemoteViews target received touch action=", instrumentation)
+        self.assertIn("overlayZOrder={index=", instrumentation)
+        self.assertIn("automation.injectInputEvent(down, false)", instrumentation)
+        self.assertIn("automation.injectInputEvent(up, false)", instrumentation)
         self.assertIn('"omaapp-appwidget-action-failure.png"', instrumentation)
         self.assertIn("omaapp-appwidget-action-failure.png", smoke)
         self.assertIn('getApplicationInfo(expectedProvider.getPackageName(), 0)', instrumentation)
@@ -524,13 +538,17 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn(
             'awaitAppAccessibilityText(automation, context, "Add Android widget"', remove_stage
         )
-        self.assertIn("The Android widget removal confirmation was not accessible", remove_stage)
+        self.assertIn("The Android widget removal confirmation could not be activated", remove_stage)
+        self.assertIn('String removeLabel = "Remove Android widget OmaApp CI Interactive Widget"',
+                      remove_stage)
+        self.assertIn('performAppAccessibleClick(automation, context, removeLabel)', remove_stage)
+        self.assertIn('performAppAccessibleClick(automation, context, "OK")', remove_stage)
         self.assertIn("removalDeadline", remove_stage)
         self.assertIn("currentActivityForInstrumentation", instrumentation)
         self.assertIn("adb shell am force-stop app.omaapp", smoke)
-        self.assertIn('clickAccessibleText(automation, "Remove Android widget ")', instrumentation)
-        self.assertIn('awaitAccessibilityText(automation, "Remove this Android widget?"', instrumentation)
-        self.assertIn('clickAccessibleText(automation, "OK")', instrumentation)
+        self.assertNotIn('clickAccessibleText(automation, "Remove Android widget ")', instrumentation)
+        self.assertIn('awaitAppAccessibilityText(automation, context, "Remove this Android widget?"',
+                      remove_stage)
         self.assertIn("build_android_appwidget_fixture.sh", workflow)
         self.assertIn("android_appwidget_host_smoke.sh", workflow)
 
@@ -573,8 +591,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("Home vertical scroll injection at x=", home_scroll)
         self.assertIn("width * 0.02f", home_scroll)
         self.assertNotIn("0.92f", home_scroll)
-        self.assertIn("sendPointerSync(down)", tap_helper)
-        self.assertIn("sendPointerSync(up)", tap_helper)
+        self.assertNotIn("sendPointerSync(down)", tap_helper)
+        self.assertNotIn("sendPointerSync(up)", tap_helper)
+        self.assertIn("waitForIdleSync()", tap_helper)
+        self.assertIn("globalBounds=", tap_helper)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED"', instrumentation)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', instrumentation)
         self.assertIn("android_widget_host_remoteviews_provider_action_passed", smoke)
@@ -925,7 +945,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("exportWidgetBackup(context)", instrumentation)
         self.assertIn("restoreWidgetBackup(context, widgetBackup)", instrumentation)
         self.assertIn('"needs_rebind"', instrumentation)
-        self.assertIn('clickAccessibleText(automation, "Rebind")', instrumentation)
+        self.assertIn('String rebindLabel = "Rebind Android widget OmaApp CI Interactive Widget"',
+                      instrumentation)
+        self.assertIn('performAppAccessibleClick(automation, context, rebindLabel)', instrumentation)
         self.assertIn('"omaapp-appwidget-home-layout.png"', instrumentation)
         self.assertIn('"omaapp-appwidget-rebind-placeholder.png"', instrumentation)
         self.assertIn("widget-home-layout.png", smoke)

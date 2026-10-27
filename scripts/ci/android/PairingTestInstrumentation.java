@@ -844,10 +844,19 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 CharSequence nodeDescription = node.getContentDescription();
                 boolean matches = (nodeText != null && label.contentEquals(nodeText))
                         || (nodeDescription != null && label.contentEquals(nodeDescription));
-                if (matches && node.isEnabled() && node.isClickable()
-                        && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                    clicked = true;
-                    break;
+                if (matches) {
+                    boolean accepted = node.isEnabled() && node.isClickable()
+                            && node.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    Log.i(TAG, "App accessibility click label=" + label
+                            + " package=" + node.getPackageName()
+                            + " text=" + nodeText + " description=" + nodeDescription
+                            + " enabled=" + node.isEnabled()
+                            + " clickable=" + node.isClickable()
+                            + " accepted=" + accepted);
+                    if (accepted) {
+                        clicked = true;
+                        break;
+                    }
                 }
                 for (int child = 0; child < node.getChildCount()
                         && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
@@ -2593,15 +2602,18 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("No persisted CI widget ID was found before removal: "
                     + widgets);
         }
-        if (!clickAccessibleText(automation, "Remove Android widget ")) {
-            awaitAccessibilityText(automation, "Remove Android widget ", 20_000L, context);
-            if (!clickAccessibleText(automation, "Remove Android widget ")) {
-                throw new IllegalStateException("The Android widget removal control was not accessible.");
-            }
+        String removeLabel = "Remove Android widget OmaApp CI Interactive Widget";
+        if (!awaitAppAccessibilityText(automation, context, removeLabel, 20_000L)
+                || !performAppAccessibleClick(automation, context, removeLabel)) {
+            throw new IllegalStateException("The exact Android widget removal control was not accessible. "
+                    + describeInteractiveWindows(automation) + "; accessibility tree:\n"
+                    + accessibilityTree(automation));
         }
-        awaitAccessibilityText(automation, "Remove this Android widget?", 10_000L, context);
-        if (!clickAccessibleText(automation, "OK")) {
-            throw new IllegalStateException("The Android widget removal confirmation was not accessible.");
+        if (!awaitAppAccessibilityText(automation, context, "Remove this Android widget?", 10_000L)
+                || !performAppAccessibleClick(automation, context, "OK")) {
+            throw new IllegalStateException("The Android widget removal confirmation could not be activated. "
+                    + describeInteractiveWindows(automation) + "; accessibility tree:\n"
+                    + accessibilityTree(automation));
         }
         long removalDeadline = SystemClock.elapsedRealtime() + 5_000L;
         while (SystemClock.elapsedRealtime() < removalDeadline
@@ -2648,9 +2660,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + placeholder);
         }
         reportStage("android_widget_host_backup_placeholder_passed");
-        awaitAccessibilityText(automation, "Rebind", 15_000L, context);
+        String rebindLabel = "Rebind Android widget OmaApp CI Interactive Widget";
+        if (!awaitAppAccessibilityText(automation, context, rebindLabel, 15_000L)) {
+            throw new IllegalStateException("The restored widget placeholder did not expose its exact Rebind control. "
+                    + describeInteractiveWindows(automation) + "; accessibility tree:\n"
+                    + accessibilityTree(automation));
+        }
         saveAppWidgetScreenshot(activity, automation, "omaapp-appwidget-rebind-placeholder.png");
-        if (!clickAccessibleText(automation, "Rebind")) {
+        if (!performAppAccessibleClick(automation, context, rebindLabel)) {
             throw new IllegalStateException("The restored widget placeholder did not expose Rebind.");
         }
         String providerLabel = "OmaApp CI Interactive Widget";
@@ -2990,6 +3007,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 appendViewGeometry(inspected, "host", hostView);
                 View content = activity.findViewById(android.R.id.content);
                 appendViewGeometry(inspected, "content", content);
+                if (content instanceof ViewGroup) {
+                    appendWidgetOverlayStack(inspected, (ViewGroup) content, hostView);
+                }
                 appendWidgetFrameGeometry(inspected, widgetId);
                 for (View match : matches) {
                     View candidate = match;
@@ -3058,8 +3078,11 @@ public final class PairingTestInstrumentation extends Instrumentation {
         View target = actionTarget.get();
         if (target != null) {
             runOnMainSync(() -> target.setOnTouchListener((view, event) -> {
+                Rect currentBounds = new Rect();
+                boolean visible = view.isShown() && view.getGlobalVisibleRect(currentBounds);
                 Log.i(TAG, "RemoteViews target received touch action="
-                        + event.getActionMasked() + " x=" + event.getX() + " y=" + event.getY());
+                        + event.getActionMasked() + " x=" + event.getX() + " y=" + event.getY()
+                        + " globalBounds=" + currentBounds + " visible=" + visible);
                 return false;
             }));
         }
@@ -3068,16 +3091,20 @@ public final class PairingTestInstrumentation extends Instrumentation {
         long downTime = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(downTime, downTime,
                 MotionEvent.ACTION_DOWN, x, y, 0);
-        try {
-            sendPointerSync(down);
-        } finally {
-            down.recycle();
-        }
-        MotionEvent up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis() + 60L,
+        MotionEvent up = MotionEvent.obtain(downTime, downTime + 1L,
                 MotionEvent.ACTION_UP, x, y, 0);
         try {
-            sendPointerSync(up);
+            boolean downAccepted = automation.injectInputEvent(down, false);
+            boolean upAccepted = automation.injectInputEvent(up, false);
+            if (!downAccepted || !upAccepted) {
+                throw new IllegalStateException("Android rejected a real RemoteViews touch sequence: down="
+                        + downAccepted + ", up=" + upAccepted + "; " + diagnostics.get());
+            }
+            // Queue both pointer phases before waiting; sendPointerSync waits after DOWN and
+            // lets the restored Qt layout move the target under the held pointer.
+            waitForIdleSync();
         } finally {
+            down.recycle();
             up.recycle();
         }
     }
@@ -3125,6 +3152,33 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 .append(",clip=").append(view.getClipBounds())
                 .append(",shown=").append(view.isShown())
                 .append('}');
+    }
+
+    private static void appendWidgetOverlayStack(StringBuilder output, ViewGroup contentRoot,
+                                                 View hostView) {
+        View overlayChild = hostView;
+        while (overlayChild != null && overlayChild.getParent() != contentRoot) {
+            if (!(overlayChild.getParent() instanceof View)) {
+                overlayChild = null;
+                break;
+            }
+            overlayChild = (View) overlayChild.getParent();
+        }
+        int overlayIndex = overlayChild == null ? -1 : contentRoot.indexOfChild(overlayChild);
+        output.append("; overlayZOrder={index=").append(overlayIndex)
+                .append(",count=").append(contentRoot.getChildCount())
+                .append(",children=");
+        for (int index = 0; index < contentRoot.getChildCount(); ++index) {
+            if (index > 0) {
+                output.append('|');
+            }
+            View child = contentRoot.getChildAt(index);
+            output.append(index).append(':').append(child.getClass().getName())
+                    .append(" z=").append(child.getZ())
+                    .append(" elevation=").append(child.getElevation())
+                    .append(" translationZ=").append(child.getTranslationZ());
+        }
+        output.append('}');
     }
 
     private static void appendWidgetFrameGeometry(StringBuilder output, int widgetId) {
