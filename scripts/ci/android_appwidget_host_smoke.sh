@@ -27,10 +27,18 @@ run_stage() {
   local mode="$1"
   local expected="$2"
   local output="$artifacts/$mode-instrumentation.txt"
-  timeout 180s adb shell am instrument -w -e androidWidgetHost "$mode" "$instrumentation" \
-    2>&1 | tee "$output"
-  grep -F "INSTRUMENTATION_STATUS: stage=$expected" "$output"
-  grep -F 'INSTRUMENTATION_CODE: -1' "$output"
+  if ! timeout 180s adb shell am instrument -w -e androidWidgetHost "$mode" "$instrumentation" \
+      2>&1 | tee "$output"; then
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-settings-failure.png \
+      "$artifacts/$mode-settings-failure.png" >/dev/null 2>&1 || true
+    return 1
+  fi
+  if ! grep -F "INSTRUMENTATION_STATUS: stage=$expected" "$output" \
+      || ! grep -F 'INSTRUMENTATION_CODE: -1' "$output"; then
+    adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-settings-failure.png \
+      "$artifacts/$mode-settings-failure.png" >/dev/null 2>&1 || true
+    return 1
+  fi
 }
 
 run_stage setup android_widget_host_picker_bind_touch_passed

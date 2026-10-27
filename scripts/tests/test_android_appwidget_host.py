@@ -484,7 +484,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('reportStage("android_widget_host_remove_started")', remove_stage)
         self.assertIn("context.startActivity(launch)", remove_stage)
         self.assertIn("AndroidWidgetHost.currentActivityForInstrumentation()", remove_stage)
-        self.assertIn('awaitAccessibilityText(automation, "Add Android widget"', remove_stage)
+        self.assertIn(
+            'awaitAppAccessibilityText(automation, context, "Add Android widget"', remove_stage
+        )
         self.assertIn("The Android widget removal confirmation was not accessible", remove_stage)
         self.assertIn("removalDeadline", remove_stage)
         self.assertIn("currentActivityForInstrumentation", instrumentation)
@@ -675,14 +677,23 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             "private static void verifyWidgetGridCollisionRules", setup_start
         )
         second_page_setup = instrumentation[setup_start:setup_end]
-        self.assertIn('clickAppAccessibleControl(automation, context, "Settings tab")',
+        self.assertIn('tapAppAccessibleControl(automation, context, "Settings tab")',
                       second_page_setup)
-        self.assertIn('clickAppAccessibleControl(automation, context, "Add a home page")',
+        self.assertIn('tapAppAccessibleControl(automation, context, "Add a home page")',
                       second_page_setup)
-        self.assertIn('clickAppAccessibleControl(automation, context, "Home")',
+        self.assertIn('tapAppAccessibleControl(automation, context, "Home")',
                       second_page_setup)
-        self.assertIn('awaitAppAccessibilityText(automation, context, "Add a home page",',
-                      second_page_setup)
+        self.assertIn('scrollSettingsToHomePageControl(automation, context)', second_page_setup)
+        self.assertNotIn('awaitAppAccessibilityText(automation, context, "Add a home page"',
+                         second_page_setup)
+        self.assertIn("describeInteractiveWindows(automation)", second_page_setup)
+        tap_start = instrumentation.index("private static boolean tapAppAccessibleControl")
+        tap_end = instrumentation.index("private static boolean clickAccessibleControl(", tap_start)
+        tap_helper = instrumentation[tap_start:tap_end]
+        self.assertIn("node.getBoundsInScreen(bounds)", tap_helper)
+        self.assertIn("runInputTap(automation, bounds.centerX(), bounds.centerY())", tap_helper)
+        self.assertIn("isVisibleWithinDisplay(node, context)", tap_helper)
+        self.assertIn('String command = "input tap " + x + " " + y;', instrumentation)
         self.assertNotIn('clickAccessibleControl(automation, "Settings")', second_page_setup)
         self.assertIn("swipeHomePage(automation, context, true)", second_page_setup)
         self.assertIn('"Current Home page 2 of 2"', second_page_setup)
@@ -698,11 +709,12 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('awaitVisibleAccessibleText(automation, context, expected, 10_000L)',
                       instrumentation)
         self.assertIn(
-            'awaitAppAccessibilityText(automation, context, "Current Home page 1 of 2", 15_000L)',
+            'awaitVisibleAccessibleText(automation, context, "Current Home page 1 of 2", 15_000L)',
             second_page_setup,
         )
         self.assertIn('"Current Home page " + (page + 1) + " of 2"', instrumentation)
         self.assertNotIn('clickAccessibleText(automation, "Settings")', second_page_setup)
+
         app_roots_start = instrumentation.index(
             "private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots"
         )
@@ -753,6 +765,53 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("widget-rebind-placeholder.png", smoke)
         self.assertIn("android_widget_host_geometry_restore_passed", smoke)
         self.assertIn("android_widget_host_cross_page_move_passed", smoke)
+
+    def test_widget_setup_returns_home_and_scrolls_settings_to_a_visible_control(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
+        setup_end = instrumentation.index("private void ensureSecondHomePage", setup_start)
+        setup = instrumentation[setup_start:setup_end]
+        self.assertIn(
+            'awaitVisibleAccessibleText(automation, context, "Settings tab", 15_000L)', setup
+        )
+        self.assertIn('tapAppAccessibleControl(automation, context, "Home")', setup)
+        self.assertIn(
+            'awaitVisibleAccessibleText(automation, context, "Current Home page 1 of",', setup
+        )
+        self.assertNotIn('awaitAccessibilityText(automation, "Add Android widget"', setup)
+
+        scroll_start = instrumentation.index(
+            "private static boolean scrollSettingsToHomePageControl"
+        )
+        scroll_end = instrumentation.index("private void selectHomePage", scroll_start)
+        settings_scroll = instrumentation[scroll_start:scroll_end]
+        self.assertIn('hasVisibleClickableControl(automation, context, "Add a home page")',
+                      settings_scroll)
+        self.assertIn("attempt < 8", settings_scroll)
+        self.assertIn("runInputSwipe(automation, x, startY, x, endY)", settings_scroll)
+        self.assertIn("height * 0.75f", settings_scroll)
+        self.assertIn("height * 0.32f", settings_scroll)
+
+        visible_start = instrumentation.index("private static boolean isVisibleWithinDisplay")
+        visible_end = instrumentation.index(
+            "private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots",
+            visible_start,
+        )
+        visible_check = instrumentation[visible_start:visible_end]
+        self.assertIn("bounds.left >= 0 && bounds.top >= 0", visible_check)
+        self.assertIn("bounds.right <= context.getResources()", visible_check)
+        self.assertIn("bounds.bottom <= context.getResources()", visible_check)
+        clickable_start = instrumentation.index(
+            "private static boolean hasVisibleClickableControl"
+        )
+        clickable_end = instrumentation.index("private static void swipeHomePage", clickable_start)
+        self.assertIn(
+            "isVisibleWithinDisplay(node, context)",
+            instrumentation[clickable_start:clickable_end],
+        )
+
 
 
 if __name__ == "__main__":
