@@ -15,6 +15,21 @@ class AndroidLauncherHomeSmokeTests(unittest.TestCase):
         self.assertNotIn("window-home-before-owl-store.xml\" 'Settings'", smoke)
         self.assertNotIn("window-home-before-widget-editor.xml\" 'Settings'", smoke)
 
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        translations = (ROOT / "scripts/ci/android_translation_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("screen_label='Settings tab'", ci)
+        self.assertIn("Home Apps Devices Style 'Settings tab'", translations)
+        self.assertEqual(release.count("'Settings tab')"), 2)
+        self.assertNotIn("'Settings')", release)
+        self.assertIn("tap_label 'Settings tab'", translations)
+        self.assertEqual(translations.count("ensure_settings_tab 'Settings tab'"), 4)
+        self.assertEqual(translations.count("ensure_settings_tab 'Вкладка настроек'"), 2)
+        self.assertNotIn("ensure_settings_tab 'Settings'", translations)
+        self.assertNotIn("ensure_settings_tab 'Настройки'", translations)
+
     def test_tab_selection_refreshes_accessibility_tree_before_pin_target(self):
         smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
             encoding="utf-8"

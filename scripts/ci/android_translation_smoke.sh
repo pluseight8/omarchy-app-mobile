@@ -121,7 +121,7 @@ restart_app_for_persistence() {
   adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
   for attempt in {1..60}; do
     dump_ui > /dev/null
-    if grep -Eq 'content-desc="(Settings|Настройки)"' "$artifacts/translation-ui.xml"; then
+    if grep -Eq 'content-desc="(Settings tab|Вкладка настроек)"' "$artifacts/translation-ui.xml"; then
       return 0
     fi
     sleep 0.5
@@ -135,7 +135,7 @@ restart_app_for_persistence() {
 dump_ui
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Apps'
-tap_label 'Settings'
+tap_label 'Settings tab'
 sleep 1
 tap_scrolling_label 'Russian'
 sleep 2
@@ -165,12 +165,12 @@ adb exec-out screencap -p > "$artifacts/settings-russian.png"
 cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-russian.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-russian.png" "$artifacts/translation-ui-russian.xml" \
-  'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Настройки'
+  'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Вкладка настроек'
 
 # Native Android Activities query the Qt catalog selected in-app. Restart first
 # so the check covers loading the saved Russian catalog into a fresh Qt engine.
 restart_app_for_persistence
-ensure_settings_tab 'Настройки'
+ensure_settings_tab 'Вкладка настроек'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Русский'
 native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
@@ -178,7 +178,7 @@ printf '%s\n' "$native_translation_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
   <<< "$native_translation_output"
 restart_app_for_persistence
-ensure_settings_tab 'Настройки'
+ensure_settings_tab 'Вкладка настроек'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Русский'
 sleep 1
@@ -192,7 +192,7 @@ adb exec-out screencap -p > "$artifacts/settings-english-after-switch.png"
 cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-english.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-english-after-switch.png" "$artifacts/translation-ui-english.xml" \
-  Home Apps Devices Style Settings
+  Home Apps Devices Style 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 
@@ -204,7 +204,7 @@ printf '%s\n' "$native_english_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
   <<< "$native_english_output"
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 live_locale_process="$(adb shell pidof app.omaapp | tr -d '\r')"
@@ -246,7 +246,7 @@ adb logcat -d -v threadtime -t 3000 > "$artifacts/haptic-feedback.log"
 grep -F 'OmaApp: Android haptic feedback request dispatched' \
   "$artifacts/haptic-feedback.log"
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 sleep 1
@@ -262,7 +262,7 @@ if [[ ! "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
 fi
 adb shell settings put system font_scale 1.4
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 find_scrolling_label 'Android accessibility text scale: 1.4×' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Android accessibility text scale: 1.4×'
@@ -275,7 +275,7 @@ sleep 1
 adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
 sleep 2
 dump_ui
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 if grep -Fq 'Android accessibility text scale:' "$artifacts/translation-ui.xml"; then
   printf 'The Android accessibility scale indicator remained after restoring system text scale.\n' >&2
   exit 1

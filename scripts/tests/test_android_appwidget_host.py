@@ -388,7 +388,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('reportStage("android_widget_host_qml_controls_passed")', instrumentation)
         self.assertIn("stored.optInt(\"schemaVersion\", -1) != 3", instrumentation)
         self.assertIn("for (int attempt = 0; attempt < 40", instrumentation)
-        self.assertIn("restart_app_for_persistence\nensure_settings_tab 'Настройки'", smoke)
+        self.assertIn("restart_app_for_persistence\nensure_settings_tab 'Вкладка настроек'", smoke)
         self.assertIn("for attempt in {1..60}", smoke)
         self.assertIn("stage=android_widget_host_schema_migration_passed", widget_smoke)
 

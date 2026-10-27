@@ -387,6 +387,9 @@ jobs:
           mkdir -p "$visual_artifacts"
           for screen in home apps devices style settings; do
             screen_label="${screen^}"
+            if [[ "$screen" == "settings" ]]; then
+              screen_label='Settings tab'
+            fi
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
