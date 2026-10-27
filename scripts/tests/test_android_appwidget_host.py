@@ -86,8 +86,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("activityRef.get() == activity", restore_views)
 
         self.assertIn("android_widget_host_geometry_restore_passed", instrumentation)
-        self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context)',
-                      instrumentation)
+        self.assertIn('tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),\n'
+                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED")', instrumentation)
         self.assertIn("CalledFromWrongThreadException", smoke)
 
     def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
@@ -496,7 +496,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("monitor.waitForActivityWithTimeout(15_000L)", widget_restore)
         self.assertIn("AndroidWidgetHost.currentActivityForInstrumentation()", widget_restore)
         self.assertNotIn("startActivitySync", widget_restore)
-        self.assertIn('tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"), "CI_WIDGET_ACTION")',
+        self.assertIn('tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),\n'
+                      '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED")',
                       widget_restore)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', widget_restore)
         remove_start = instrumentation.index("private void runAndroidWidgetHostRemove")
@@ -531,13 +532,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         tap_helper = instrumentation[tap_start:tap_end]
         self.assertIn("findHostedWidgetView(decor, widgetId)", tap_helper)
         self.assertIn("hostView.findViewsWithText(matches, label", tap_helper)
+        self.assertIn("hostView.findViewsWithText(textMatches, expectedText", tap_helper)
+        self.assertIn("expectedTextVisible.get()", tap_helper)
+        self.assertIn("30_000L", tap_helper)
         self.assertIn("candidate.isClickable()", tap_helper)
         self.assertIn("candidate.isEnabled()", tap_helper)
         self.assertIn("candidate.getGlobalVisibleRect(bounds)", tap_helper)
         self.assertIn("hostView.getGlobalVisibleRect(hostBounds)", tap_helper)
         self.assertIn("clippedBounds.intersect(hostBounds)", tap_helper)
         self.assertIn("scrollHome(automation, activity)", tap_helper)
-        self.assertIn("scrollAttempt <= 4", tap_helper)
+        self.assertIn("scrollAttempts < 4", tap_helper)
         home_scroll_start = instrumentation.index("private static void scrollHome(")
         home_scroll_end = instrumentation.index("private static void executeSwipe(", home_scroll_start)
         home_scroll = instrumentation[home_scroll_start:home_scroll_end]
@@ -868,6 +872,10 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
                                                     page_selection_start)
         page_selection = instrumentation[page_selection_start:page_selection_end]
         self.assertIn("appAccessibilityTreeContains(automation, context, expected)", page_selection)
+        self.assertLess(
+            page_selection.index("scrollHomeToTop(automation, context)"),
+            page_selection.index("awaitHomePageSelectionTarget("),
+        )
         self.assertNotIn("accessibilityRoots(automation)", page_selection)
         widget_setup_start = instrumentation.index("private void runAndroidWidgetHostSetup")
         widget_setup_end = instrumentation.index("private void ensureSecondHomePage", widget_setup_start)
@@ -879,7 +887,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         placement_stage = widget_setup.index(
             'reportStage("android_widget_host_second_page_placement_passed")'
         )
-        ready_check = widget_setup.index('awaitAccessibilityText(automation, "CI_WIDGET_READY"')
+        ready_check = widget_setup.index('"CI_WIDGET_ACTION", "CI_WIDGET_READY")')
         self.assertLess(
             widget_setup.index('selectHomePage(automation, context, 1);', placement_stage),
             ready_check,

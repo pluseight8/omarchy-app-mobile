@@ -1808,8 +1808,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         // Returning from the system configuration Activity can leave the Home pager
         // on its first page; select the saved page before checking RemoteViews.
         selectHomePage(automation, context, 1);
-        awaitAccessibilityText(automation, "CI_WIDGET_READY", 30_000L, context);
-        tapHostedRemoteViewsAction(automation, selectedWidget.getInt("id"), "CI_WIDGET_ACTION");
+        tapHostedRemoteViewsAction(automation, selectedWidget.getInt("id"),
+                "CI_WIDGET_ACTION", "CI_WIDGET_READY");
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
         reportStage("android_widget_host_remoteviews_provider_action_passed");
         if (!hasWidgetRecord(context, expectedProvider)) {
@@ -2030,6 +2030,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         if (page < 0 || page >= 2) {
             throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
         }
+        scrollHomeToTop(automation, context);
         if (hasVisibleAccessibleText(automation, context, "Retry recovery")) {
             Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
             if (activity instanceof OmaAppActivity) {
@@ -2518,8 +2519,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("Restored OmaApp Home did not expose page 1 of 2.");
         }
         reportStage("android_widget_host_home_page_count_restore_passed");
-        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 30_000L, context);
-        tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"), "CI_WIDGET_ACTION");
+        tapHostedRemoteViewsAction(automation, restoredPlacement.getInt("id"),
+                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED");
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE", 15_000L, context);
         reportStage("android_widget_host_remoteviews_action_after_process_restore_passed");
         if (!hasWidgetRecord(context, expectedProvider)) {
@@ -2680,8 +2681,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
             throw new IllegalStateException("The system rebind did not preserve placement with a fresh ID: "
                     + rebound);
         }
-        awaitAccessibilityText(automation, "CI_WIDGET_READY", 15_000L, context);
-        tapHostedRemoteViewsAction(automation, reboundId, "CI_WIDGET_ACTION");
+        tapHostedRemoteViewsAction(automation, reboundId,
+                "CI_WIDGET_ACTION", "CI_WIDGET_READY");
         awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
         reportStage("android_widget_host_remoteviews_action_after_rebind_passed");
         String emptyBackup = new JSONObject().put("schemaVersion", 2)
@@ -2916,8 +2917,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     /** Sends a real screen touch to a visible button inside the hosted RemoteViews tree. */
-    private void tapHostedRemoteViewsAction(UiAutomation automation, int widgetId, String label)
-            throws Exception {
+    private void tapHostedRemoteViewsAction(UiAutomation automation, int widgetId, String label,
+                                           String expectedText) throws Exception {
         Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         if (activity == null || activity.isFinishing()) {
             throw new IllegalStateException("OmaApp's widget host Activity is unavailable for "
@@ -2925,9 +2926,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
 
         AtomicReference<Rect> actionBounds = new AtomicReference<>();
+        AtomicReference<Boolean> expectedTextVisible = new AtomicReference<>(false);
         AtomicReference<String> diagnostics = new AtomicReference<>("No host view was inspected.");
-        for (int scrollAttempt = 0; scrollAttempt <= 4; scrollAttempt++) {
+        long deadline = SystemClock.elapsedRealtime() + 30_000L;
+        int scrollAttempts = 0;
+        do {
             actionBounds.set(null);
+            expectedTextVisible.set(false);
             runOnMainSync(() -> {
                 View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
                 AppWidgetHostView hostView = decor == null ? null : findHostedWidgetView(decor, widgetId);
@@ -2940,12 +2945,30 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 Rect hostBounds = new Rect();
                 boolean hostVisible = hostView.isShown()
                         && hostView.getGlobalVisibleRect(hostBounds) && !hostBounds.isEmpty();
+                ArrayList<View> textMatches = new ArrayList<>();
+                hostView.findViewsWithText(textMatches, expectedText, View.FIND_VIEWS_WITH_TEXT);
+                boolean visibleText = false;
+                for (View match : textMatches) {
+                    Rect bounds = new Rect();
+                    Rect clippedBounds = new Rect();
+                    if (match.isShown() && match.getGlobalVisibleRect(bounds)) {
+                        clippedBounds.set(bounds);
+                        if (clippedBounds.intersect(hostBounds)) {
+                            visibleText = true;
+                            break;
+                        }
+                    }
+                }
+                expectedTextVisible.set(visibleText);
                 ArrayList<View> matches = new ArrayList<>();
                 hostView.findViewsWithText(matches, label, View.FIND_VIEWS_WITH_TEXT);
                 StringBuilder inspected = new StringBuilder("widgetId=").append(widgetId)
                         .append(" hostShown=").append(hostView.isShown())
                         .append(" hostVisible=").append(hostVisible)
                         .append(" hostBounds=").append(hostBounds)
+                        .append(" expectedText=").append(expectedText)
+                        .append(" expectedTextViews=").append(textMatches.size())
+                        .append(" expectedTextVisible=").append(visibleText)
                         .append(" label=").append(label)
                         .append(" matchingViews=").append(matches.size());
                 appendViewGeometry(inspected, "decor", decor);
@@ -2986,28 +3009,31 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 diagnostics.set(inspected.toString());
             });
 
-            if (actionBounds.get() != null) {
+            if (actionBounds.get() != null && expectedTextVisible.get()) {
                 break;
             }
-            if (scrollAttempt < 4) {
+            if (scrollAttempts < 4) {
                 // RemoteViews may be below the initial Home viewport even while its label
                 // remains exposed to accessibility. Scroll the real page until the button
                 // itself is visible and inside the host view's clipping rectangle.
                 scrollHome(automation, activity);
+                scrollAttempts++;
+                SystemClock.sleep(200L);
+            } else {
                 SystemClock.sleep(200L);
             }
-        }
+        } while (SystemClock.elapsedRealtime() < deadline);
 
         Rect bounds = actionBounds.get();
-        if (bounds == null || bounds.isEmpty()) {
+        if (bounds == null || bounds.isEmpty() || !expectedTextVisible.get()) {
             try {
                 saveAppWidgetScreenshot(activity, automation,
                         "omaapp-appwidget-action-failure.png");
             } catch (Exception error) {
                 diagnostics.set(diagnostics.get() + "; screenshotError=" + error.getMessage());
             }
-            throw new IllegalStateException("The real RemoteViews action did not become visibly "
-                    + "clickable after scrolling Home. " + diagnostics.get() + "; accessibility tree: "
+            throw new IllegalStateException("The real RemoteViews text and action did not become "
+                    + "visible inside the AppWidgetHostView. " + diagnostics.get() + "; accessibility tree: "
                     + accessibilityTree(automation));
         }
 

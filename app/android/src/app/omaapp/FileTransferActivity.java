@@ -245,11 +245,6 @@ public final class FileTransferActivity extends Activity {
             status.setText(NativeStrings.get("Choose a named file between 1 byte and 100 MiB."));
             return;
         }
-        try {
-            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (SecurityException ignored) {
-            // The temporary chooser grant remains available while the transfer runs.
-        }
         status.setText(NativeStrings.format("Sending %1…", displayName));
         PairingBridge.uploadFile(this, uri, displayName, size);
     }
