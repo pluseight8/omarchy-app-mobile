@@ -388,9 +388,11 @@ def main() -> int:
                            check=True, timeout=15)
             render_style("density-240", high_dpi_artifacts, 618, 1338)
         finally:
-            subprocess.run(["adb", "shell", "wm", "size", "reset"],
+            # Keep the following AppWidgetHost instrumentation in the same
+            # display configuration used before the density captures.
+            subprocess.run(["adb", "shell", "wm", "size", "412x892"],
                            check=False, capture_output=True, text=True, timeout=15)
-            subprocess.run(["adb", "shell", "wm", "density", "reset"],
+            subprocess.run(["adb", "shell", "wm", "density", "160"],
                            check=False, capture_output=True, text=True, timeout=15)
 
     with tempfile.TemporaryDirectory(prefix="omaapp-pairing-smoke-") as temporary:
