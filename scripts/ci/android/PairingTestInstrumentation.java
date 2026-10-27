@@ -2124,6 +2124,41 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return appAccessibilityTreeContains(automation, context, expected);
     }
 
+    private static Rect findVisibleAccessibleTextBounds(UiAutomation automation, Context context,
+            String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        Rect result = null;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence text = node.getText();
+                CharSequence description = node.getContentDescription();
+                boolean matches = (text != null && text.toString().contains(expected))
+                        || (description != null && description.toString().contains(expected));
+                if (matches && isVisibleOnScreen(node)) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        result = bounds;
+                        break;
+                    }
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return result;
+    }
+
     private static boolean hasVisibleClickableControl(UiAutomation automation, Context context,
             String expected) {
         ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
@@ -2162,12 +2197,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
     private static void swipeHomePage(UiAutomation automation, Context context,
                                       boolean forward) {
         int width = context.getResources().getDisplayMetrics().widthPixels;
-        int height = context.getResources().getDisplayMetrics().heightPixels;
         int left = Math.max(24, Math.round(width * 0.2f));
         int right = Math.min(width - 24, Math.round(width * 0.8f));
-        // The screen center can land on an OWL card whose DragHandler owns horizontal motion.
-        // Keep the real page swipe in the noninteractive widget-placement grid above those cards.
-        int y = Math.max(100, Math.min(height - 100, Math.round(height * 0.18f)));
+        Rect emptyWidgetGridHint = scrollHomeToBottomAndFindEmptyHint(automation, context);
+        if (emptyWidgetGridHint == null) {
+            throw new IllegalStateException("Could not expose the noninteractive Android widget "
+                    + "placement area for the Home swipe.");
+        }
+        // The empty Android widget hint has no click or drag handler. Swiping there avoids
+        // Home's header buttons and OWL cards, which can consume a horizontal gesture.
+        int y = emptyWidgetGridHint.centerY();
         int fromX = forward ? right : left;
         int toX = forward ? left : right;
         try {
@@ -2175,6 +2214,20 @@ public final class PairingTestInstrumentation extends Instrumentation {
         } catch (Exception error) {
             throw new IllegalStateException("Could not inject the Home page gesture.", error);
         }
+    }
+
+    private static Rect scrollHomeToBottomAndFindEmptyHint(UiAutomation automation,
+            Context context) {
+        String emptyHint = "Android widgets you add here stay on this phone and work offline.";
+        for (int attempt = 0; attempt < 5; attempt++) {
+            Rect bounds = findVisibleAccessibleTextBounds(automation, context, emptyHint);
+            if (bounds != null) {
+                return bounds;
+            }
+            scrollHome(automation, context);
+            SystemClock.sleep(200L);
+        }
+        return findVisibleAccessibleTextBounds(automation, context, emptyHint);
     }
 
     private static void verifyWidgetGridCollisionRules() throws Exception {
@@ -2801,52 +2854,76 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         AtomicReference<Rect> actionBounds = new AtomicReference<>();
         AtomicReference<String> diagnostics = new AtomicReference<>("No host view was inspected.");
-        runOnMainSync(() -> {
-            View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
-            AppWidgetHostView hostView = decor == null ? null : findHostedWidgetView(decor, widgetId);
-            if (hostView == null) {
-                diagnostics.set("No AppWidgetHostView for ID " + widgetId
-                        + " exists in the OmaApp Activity view tree.");
-                return;
-            }
+        for (int scrollAttempt = 0; scrollAttempt <= 4; scrollAttempt++) {
+            actionBounds.set(null);
+            runOnMainSync(() -> {
+                View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
+                AppWidgetHostView hostView = decor == null ? null : findHostedWidgetView(decor, widgetId);
+                if (hostView == null) {
+                    diagnostics.set("No AppWidgetHostView for ID " + widgetId
+                            + " exists in the OmaApp Activity view tree.");
+                    return;
+                }
 
-            ArrayList<View> matches = new ArrayList<>();
-            hostView.findViewsWithText(matches, label, View.FIND_VIEWS_WITH_TEXT);
-            StringBuilder inspected = new StringBuilder("widgetId=").append(widgetId)
-                    .append(" hostShown=").append(hostView.isShown())
-                    .append(" label=").append(label)
-                    .append(" matchingViews=").append(matches.size());
-            for (View match : matches) {
-                View candidate = match;
-                for (int depth = 0; candidate != null && depth < 8; depth++) {
-                    Rect bounds = new Rect();
-                    boolean visible = candidate.isShown()
-                            && candidate.getGlobalVisibleRect(bounds) && !bounds.isEmpty();
-                    inspected.append("; ").append(candidate.getClass().getName())
-                            .append(" clickable=").append(candidate.isClickable())
-                            .append(" enabled=").append(candidate.isEnabled())
-                            .append(" shown=").append(candidate.isShown())
-                            .append(" bounds=").append(bounds);
-                    if (candidate.isEnabled() && candidate.isClickable() && visible) {
-                        actionBounds.set(new Rect(bounds));
+                Rect hostBounds = new Rect();
+                boolean hostVisible = hostView.isShown()
+                        && hostView.getGlobalVisibleRect(hostBounds) && !hostBounds.isEmpty();
+                ArrayList<View> matches = new ArrayList<>();
+                hostView.findViewsWithText(matches, label, View.FIND_VIEWS_WITH_TEXT);
+                StringBuilder inspected = new StringBuilder("widgetId=").append(widgetId)
+                        .append(" hostShown=").append(hostView.isShown())
+                        .append(" hostVisible=").append(hostVisible)
+                        .append(" hostBounds=").append(hostBounds)
+                        .append(" label=").append(label)
+                        .append(" matchingViews=").append(matches.size());
+                for (View match : matches) {
+                    View candidate = match;
+                    for (int depth = 0; candidate != null && depth < 8; depth++) {
+                        Rect bounds = new Rect();
+                        boolean visible = candidate.isShown()
+                                && candidate.getGlobalVisibleRect(bounds) && !bounds.isEmpty();
+                        Rect clippedBounds = new Rect(bounds);
+                        boolean withinHost = hostVisible && clippedBounds.intersect(hostBounds);
+                        inspected.append("; ").append(candidate.getClass().getName())
+                                .append(" clickable=").append(candidate.isClickable())
+                                .append(" enabled=").append(candidate.isEnabled())
+                                .append(" shown=").append(candidate.isShown())
+                                .append(" visible=").append(visible)
+                                .append(" withinHost=").append(withinHost)
+                                .append(" bounds=").append(bounds);
+                        if (candidate.isEnabled() && candidate.isClickable()
+                                && visible && withinHost) {
+                            actionBounds.set(clippedBounds);
+                            break;
+                        }
+                        if (candidate == hostView || !(candidate.getParent() instanceof View)) {
+                            break;
+                        }
+                        candidate = (View) candidate.getParent();
+                    }
+                    if (actionBounds.get() != null) {
                         break;
                     }
-                    if (candidate == hostView || !(candidate.getParent() instanceof View)) {
-                        break;
-                    }
-                    candidate = (View) candidate.getParent();
                 }
-                if (actionBounds.get() != null) {
-                    break;
-                }
+                diagnostics.set(inspected.toString());
+            });
+
+            if (actionBounds.get() != null) {
+                break;
             }
-            diagnostics.set(inspected.toString());
-        });
+            if (scrollAttempt < 4) {
+                // RemoteViews may be below the initial Home viewport even while its label
+                // remains exposed to accessibility. Scroll the real page until the button
+                // itself is visible and inside the host view's clipping rectangle.
+                scrollHome(automation, context);
+                SystemClock.sleep(200L);
+            }
+        }
 
         Rect bounds = actionBounds.get();
         if (bounds == null || bounds.isEmpty()) {
-            throw new IllegalStateException("The real RemoteViews action has no visible clickable "
-                    + "Android View. " + diagnostics.get() + "; accessibility tree: "
+            throw new IllegalStateException("The real RemoteViews action did not become visibly "
+                    + "clickable after scrolling Home. " + diagnostics.get() + "; accessibility tree: "
                     + accessibilityTree(automation));
         }
 
@@ -3041,16 +3118,29 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static void scrollHome(UiAutomation automation, Context context) {
-        // A bound AppWidgetHostView occupies the center of the page and owns
-        // its RemoteViews touch stream. The fixture leaves a right gutter wide
-        // enough for a vertical Home scroll without touching the hosted view.
-        executeSwipe(automation, context, 0.84f, 0.38f, 0.92f);
+        // A wide RemoteViews can cover almost the full Home page. Keep this
+        // vertical gesture in the left screen gutter, outside the native overlay.
+        runHomeVerticalSwipe(automation, context, 0.84f, 0.38f);
     }
 
     private static void scrollHomeToTop(UiAutomation automation, Context context) {
         for (int attempt = 0; attempt < 4; attempt++) {
-            executeSwipe(automation, context, 0.38f, 0.84f, 0.92f);
+            runHomeVerticalSwipe(automation, context, 0.38f, 0.84f);
             SystemClock.sleep(200L);
+        }
+    }
+
+    private static void runHomeVerticalSwipe(UiAutomation automation, Context context,
+            float fromRatio, float toRatio) {
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        int x = Math.max(2, Math.min(width - 3, Math.round(width * 0.02f)));
+        int fromY = Math.max(1, Math.min(height - 2, Math.round(height * fromRatio)));
+        int toY = Math.max(1, Math.min(height - 2, Math.round(height * toRatio)));
+        try {
+            runInputSwipe(automation, x, fromY, x, toY);
+        } catch (Exception error) {
+            Log.w(TAG, "Could not scroll the Home page outside the Android widget overlay.", error);
         }
     }
 
