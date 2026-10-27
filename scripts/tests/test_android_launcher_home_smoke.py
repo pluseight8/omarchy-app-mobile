@@ -86,7 +86,7 @@ class AndroidLauncherHomeSmokeTests(unittest.TestCase):
         self.assertLess(icon_assertion, home_selection)
         self.assertIn("sleep 1", restart[bounded_wait:icon_assertion])
 
-    def test_long_press_retries_after_returning_from_an_accidental_app_launch(self):
+    def test_long_press_retries_without_exiting_the_home_task(self):
         smoke = (ROOT / "scripts/ci/android_launcher_home_smoke.sh").read_text(
             encoding="utf-8"
         )
@@ -95,7 +95,12 @@ class AndroidLauncherHomeSmokeTests(unittest.TestCase):
         pin = smoke[pin_start:pin_end]
 
         self.assertIn('"$((pin_x + 1))" "$((pin_y + 1))" 1200', pin)
-        self.assertIn("adb shell input keyevent 4", pin)
+        self.assertIn(
+            "adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity", pin
+        )
+        self.assertNotIn("adb shell input keyevent 4", pin)
+        self.assertIn("select_apps_when_needed", pin)
+        self.assertIn("android_launcher_tap_target.py", pin)
         self.assertIn("if (( attempt < 3 )); then", pin)
         self.assertIn("for attempt in 1 2 3", pin)
 

@@ -184,9 +184,10 @@ for attempt in 1 2 3; do
     break
   fi
   if (( attempt < 3 )); then
-    # If the long-press was delivered as a click, it opened the app. Return to
-    # OmaApp before retrying so every advertised attempt reaches the launcher.
-    adb shell input keyevent 4
+    # Back exits the selected HOME app when the long-press did not open another
+    # activity. Explicitly foreground OmaApp instead, so each retry starts from
+    # a fresh Apps accessibility tree without leaving the HOME task.
+    adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity >/dev/null
     sleep 1
   fi
 done
