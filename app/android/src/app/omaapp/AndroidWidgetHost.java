@@ -1949,8 +1949,80 @@ public final class AndroidWidgetHost {
             super(context, hostId);
         }
 
+        @Override
+        protected AppWidgetHostView onCreateView(Context context, int appWidgetId,
+                                                 AppWidgetProviderInfo appWidget) {
+            return new OmaAppWidgetHostView(context);
+        }
+
         void clearViewsForActivityDetach() {
             clearViews();
+        }
+    }
+
+    /**
+     * Keeps blank parts of a RemoteViews card from trapping Home gestures. A DOWN is
+     * delivered to the provider only when it hits a clickable/scrollable descendant;
+     * Android then retains that target for the complete gesture as usual.
+     */
+    private static final class OmaAppWidgetHostView extends AppWidgetHostView {
+        private boolean touchStartedInRemoteViews;
+
+        OmaAppWidgetHostView(Context context) {
+            super(context);
+        }
+
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                touchStartedInRemoteViews = hasInteractiveTargetAt(
+                        this, event.getX(), event.getY());
+                if (!touchStartedInRemoteViews) {
+                    return false;
+                }
+            } else if (!touchStartedInRemoteViews) {
+                return false;
+            }
+
+            boolean handled = super.dispatchTouchEvent(event);
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                touchStartedInRemoteViews = false;
+            }
+            return handled;
+        }
+
+        private static boolean hasInteractiveTargetAt(View view, float x, float y) {
+            if (view.getVisibility() != View.VISIBLE || !view.isEnabled()
+                    || view.getAlpha() <= 0f || x < 0f || y < 0f
+                    || x >= view.getWidth() || y >= view.getHeight()) {
+                return false;
+            }
+            if (view.isClickable() || view.isLongClickable() || view.isContextClickable()
+                    || view.isScrollContainer() || view.canScrollHorizontally(-1)
+                    || view.canScrollHorizontally(1) || view.canScrollVertically(-1)
+                    || view.canScrollVertically(1)) {
+                return true;
+            }
+            if (!(view instanceof ViewGroup)) {
+                return false;
+            }
+
+            ViewGroup group = (ViewGroup) view;
+            for (int index = group.getChildCount() - 1; index >= 0; index--) {
+                View child = group.getChildAt(index);
+                Rect childBounds = new Rect();
+                child.getHitRect(childBounds);
+                if (!childBounds.contains((int) x, (int) y)) {
+                    continue;
+                }
+                float childX = x - child.getLeft() + group.getScrollX();
+                float childY = y - child.getTop() + group.getScrollY();
+                if (hasInteractiveTargetAt(child, childX, childY)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

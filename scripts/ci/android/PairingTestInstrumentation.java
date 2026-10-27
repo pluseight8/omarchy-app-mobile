@@ -3091,14 +3091,22 @@ public final class PairingTestInstrumentation extends Instrumentation {
         long downTime = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(downTime, downTime,
                 MotionEvent.ACTION_DOWN, x, y, 0);
-        MotionEvent up = MotionEvent.obtain(downTime, downTime + 1L,
-                MotionEvent.ACTION_UP, x, y, 0);
         try {
-            sendPointerSync(down);
-            sendPointerSync(up);
+            if (!automation.injectInputEvent(down, true)) {
+                throw new IllegalStateException("Android rejected the RemoteViews ACTION_DOWN input.");
+            }
+            SystemClock.sleep(60L);
+            MotionEvent up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(),
+                    MotionEvent.ACTION_UP, x, y, 0);
+            try {
+                if (!automation.injectInputEvent(up, true)) {
+                    throw new IllegalStateException("Android rejected the RemoteViews ACTION_UP input.");
+                }
+            } finally {
+                up.recycle();
+            }
         } finally {
             down.recycle();
-            up.recycle();
         }
     }
 

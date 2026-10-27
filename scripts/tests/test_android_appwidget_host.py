@@ -111,6 +111,35 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
                       '                "CI_WIDGET_ACTION", "CI_WIDGET_UPDATED", 30_000L)', instrumentation)
         self.assertIn("CalledFromWrongThreadException", smoke)
 
+    def test_android_widget_host_passes_blank_widget_touches_to_home(self):
+        host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("protected AppWidgetHostView onCreateView(Context context, int appWidgetId,", host)
+        self.assertIn("return new OmaAppWidgetHostView(context);", host)
+        self.assertIn("class OmaAppWidgetHostView extends AppWidgetHostView", host)
+        self.assertIn("hasInteractiveTargetAt(\n                        this, event.getX(), event.getY())", host)
+        self.assertIn("if (!touchStartedInRemoteViews) {\n                    return false;", host)
+        self.assertIn("view.isClickable() || view.isLongClickable() || view.isContextClickable()", host)
+        self.assertIn("view.isScrollContainer()", host)
+        self.assertIn("view.canScrollVertically(1)", host)
+        self.assertIn("child.getHitRect(childBounds)", host)
+
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        tap_start = instrumentation.index("private void tapHostedRemoteViewsAction")
+        tap_end = instrumentation.index(
+            "private static AppWidgetHostView findHostedWidgetView", tap_start
+        )
+        tap_helper = instrumentation[tap_start:tap_end]
+        self.assertIn("automation.injectInputEvent(down, true)", tap_helper)
+        self.assertIn("automation.injectInputEvent(up, true)", tap_helper)
+        self.assertIn("ACTION_DOWN input.", tap_helper)
+        self.assertIn("ACTION_UP input.", tap_helper)
+        self.assertIn("SystemClock.sleep(60L)", tap_helper)
+        self.assertNotIn("sendPointerSync", tap_helper)
+
     def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
@@ -509,8 +538,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("target.setOnTouchListener", instrumentation)
         self.assertIn("RemoteViews target received touch action=", instrumentation)
         self.assertIn("overlayZOrder={index=", instrumentation)
-        self.assertIn("sendPointerSync(down)", instrumentation)
-        self.assertIn("sendPointerSync(up)", instrumentation)
+        self.assertIn("automation.injectInputEvent(down, true)", instrumentation)
+        self.assertIn("automation.injectInputEvent(up, true)", instrumentation)
         self.assertIn('"omaapp-appwidget-action-failure.png"', instrumentation)
         self.assertIn("omaapp-appwidget-action-failure.png", smoke)
         self.assertIn('getApplicationInfo(expectedProvider.getPackageName(), 0)', instrumentation)
@@ -591,10 +620,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("Home vertical scroll injection at x=", home_scroll)
         self.assertIn("width * 0.02f", home_scroll)
         self.assertNotIn("0.92f", home_scroll)
-        self.assertIn("sendPointerSync(down)", tap_helper)
-        self.assertIn("sendPointerSync(up)", tap_helper)
-        self.assertNotIn("automation.injectInputEvent(down, false)", tap_helper)
-        self.assertNotIn("automation.injectInputEvent(up, false)", tap_helper)
+        self.assertIn("automation.injectInputEvent(down, true)", tap_helper)
+        self.assertIn("automation.injectInputEvent(up, true)", tap_helper)
         self.assertIn("globalBounds=", tap_helper)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED"', instrumentation)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', instrumentation)
