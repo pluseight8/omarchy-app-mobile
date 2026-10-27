@@ -1635,6 +1635,7 @@ ApplicationWindow {
                                              return widget.page === homePagePage.pageIndex
                                          }).length === 0
                                 text: qsTr("Android widgets you add here stay on this phone and work offline.")
+                                Accessible.name: text
                                 color: Theme.muted
                                 font.pixelSize: Theme.fontSize(11)
                                 wrapMode: Text.WordWrap
