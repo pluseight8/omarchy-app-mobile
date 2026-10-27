@@ -1813,7 +1813,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
         selectHomePage(automation, context, 1);
         tapHostedRemoteViewsAction(automation, selectedWidget.getInt("id"),
                 "CI_WIDGET_ACTION", "CI_WIDGET_READY", 30_000L);
-        awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
+        try {
+            awaitAccessibilityText(automation, "CI_WIDGET_UPDATED", 15_000L, context);
+        } catch (Exception error) {
+            try {
+                saveAppWidgetScreenshot(activity, automation,
+                        "omaapp-appwidget-action-failure.png");
+            } catch (Exception screenshotError) {
+                Log.w(TAG, "Could not capture the failed RemoteViews action screen.", screenshotError);
+            }
+            throw error;
+        }
         reportStage("android_widget_host_remoteviews_provider_action_passed");
         if (!hasWidgetRecord(context, expectedProvider)) {
             throw new IllegalStateException("The bound provider disappeared after its click action.");
@@ -3042,6 +3052,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         float x = bounds.centerX();
         float y = bounds.centerY();
+        Log.i(TAG, "Injecting RemoteViews click for widget " + widgetId + " at ("
+                + x + ", " + y + ") in " + bounds + "; " + diagnostics.get());
         long downTime = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(downTime, downTime,
                 MotionEvent.ACTION_DOWN, x, y, 0);
@@ -3306,6 +3318,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         int x = homeScrollGestureX(context, width);
         int fromY = Math.max(1, Math.min(height - 2, Math.round(height * fromRatio)));
         int toY = Math.max(1, Math.min(height - 2, Math.round(height * toRatio)));
+        Log.i(TAG, "Home vertical scroll injection at x=" + x + " fromY=" + fromY
+                + " toY=" + toY + " screen=" + width + "x" + height);
         try {
             runInputSwipe(automation, x, fromY, x, toY);
         } catch (Exception error) {
@@ -3315,15 +3329,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
     @SuppressWarnings("deprecation")
     private static int homeScrollGestureX(Context context, int width) {
-        int gestureInset = ViewConfiguration.get(context).getScaledEdgeSlop();
+        int edgeSlop = ViewConfiguration.get(context).getScaledEdgeSlop();
+        int gestureInset = edgeSlop;
         Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         WindowInsets insets = activity == null || activity.getWindow() == null
                 ? null : activity.getWindow().getDecorView().getRootWindowInsets();
         // Keep vertical drags outside Android's edge-back gesture strip.
         if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            gestureInset = insets.getInsets(WindowInsets.Type.systemGestures()).left;
+            gestureInset = Math.max(edgeSlop,
+                    insets.getInsets(WindowInsets.Type.systemGestures()).left);
         } else if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            gestureInset = insets.getSystemGestureInsets().left;
+            gestureInset = Math.max(edgeSlop, insets.getSystemGestureInsets().left);
         }
         int safeInset = Math.min(width - 3, gestureInset + 1);
         return Math.max(2, Math.min(width - 3, Math.max(safeInset,

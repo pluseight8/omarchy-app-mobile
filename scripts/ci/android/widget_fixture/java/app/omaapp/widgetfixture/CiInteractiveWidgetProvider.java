@@ -9,6 +9,7 @@ import android.widget.RemoteViews;
 
 public final class CiInteractiveWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_CLICK = "app.omaapp.widgetfixture.CLICK";
+    private static final String TAG = "OmaAppWidgetFixture";
     private static final String STATE = "ci_widget_clicks";
 
     @Override
@@ -29,6 +30,7 @@ public final class CiInteractiveWidgetProvider extends AppWidgetProvider {
         if (id == AppWidgetManager.INVALID_APPWIDGET_ID) {
             return;
         }
+        android.util.Log.i(TAG, "Received RemoteViews click for widget " + id);
         android.content.SharedPreferences preferences = context.getSharedPreferences(
                 STATE, Context.MODE_PRIVATE);
         preferences.edit().putInt(Integer.toString(id),

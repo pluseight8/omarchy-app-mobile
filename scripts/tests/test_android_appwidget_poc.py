@@ -35,6 +35,7 @@ class AndroidAppWidgetPocTests(unittest.TestCase):
         self.assertIn("RemoteViews", provider)
         self.assertIn("Widget tap received by Android provider", provider)
         self.assertIn("scripts/ci/android/CiAppWidgetProvider.java", prepare)
+        self.assertNotIn("android.permission.BIND_APPWIDGET", prepare)
         self.assertIn("The CI AppWidget provider must not be part of the product manifest.", prepare)
         self.assertNotIn("CiAppWidgetProvider", manifest)
         self.assertIn("appWidgetHost true", workflow)

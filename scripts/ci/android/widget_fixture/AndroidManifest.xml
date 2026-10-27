@@ -9,8 +9,7 @@
         <receiver
             android:name=".CiInteractiveWidgetProvider"
             android:exported="true"
-            android:label="@string/ci_widget_title"
-            android:permission="android.permission.BIND_APPWIDGET">
+            android:label="@string/ci_widget_title">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
