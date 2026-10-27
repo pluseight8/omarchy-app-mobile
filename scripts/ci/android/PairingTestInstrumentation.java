@@ -3094,15 +3094,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
         MotionEvent up = MotionEvent.obtain(downTime, downTime + 1L,
                 MotionEvent.ACTION_UP, x, y, 0);
         try {
-            boolean downAccepted = automation.injectInputEvent(down, false);
-            boolean upAccepted = automation.injectInputEvent(up, false);
-            if (!downAccepted || !upAccepted) {
-                throw new IllegalStateException("Android rejected a real RemoteViews touch sequence: down="
-                        + downAccepted + ", up=" + upAccepted + "; " + diagnostics.get());
-            }
-            // Queue both pointer phases before waiting; sendPointerSync waits after DOWN and
-            // lets the restored Qt layout move the target under the held pointer.
-            waitForIdleSync();
+            sendPointerSync(down);
+            sendPointerSync(up);
         } finally {
             down.recycle();
             up.recycle();
