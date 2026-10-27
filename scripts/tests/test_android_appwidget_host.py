@@ -677,6 +677,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("runInputSwipe(automation, x, fromY, x, toY)", instrumentation)
 
     def test_android_widget_instrumentation_exercises_layout_and_safe_restore(self):
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8")
@@ -755,6 +756,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("has no click or drag handler", swipe)
         self.assertIn("Android widgets you add here stay on this phone and work offline.",
                       instrumentation)
+        self.assertIn('Accessible.name: text', qml)
         self.assertNotIn("height * 0.5f", swipe)
         self.assertIn('awaitVisibleAccessibleText(automation, context, expected, 10_000L)',
                       instrumentation)
