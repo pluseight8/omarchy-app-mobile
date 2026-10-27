@@ -441,7 +441,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('package="app.omaapp.widgetfixture"', fixture_manifest)
         self.assertIn('android:name=".CiWidgetConfigureActivity"', fixture_manifest)
         self.assertIn("android.appwidget.provider", fixture_manifest)
-        self.assertIn("android.permission.BIND_APPWIDGET", fixture_manifest)
+        self.assertNotIn("android.permission.BIND_APPWIDGET", fixture_manifest)
         self.assertIn("android:configure=\"app.omaapp.widgetfixture.CiWidgetConfigureActivity\"", provider_info)
         self.assertIn("Activity.RESULT_OK", configure)
         self.assertIn("AppWidgetManager.EXTRA_APPWIDGET_ID", configure)
