@@ -2437,8 +2437,12 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         if (!providerChoiceClicked || !configurationClicked
                 || !hasBoundWidgetRecord(context, expectedProvider)) {
-            throw new IllegalStateException("The Android system picker did not complete placeholder rebinding. UI: "
-                    + accessibilityTree(automation));
+            throw new IllegalStateException("The Android system picker did not complete placeholder rebinding"
+                    + " (providerSelected=" + providerChoiceClicked
+                    + ", configured=" + configurationClicked
+                    + ", bound=" + hasBoundWidgetRecord(context, expectedProvider)
+                    + "). windows=" + describeInteractiveWindows(automation)
+                    + "; UI: " + accessibilityTree(automation));
         }
         JSONObject rebound = requireWidgetRecord(context, expectedProvider);
         int reboundId = rebound.getInt("id");
@@ -2699,15 +2703,16 @@ public final class PairingTestInstrumentation extends Instrumentation {
             matches |= (text != null && text.toString().contains(label))
                     || (description != null && description.toString().contains(label));
         }
-        if (matches) {
+        if (matches && isVisibleOnScreen(node)) {
             AccessibilityNodeInfo candidate = AccessibilityNodeInfo.obtain(node);
             try {
                 for (int parentDepth = 0; candidate != null && parentDepth < 5; ++parentDepth) {
-                    if (candidate.isClickable()
+                    if (isVisibleOnScreen(candidate) && candidate.isClickable()
                             && candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                         return true;
                     }
-                    if (candidate.isClickable() && injectAccessibleTap(automation, candidate)) {
+                    if (isVisibleOnScreen(candidate) && candidate.isClickable()
+                            && injectAccessibleTap(automation, candidate)) {
                         return true;
                     }
                     AccessibilityNodeInfo parent = candidate.getParent();
@@ -2776,8 +2781,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
         CharSequence text = root.getText();
         CharSequence description = root.getContentDescription();
-        if ((text != null && text.toString().contains(expected))
-                || (description != null && description.toString().contains(expected))) {
+        if (isVisibleOnScreen(root)
+                && ((text != null && text.toString().contains(expected))
+                    || (description != null && description.toString().contains(expected)))) {
             return true;
         }
         for (int index = 0; index < root.getChildCount(); ++index) {

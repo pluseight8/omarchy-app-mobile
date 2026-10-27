@@ -505,6 +505,32 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('", managerProvider="', instrumentation)
         self.assertIn('", hostOwnsId=" + owned', instrumentation)
 
+    def test_system_widget_picker_scrolls_until_the_provider_is_actually_visible(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        click_start = instrumentation.index("private static boolean clickAccessibleNode")
+        click_end = instrumentation.index("private static boolean injectAccessibleTap", click_start)
+        click = instrumentation[click_start:click_end]
+        self.assertIn("if (matches && isVisibleOnScreen(node))", click)
+        self.assertIn("isVisibleOnScreen(candidate) && candidate.isClickable()", click)
+
+        contains_start = instrumentation.index("private static boolean containsAccessibleNode")
+        contains_end = instrumentation.index("private static String accessibilityTree", contains_start)
+        contains = instrumentation[contains_start:contains_end]
+        self.assertIn("if (isVisibleOnScreen(root)", contains)
+        self.assertIn('containsAccessibleText(automation, "OmaApp CI Interactive Widget")',
+                      instrumentation)
+        self.assertIn("executeSwipe(automation, context, 0.78f, 0.28f)", instrumentation)
+
+        rebind_start = instrumentation.index('reportStage("android_widget_host_backup_placeholder_passed")')
+        rebind_end = instrumentation.index('reportStage("android_widget_host_backup_transaction_commit_passed")',
+                                            rebind_start)
+        rebind = instrumentation[rebind_start:rebind_end]
+        self.assertIn('providerSelected=" + providerChoiceClicked', rebind)
+        self.assertIn('configured=" + configurationClicked', rebind)
+        self.assertIn('bound=" + hasBoundWidgetRecord(context, expectedProvider)', rebind)
+
     def test_widget_storage_is_versioned_and_migrates_legacy_arrays(self):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
