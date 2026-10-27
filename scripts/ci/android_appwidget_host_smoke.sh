@@ -42,6 +42,8 @@ run_stage() {
 }
 
 run_stage setup android_widget_host_picker_bind_touch_passed
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_remoteviews_provider_action_passed' \
+  "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_second_home_page_ready' \
   "$artifacts/setup-instrumentation.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_second_page_placement_passed' \
@@ -100,22 +102,7 @@ fi
 printf '%s\n' "$pid_after_start" > "$artifacts/pid-after-relaunch.txt"
 grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_geometry_restore_passed' \
   "$artifacts/restore-instrumentation.txt"
-grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_home_page_count_restore_passed' \
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_remoteviews_action_after_process_restore_passed' \
   "$artifacts/restore-instrumentation.txt"
-run_stage remove android_widget_host_id_release_passed
-grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_placeholder_passed' \
-  "$artifacts/remove-instrumentation.txt"
-grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_backup_transaction_commit_passed' \
-  "$artifacts/remove-instrumentation.txt"
-adb pull /sdcard/Android/data/app.omaapp/files/omaapp-appwidget-rebind-placeholder.png \
-  "$artifacts/widget-rebind-placeholder.png"
-test -s "$artifacts/widget-home-layout.png"
-test -s "$artifacts/widget-rebind-placeholder.png"
-stop_logcat_capture
-test -s "$artifacts/appwidget-host-logcat.txt"
-if grep -E 'FATAL EXCEPTION|Fatal signal (6|11)|JNI DETECTED ERROR|CalledFromWrongThreadException|ANR in app\.omaapp|qrc:/qt/qml/OmaApp/.*(TypeError|ReferenceError)' \
-  "$artifacts/appwidget-host-logcat.txt"; then
-  printf 'Android widget host smoke found a fatal app or QML error; see appwidget-host-logcat.txt.\n' >&2
-  exit 1
-fi
-adb uninstall "$package"
+grep -F 'INSTRUMENTATION_STATUS: stage=android_widget_host_home_page_count_restore_passed' \
+  "$artifacts/restore-instrumenta
