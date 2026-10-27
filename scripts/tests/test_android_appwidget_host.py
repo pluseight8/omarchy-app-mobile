@@ -65,6 +65,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         host = (ROOT / "app/android/src/app/omaapp/AndroidWidgetHost.java").read_text(
             encoding="utf-8"
         )
+        attach_start = host.index("static void attach(OmaAppActivity activity)")
+        attach_end = host.index("static void onStart(OmaAppActivity activity)", attach_start)
+        attach = host[attach_start:attach_end]
+        self.assertIn(
+            "            }\n            // Qt can restore its own view order after the widget picker Activity returns.\n"
+            "            // Reassert the native overlay's z-order on every Activity attach, not only when\n"
+            "            // the FrameLayout parent changes, so RemoteViews remain touchable after resume.\n"
+            "            overlay.bringToFront();\n            restoreWidgets(activity);",
+            attach,
+        )
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8")
@@ -431,7 +441,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('package="app.omaapp.widgetfixture"', fixture_manifest)
         self.assertIn('android:name=".CiWidgetConfigureActivity"', fixture_manifest)
         self.assertIn("android.appwidget.provider", fixture_manifest)
-        self.assertNotIn("android.permission.BIND_APPWIDGET", fixture_manifest)
+        self.assertIn("android.permission.BIND_APPWIDGET", fixture_manifest)
         self.assertIn("android:configure=\"app.omaapp.widgetfixture.CiWidgetConfigureActivity\"", provider_info)
         self.assertIn("Activity.RESULT_OK", configure)
         self.assertIn("AppWidgetManager.EXTRA_APPWIDGET_ID", configure)
@@ -485,6 +495,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("CI_WIDGET_UPDATED", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED_TWICE", instrumentation)
         self.assertIn("Injecting RemoteViews click", instrumentation)
+        self.assertIn("target.setOnTouchListener", instrumentation)
+        self.assertIn("RemoteViews target received touch action=", instrumentation)
         self.assertIn('"omaapp-appwidget-action-failure.png"', instrumentation)
         self.assertIn("omaapp-appwidget-action-failure.png", smoke)
         self.assertIn('getApplicationInfo(expectedProvider.getPackageName(), 0)', instrumentation)

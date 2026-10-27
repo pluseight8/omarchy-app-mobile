@@ -2939,12 +2939,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
         }
 
         AtomicReference<Rect> actionBounds = new AtomicReference<>();
+        AtomicReference<View> actionTarget = new AtomicReference<>();
         AtomicReference<Boolean> expectedTextVisible = new AtomicReference<>(false);
         AtomicReference<String> diagnostics = new AtomicReference<>("No host view was inspected.");
         long deadline = SystemClock.elapsedRealtime() + timeoutMillis;
         int scrollAttempts = 0;
         do {
             actionBounds.set(null);
+            actionTarget.set(null);
             expectedTextVisible.set(false);
             runOnMainSync(() -> {
                 View decor = activity.getWindow() == null ? null : activity.getWindow().getDecorView();
@@ -3008,6 +3010,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         if (candidate.isEnabled() && candidate.isClickable()
                                 && visible && withinHost) {
                             actionBounds.set(clippedBounds);
+                            actionTarget.set(candidate);
                             break;
                         }
                         if (candidate == hostView || !(candidate.getParent() instanceof View)) {
@@ -3052,6 +3055,14 @@ public final class PairingTestInstrumentation extends Instrumentation {
 
         float x = bounds.centerX();
         float y = bounds.centerY();
+        View target = actionTarget.get();
+        if (target != null) {
+            runOnMainSync(() -> target.setOnTouchListener((view, event) -> {
+                Log.i(TAG, "RemoteViews target received touch action="
+                        + event.getActionMasked() + " x=" + event.getX() + " y=" + event.getY());
+                return false;
+            }));
+        }
         Log.i(TAG, "Injecting RemoteViews click for widget " + widgetId + " at ("
                 + x + ", " + y + ") in " + bounds + "; " + diagnostics.get());
         long downTime = SystemClock.uptimeMillis();

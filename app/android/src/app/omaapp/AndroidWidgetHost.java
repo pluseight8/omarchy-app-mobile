@@ -144,8 +144,11 @@ public final class AndroidWidgetHost {
                 }
                 contentRoot.addView(overlay, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                overlay.bringToFront();
             }
+            // Qt can restore its own view order after the widget picker Activity returns.
+            // Reassert the native overlay's z-order on every Activity attach, not only when
+            // the FrameLayout parent changes, so RemoteViews remain touchable after resume.
+            overlay.bringToFront();
             restoreWidgets(activity);
         });
     }
@@ -265,6 +268,8 @@ public final class AndroidWidgetHost {
                 || (!recordId.isEmpty() && findWidgetByRecordId(widgets, recordId) == null)) {
             return false;
         }
+        Log.i(TAG, "Launching system widget picker for page " + page + " ("
+                + (recordId.isEmpty() ? "new widget" : "placeholder rebind") + ").");
         final int widgetId;
         try {
             widgetId = host.allocateAppWidgetId();
