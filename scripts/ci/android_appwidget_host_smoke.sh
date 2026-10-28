@@ -15,7 +15,34 @@ stop_logcat_capture() {
     logcat_pid=""
   fi
 }
-trap stop_logcat_capture EXIT
+report_widget_failure() {
+  local status=$?
+  stop_logcat_capture
+  if [[ "$status" -ne 0 ]]; then
+    local output excerpt
+    for output in "$artifacts"/*-instrumentation.txt; do
+      [[ -f "$output" ]] || continue
+      excerpt="$(grep -E 'INSTRUMENTATION_STATUS: stage=|Exception|Error|failed|did not|could not|blocked|Expected|timeout' \
+        "$output" | tail -n 12 || true)"
+      if [[ -z "$excerpt" ]]; then
+        excerpt="$(tail -n 3 "$output")"
+      fi
+      excerpt="${excerpt//'%'/'%25'}"
+      excerpt="${excerpt//$'\r'/'%0D'}"
+      excerpt="${excerpt//$'\n'/'%0A'}"
+      printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$excerpt"
+    done
+    if [[ -f "$artifacts/appwidget-host-logcat.txt" ]]; then
+      excerpt="$(grep -E ' (ActivityTaskManager|ActivityManager): .*app\.omaapp|OmaAppAppWidget|AndroidRuntime|FATAL EXCEPTION|Fatal signal|qrc:|QtActivity|QtNative|AccessibilityService' \
+        "$artifacts/appwidget-host-logcat.txt" | grep -v -E 'OmaAppPairingSmoke|dvm_lock_sample' | tail -n 40 || true)"
+      excerpt="${excerpt//'%'/'%25'}"
+      excerpt="${excerpt//$'\r'/'%0D'}"
+      excerpt="${excerpt//$'\n'/'%0A'}"
+      printf '::warning title=AppWidget smoke logcat::%s\n' "$excerpt"
+    fi
+  fi
+}
+trap report_widget_failure EXIT
 adb logcat -b all -v threadtime > "$artifacts/appwidget-host-logcat.txt" &
 logcat_pid=$!
 
