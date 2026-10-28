@@ -1113,7 +1113,17 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             ensure,
         )
         self.assertNotIn("runInputTap", instrumentation)
-        self.assertNotIn("hasOnDisplayClickableControl", instrumentation)
+        scroll_end = instrumentation.index("private void selectHomePage", scroll_start)
+        settings_scroll = instrumentation[scroll_start:scroll_end]
+        self.assertIn('hasOnDisplayClickableControl(automation, context, "Add a home page")',
+                      settings_scroll)
+        self.assertIn("attempt < 8", settings_scroll)
+        self.assertIn("runInputSwipe(automation, x, startY, x, endY)", settings_scroll)
+        self.assertIn("appAccessibleControlBounds(automation, context", settings_scroll)
+        self.assertIn("visibleAppAccessibilitySnapshot(automation, context)", settings_scroll)
+        self.assertIn("positionBefore.equals(positionAfter)", settings_scroll)
+        self.assertIn("scrollUp ? 0.75f : 0.32f", settings_scroll)
+        self.assertIn("scrollUp ? 0.32f : 0.75f", settings_scroll)
         clickable_start = instrumentation.index(
             "private static boolean hasVisibleClickableControl"
         )

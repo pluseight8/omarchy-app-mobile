@@ -2082,6 +2082,88 @@ public final class PairingTestInstrumentation extends Instrumentation {
         reportStage("android_widget_host_second_home_page_ready");
     }
 
+    private static boolean scrollSettingsToHomePageControl(UiAutomation automation,
+            Context context) throws IOException {
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        int x = Math.max(1, Math.min(width - 2, 32));
+        for (int attempt = 0; attempt < 8; attempt++) {
+            if (hasOnDisplayClickableControl(automation, context, "Add a home page")) {
+                return true;
+            }
+            Rect targetBounds = appAccessibleControlBounds(automation, context, "Add a home page");
+            boolean scrollUp = targetBounds == null || targetBounds.bottom > 0;
+            int startY = Math.round(height * (scrollUp ? 0.75f : 0.32f));
+            int endY = Math.round(height * (scrollUp ? 0.32f : 0.75f));
+            String positionBefore = visibleAppAccessibilitySnapshot(automation, context);
+            runInputSwipe(automation, x, startY, x, endY);
+            SystemClock.sleep(300L);
+            String positionAfter = visibleAppAccessibilitySnapshot(automation, context);
+            if (positionBefore.equals(positionAfter)) {
+                return hasOnDisplayClickableControl(automation, context, "Add a home page");
+            }
+        }
+        return hasOnDisplayClickableControl(automation, context, "Add a home page");
+    }
+
+    private static Rect appAccessibleControlBounds(UiAutomation automation, Context context,
+            String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                if ((nodeText != null && expected.contentEquals(nodeText))
+                        || (nodeDescription != null && expected.contentEquals(nodeDescription))) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    return bounds;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+            return null;
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+    }
+
+    private static String visibleAppAccessibilitySnapshot(UiAutomation automation, Context context) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        StringBuilder snapshot = new StringBuilder();
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                if (isVisibleOnScreen(node)) {
+                    Rect bounds = new Rect();
+                    node.getBoundsInScreen(bounds);
+                    snapshot.append(node.getText()).append('|').append(node.getContentDescription())
+                            .append('|').append(bounds.flattenToString()).append('\n');
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return snapshot.toString();
+    }
+
     private void selectHomePage(UiAutomation automation, Context context, int page) {
         if (page < 0 || page >= 2) {
             throw new IllegalArgumentException("Invalid Home page index for the Android widget smoke.");
@@ -2215,7 +2297,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return appAccessibilityTreeContains(automation, context, expected);
     }
 
-<<<<<<< HEAD
     private static Rect findVisibleAccessibleTextBounds(UiAutomation automation, Context context,
             String expected) {
         ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
@@ -2249,11 +2330,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return result;
-=======
     private static boolean hasVisibleAccessibleControl(UiAutomation automation, Context context,
             String expected) {
         return hasVisibleAccessibleControl(automation, context, expected, false);
->>>>>>> a317273 (Persist Home page across widget configuration)
     }
 
     private static boolean hasVisibleClickableControl(UiAutomation automation, Context context,
@@ -2277,6 +2356,41 @@ public final class PairingTestInstrumentation extends Instrumentation {
                         || (nodeDescription != null && expected.contentEquals(nodeDescription));
                 if (matches && isVisibleOnScreen(node)
                         && (!requireClickable || (node.isEnabled() && node.isClickable()))) {
+                    found = true;
+                    break;
+                }
+                for (int child = 0; child < node.getChildCount()
+                        && pending.size() < MAX_ACCESSIBILITY_NODES; child++) {
+                    AccessibilityNodeInfo childNode = node.getChild(child);
+                    if (childNode != null) {
+                        pending.add(childNode);
+                    }
+                }
+            }
+        } finally {
+            for (AccessibilityNodeInfo node : pending) {
+                node.recycle();
+            }
+        }
+        return found;
+    }
+
+    private static boolean hasOnDisplayClickableControl(UiAutomation automation, Context context,
+            String expected) {
+        ArrayList<AccessibilityNodeInfo> pending = appAccessibilityRoots(automation, context);
+        if (pending.isEmpty()) {
+            return false;
+        }
+        boolean found = false;
+        try {
+            for (int index = 0; index < pending.size() && index < MAX_ACCESSIBILITY_NODES; index++) {
+                AccessibilityNodeInfo node = pending.get(index);
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                boolean matches = (nodeText != null && expected.contentEquals(nodeText))
+                        || (nodeDescription != null && expected.contentEquals(nodeDescription));
+                if (matches && isWithinDisplayBounds(node, context) && isVisibleOnScreen(node)
+                        && node.isEnabled() && node.isClickable()) {
                     found = true;
                     break;
                 }
@@ -2727,17 +2841,13 @@ public final class PairingTestInstrumentation extends Instrumentation {
             } else if (!configurationClicked && clickAccessibleText(automation,
                     "Add to home screen", "Add to Home screen", "Add widget", "Add", "Place widget")) {
                 providerChoiceClicked = true;
-<<<<<<< HEAD
+            } else if (!configurationClicked && clickAccessibleControl(automation, providerLabel)) {
+                providerChoiceClicked = true;
             } else if (providerChoiceClicked && !configurationClicked
                     && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
                 configurationClicked = true;
             }
             if (!providerChoiceClicked) {
-=======
-            } else if (!configurationClicked && clickAccessibleControl(automation, providerLabel)) {
-                providerChoiceClicked = true;
-            } else if (!configurationClicked) {
->>>>>>> a317273 (Persist Home page across widget configuration)
                 scrollSystemPicker(automation, context);
             }
             SystemClock.sleep(500L);
