@@ -52,7 +52,7 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
 
       - name: Check shell scripts
-        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh scripts/ci/android_translation_smoke.sh scripts/ci/android_runtime_metrics.sh scripts/ci/build_android_launcher_fixture.sh scripts/ci/android_app_discovery_smoke.sh
+        run: bash -n omarchy-plugin/install.sh omarchy-plugin/uninstall.sh scripts/ci/android_translation_smoke.sh scripts/ci/android_runtime_metrics.sh scripts/ci/build_android_launcher_fixture.sh scripts/ci/android_app_discovery_smoke.sh scripts/ci/android_appwidget_host_smoke.sh
 
   android-arm64:
     name: Android arm64 build
@@ -176,6 +176,8 @@ jobs:
           python3 scripts/ci/prepare_android_pairing_smoke.py
           "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build/android-emulator -GNinja -DCMAKE_BUILD_TYPE=Debug -DOMAAPP_TEST_RHI_BACKEND="${{ matrix.rhi_backend }}" -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT"
           cmake --build build/android-emulator --target apk --parallel 2
+          bash scripts/ci/build_android_appwidget_fixture.sh \
+            build/android-widget-fixture/omaapp-ci-widget.apk
           bash scripts/ci/build_android_launcher_fixture.sh build/android-launcher-fixture/launcher-fixture.apk
 
       - name: Boot emulator, install OmaApp, and select it as HOME
@@ -236,6 +238,10 @@ jobs:
             } > "$smoke_artifacts/failure-diagnostics.txt" 2>&1 || true
             timeout 10s adb logcat -b all -d -v threadtime -t 4000 \
               > "$smoke_artifacts/failure-logcat.txt" 2>&1 || true
+            timeout 10s adb shell screencap -p /sdcard/omaapp-ci-failure-screen.png \
+              >/dev/null 2>&1 || true
+            timeout 10s adb pull /sdcard/omaapp-ci-failure-screen.png \
+              "$smoke_artifacts/failure-screen.png" >/dev/null 2>&1 || true
             return "$exit_status"
           }
           trap capture_smoke_failure ERR
@@ -253,6 +259,7 @@ jobs:
           apk="$(find build/android-emulator -type f -name '*.apk' -print -quit)"
           test -n "$apk"
           adb install "$apk"
+          adb install build/android-widget-fixture/omaapp-ci-widget.apk
           adb logcat -c
           # Qt's Android accessibility bridge attaches its virtual QML tree
           # only while AccessibilityManager reports accessibility enabled.
@@ -380,6 +387,9 @@ jobs:
           mkdir -p "$visual_artifacts"
           for screen in home apps devices style settings; do
             screen_label="${screen^}"
+            if [[ "$screen" == "settings" ]]; then
+              screen_label='Settings tab'
+            fi
             if [[ "$screen" == "home" ]]; then
               wait_for_checked_tab "$screen_label" \
                 "/sdcard/omaapp-visual-$screen-ready.xml" "$visual_artifacts/$screen.xml"
@@ -536,10 +546,14 @@ jobs:
             baseline_dir="$baseline_dir/opengl"
           fi
           # Android's initial HOME frame can use a shorter content viewport.
-          # Each RHI has its own exact compact screenshot; no pixels are masked.
+          # Keep compact captures renderer-specific: the native widget canvas
+          # is clipped differently by the OpenGL and Vulkan scenegraphs.
+          home_baseline_args=()
+          if [[ -f "$baseline_dir/home-compact-viewport.png" ]]; then
+            home_baseline_args+=(--home-alternate-baseline "$baseline_dir/home-compact-viewport.png")
+          fi
           python3 scripts/ci/check_visual_regression.py "$visual_artifacts" \
-            --baselines "$baseline_dir" \
-            --home-alternate-baseline "$baseline_dir/home-compact-viewport.png" \
+            --baselines "$baseline_dir" "${home_baseline_args[@]}" \
             --verify-style-surface
           sleep 8
           adb shell pidof app.omaapp
@@ -553,6 +567,9 @@ jobs:
           adb install build/android-launcher-fixture/launcher-fixture.apk
           python3 scripts/ci/android_pairing_smoke.py
           adb uninstall app.omaapp.launcherfixture
+          bash scripts/ci/android_appwidget_host_smoke.sh \
+            build/android-widget-fixture/omaapp-ci-widget.apk \
+            "$smoke_artifacts/appwidget-host"
           python3 scripts/ci/check_visual_regression.py "$smoke_artifacts/paired-theme" \
             --baselines tests/visual_baselines/android-paired --screens style --allow-missing-baseline \
             --verify-style-surface --require-gradient --gradient-angle 37

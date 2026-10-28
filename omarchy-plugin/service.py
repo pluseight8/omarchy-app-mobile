@@ -1091,6 +1091,16 @@ class ServiceState:
         self.event_hub = EventHub()
         self.monitor_stop = threading.Event()
         self.monitor_threads: list[threading.Thread] = []
+        unconfirmed = [
+            device_id for device_id, device in self.devices.items()
+            if isinstance(device, dict) and device.get("pendingConfirmation") is True
+        ]
+        if unconfirmed:
+            for device_id in unconfirmed:
+                self.devices.pop(device_id, None)
+            # An approved handshake lives only in this process; its token cannot be completed
+            # after a restart, so do not leave the persisted credential valid indefinitely.
+            self.save_devices()
 
     @property
     def fingerprint(self) -> str:
@@ -1369,7 +1379,10 @@ class ServiceState:
             address = self.advertised_address
             self.pair_secret = secrets.token_urlsafe(32)
             self.pair_expires = int(time.time()) + PAIRING_TTL_SECONDS
-            self.pending.clear()
+            self.pending = {
+                request_id: request for request_id, request in self.pending.items()
+                if request.get("status") == "approved"
+            }
             payload = {
                 "schema": PROTOCOL_VERSION,
                 "url": f"https://{address}:{self.port}",
@@ -1467,6 +1480,7 @@ class ServiceState:
                     "deviceName": request["deviceName"],
                     "tokenHash": hashlib.sha256(token.encode("ascii")).hexdigest(),
                     "createdAt": int(time.time()),
+                    "pendingConfirmation": True,
                 }
                 request["status"] = "approved"
                 request["token"] = token
@@ -1517,6 +1531,9 @@ class ServiceState:
                 return True
             if request.get("status") != "approved":
                 return False
+            device = self.devices.get(device_id)
+            if isinstance(device, dict) and device.pop("pendingConfirmation", None) is not None:
+                self.save_devices()
             request["status"] = "completed"
             request.pop("token", None)
             request["expiresAt"] = int(time.time()) + 120
@@ -1881,6 +1898,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             if path == "/v1/files":
                 directory = _transfer_directory()
+                try:
+                    _private_directory(directory)
+                except OSError:
+                    self._reply(503, {"error": "destination_unavailable"})
+                    return
                 files = []
                 try:
                     for candidate in sorted(directory.iterdir(), key=lambda item: item.name.casefold())[:100]:
@@ -1893,14 +1915,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 and metadata.st_size <= MAX_TRANSFER_BYTES:
                             files.append({"name": name, "size": metadata.st_size})
                 except OSError:
-                    pass
+                    self._reply(503, {"error": "destination_unavailable"})
+                    return
                 self._reply(200, {"files": files})
                 return
             name = _safe_transfer_name(unquote(path.removeprefix("/v1/files/")))
             if not name or "/" in path.removeprefix("/v1/files/"):
                 self._reply(404, {"error": "file_unavailable"})
                 return
-            self._send_local_file(_transfer_directory() / name, name)
+            directory = _transfer_directory()
+            try:
+                _private_directory(directory)
+            except OSError:
+                self._reply(503, {"error": "destination_unavailable"})
+                return
+            self._send_local_file(directory / name, name)
             return
         if path == "/v1/wallpaper":
             authenticated = self._authenticated()

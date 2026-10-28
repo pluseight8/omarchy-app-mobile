@@ -1043,24 +1043,23 @@ public final class PairingBridge {
 
     private static void downloadWallpaperIfNeeded(Context context, JSONObject credentials,
                                                   JSONObject wallpaper) throws Exception {
+        android.content.SharedPreferences preferences = context.getSharedPreferences(
+                PREFERENCES, Context.MODE_PRIVATE);
+        File directory = new File(context.getFilesDir(), "omarchy-theme");
         if (wallpaper == null) {
-            String oldPath = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                    .getString(WALLPAPER_PATH_KEY, "");
-            if (!oldPath.isEmpty()) {
-                new File(oldPath).delete();
+            if (!preferences.edit()
+                    .remove(WALLPAPER_ID_KEY).remove(WALLPAPER_PATH_KEY).commit()) {
+                throw new IllegalStateException("could not clear wallpaper preferences");
             }
-            context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-                    .remove(WALLPAPER_ID_KEY).remove(WALLPAPER_PATH_KEY).apply();
+            deleteStaleWallpapers(directory, null);
             return;
         }
         String id = wallpaper.optString("id", "");
         if (!id.matches("[a-f0-9]{32}")) {
             throw new IllegalArgumentException("invalid wallpaper id");
         }
-        String previousId = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                .getString(WALLPAPER_ID_KEY, "");
-        String previousPath = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-                .getString(WALLPAPER_PATH_KEY, "");
+        String previousId = preferences.getString(WALLPAPER_ID_KEY, "");
+        String previousPath = preferences.getString(WALLPAPER_PATH_KEY, "");
         if (id.equals(previousId) && !previousPath.isEmpty() && new File(previousPath).isFile()) {
             return;
         }
@@ -1073,7 +1072,6 @@ public final class PairingBridge {
             case "image/bmp": suffix = ".bmp"; break;
             default: throw new IllegalArgumentException("unsupported wallpaper format");
         }
-        File directory = new File(context.getFilesDir(), "omarchy-theme");
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IllegalStateException("could not create theme cache");
         }
@@ -1081,30 +1079,33 @@ public final class PairingBridge {
         File temporary = new File(directory, destination.getName() + ".tmp");
         try {
             downloadBytes(credentials, "/v1/wallpaper", temporary);
+            // Both files share a filesystem, so rename(2) atomically replaces the destination.
+            android.system.Os.rename(temporary.getAbsolutePath(), destination.getAbsolutePath());
         } catch (Exception error) {
             temporary.delete();
             throw error;
         }
-        if (destination.exists() && !destination.delete()) {
-            temporary.delete();
-            throw new IllegalStateException("could not update wallpaper cache");
-        }
-        if (!temporary.renameTo(destination)) {
-            temporary.delete();
-            throw new IllegalStateException("could not install wallpaper cache");
-        }
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
+        // Do not remove the previous working image until the new path is durably committed.
+        // A crash before this commit leaves the old preferences and old file usable.
+        if (!preferences.edit()
                 .putString(WALLPAPER_ID_KEY, id)
                 .putString(WALLPAPER_PATH_KEY, destination.getAbsolutePath())
-                .apply();
-        if (!previousId.isEmpty()) {
-            File[] cachedFiles = directory.listFiles();
-            if (cachedFiles != null) {
-                for (File file : cachedFiles) {
-                    if (file.getName().startsWith("wallpaper-" + previousId + ".")) {
-                        file.delete();
-                    }
-                }
+                .commit()) {
+            throw new IllegalStateException("could not save wallpaper preferences");
+        }
+        // This also removes same-ID files with an old suffix and orphans from earlier crashes.
+        deleteStaleWallpapers(directory, destination);
+    }
+
+    private static void deleteStaleWallpapers(File directory, File destination) {
+        File[] cachedFiles = directory.listFiles();
+        if (cachedFiles == null) {
+            return;
+        }
+        for (File file : cachedFiles) {
+            if (file.getName().startsWith("wallpaper-")
+                    && (destination == null || !file.equals(destination))) {
+                file.delete();
             }
         }
     }

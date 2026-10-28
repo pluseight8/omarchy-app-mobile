@@ -83,6 +83,30 @@ def style_probe_image(path: Path, *, scale: float = 1.0, angle: float | None = N
 
 
 class VisualRegressionTests(unittest.TestCase):
+    def test_android_ci_uses_renderer_specific_compact_home_baselines(self) -> None:
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+
+        self.assertIn('if [[ -f "$baseline_dir/home-compact-viewport.png" ]]', workflow)
+        self.assertIn(
+            'home_baseline_args+=(--home-alternate-baseline "$baseline_dir/home-compact-viewport.png")',
+            workflow,
+        )
+        self.assertNotIn(
+            "--home-alternate-baseline tests/visual_baselines/android/home-compact-viewport.png",
+            workflow,
+        )
+        self.assertTrue(
+            (root / "tests/visual_baselines/android/opengl/home-compact-viewport.png").is_file()
+        )
+        vulkan_compact = root / "tests/visual_baselines/android/home-compact-viewport.png"
+        opengl_compact = root / "tests/visual_baselines/android/opengl/home-compact-viewport.png"
+        self.assertTrue(
+            vulkan_compact.is_file(),
+            "Vulkan's compact capture needs a baseline in its backend-specific directory",
+        )
+        self.assertNotEqual(vulkan_compact.read_bytes(), opengl_compact.read_bytes())
+
     def test_decodes_rgba_png_rows(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "screen.png"

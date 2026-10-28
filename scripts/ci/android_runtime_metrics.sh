@@ -41,6 +41,8 @@ fi
 sleep 8
 adb shell dumpsys meminfo "$app_pid" > "$artifacts/meminfo-idle.txt"
 adb shell dumpsys cpuinfo > "$artifacts/cpuinfo-idle.txt"
+adb shell top -H -b -n 2 -d 1 -p "$app_pid" -o pid,tid,%cpu,name \
+  > "$artifacts/top-threads-idle.txt"
 
 python3 - "$artifacts" "$app_pid" <<'PY'
 import json
@@ -53,10 +55,21 @@ pid = sys.argv[2]
 launch = (directory / "cold-start.txt").read_text(encoding="utf-8", errors="replace")
 memory = (directory / "meminfo-idle.txt").read_text(encoding="utf-8", errors="replace")
 cpu = (directory / "cpuinfo-idle.txt").read_text(encoding="utf-8", errors="replace")
+threads = (directory / "top-threads-idle.txt").read_text(encoding="utf-8", errors="replace")
 
 def first(pattern, text):
     match = re.search(pattern, text, re.MULTILINE)
     return match.group(1) if match else None
+
+ui_thread_samples = []
+for line in threads.splitlines():
+    fields = line.split()
+    if len(fields) < 4 or fields[0] != pid or fields[1] != pid:
+        continue
+    try:
+        ui_thread_samples.append(float(fields[2].removesuffix("%")))
+    except ValueError:
+        continue
 
 total_time = first(r"^TotalTime:\s*(\d+)", launch)
 this_time = first(r"^ThisTime:\s*(\d+)", launch)
@@ -73,11 +86,14 @@ report = {
     "idleSampleSecondsAfterLaunch": 8,
     "idleProcessResidentSetPssKb": int(pss.replace(",", "")) if pss else None,
     "idleProcessCpuPercent": float(cpu_sample) if cpu_sample else None,
+    "uiThreadCpuPercent": ui_thread_samples[-1] if ui_thread_samples else None,
+    "uiThreadSampleCount": len(ui_thread_samples),
     "appPid": pid,
 }
 missing = [key for key in (
     "coldStartTotalTimeMs",
     "idleProcessResidentSetPssKb",
+    "uiThreadCpuPercent",
 ) if report[key] is None]
 if launch_state != "COLD":
     missing.append("cold LaunchState (reported " + repr(launch_state) + ")")

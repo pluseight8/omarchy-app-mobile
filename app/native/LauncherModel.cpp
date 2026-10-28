@@ -6,11 +6,15 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMetaObject>
+#include <QPointer>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSettings>
 #include <QUuid>
 #include <QVariant>
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -23,6 +27,7 @@ const QStringList homeWidgetIds{QStringLiteral("clock"), QStringLiteral("compute
                                 QStringLiteral("media")};
 const QStringList gestureIds{QStringLiteral("homeSwipe"), QStringLiteral("sectionSwipe"),
                              QStringLiteral("longPressPin"), QStringLiteral("longPressEdit")};
+QPointer<LauncherModel> androidWidgetModel;
 
 QString favoriteKey(const QString &packageName, const QString &activityName)
 {
@@ -47,6 +52,7 @@ bool validFolderName(const QString &name)
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
+#include <jni.h>
 #endif
 
 LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
@@ -56,12 +62,15 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
 #endif
 #ifdef Q_OS_ANDROID
     m_platformSupported = true;
+    androidWidgetModel = this;
 #endif
     QSettings settings;
     m_favoritePackages = settings.value(QStringLiteral("launcher/favorites")).toStringList();
     m_gridColumns = qBound(3, settings.value(QStringLiteral("launcher/gridColumns"), 4).toInt(), 5);
     m_homePageCount = qBound(1, settings.value(QStringLiteral("launcher/homePageCount"), 1).toInt(),
                              maximumHomePages);
+    m_selectedHomePage = qBound(0,
+        settings.value(QStringLiteral("launcher/selectedHomePage"), 0).toInt(), m_homePageCount - 1);
     m_favoritePages = settings.value(QStringLiteral("launcher/favoritePages")).toMap();
     for (auto it = m_favoritePages.begin(); it != m_favoritePages.end();) {
         const int page = it.value().toInt();
@@ -89,10 +98,21 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
     m_hapticFeedbackEnabled = settings.value(QStringLiteral("launcher/hapticFeedbackEnabled"),
                                              false).toBool();
     loadFolders();
+#ifdef Q_OS_ANDROID
+    refreshAndroidWidgets();
+#endif
     qInfo().noquote()
         << QStringLiteral("OmaApp: loaded %1 pinned apps").arg(m_favoritePackages.size());
 #if defined(OMAAPP_TEST_RHI_BACKEND_OPENGL) || defined(OMAAPP_TEST_RHI_BACKEND_VULKAN)
     qWarning().noquote() << "OmaApp startup: LauncherModel construction returned";
+#endif
+}
+
+LauncherModel::~LauncherModel()
+{
+#ifdef Q_OS_ANDROID
+    if (androidWidgetModel == this)
+        androidWidgetModel.clear();
 #endif
 }
 
@@ -204,9 +224,24 @@ int LauncherModel::homePageCount() const
     return m_homePageCount;
 }
 
+int LauncherModel::selectedHomePage() const
+{
+    return m_selectedHomePage;
+}
+
 QVariantMap LauncherModel::homeWidgets() const
 {
     return m_homeWidgets;
+}
+
+QVariantList LauncherModel::androidWidgets() const
+{
+    return m_androidWidgets;
+}
+
+bool LauncherModel::androidWidgetStorageError() const
+{
+    return m_androidWidgetStorageError;
 }
 
 QVariantMap LauncherModel::gestures() const
@@ -238,6 +273,17 @@ void LauncherModel::setHomePageCount(int count)
     const int boundedCount = qBound(1, count, maximumHomePages);
     if (m_homePageCount == boundedCount)
         return;
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool widgetPagesSaved = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "setHomePageCount",
+        "(Landroid/content/Context;I)Z", context.object<jobject>(),
+        static_cast<jint>(boundedCount));
+    if (!widgetPagesSaved) {
+        qWarning() << "OmaApp: failed to remap Android widgets to the reduced Home page count";
+        return;
+    }
+#endif
     m_homePageCount = boundedCount;
     for (auto it = m_favoritePages.begin(); it != m_favoritePages.end(); ++it)
         it.value() = qBound(0, it.value().toInt(), m_homePageCount - 1);
@@ -248,7 +294,22 @@ void LauncherModel::setHomePageCount(int count)
     if (settings.status() != QSettings::NoError)
         qWarning() << "OmaApp: failed to save home page count" << settings.status();
     saveFavoritePages();
+    setSelectedHomePage(m_selectedHomePage);
     emit homePagesChanged();
+}
+
+void LauncherModel::setSelectedHomePage(int page)
+{
+    const int boundedPage = qBound(0, page, m_homePageCount - 1);
+    if (m_selectedHomePage == boundedPage)
+        return;
+    m_selectedHomePage = boundedPage;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/selectedHomePage"), m_selectedHomePage);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save selected Home page" << settings.status();
+    emit selectedHomePageChanged();
 }
 
 QVariantList LauncherModel::homePageApps(int page) const
@@ -272,6 +333,384 @@ QVariantList LauncherModel::homePageApps(int page) const
         });
     }
     return result;
+}
+
+void LauncherModel::refreshAndroidWidgets()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject json = QJniObject::callStaticObjectMethod(
+        "app/omaapp/AndroidWidgetHost", "listWidgets",
+        "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+    const QJsonDocument document = QJsonDocument::fromJson(json.toString().toUtf8());
+    if (document.isObject()
+        && document.object().value(QStringLiteral("status")).toString()
+            == QStringLiteral("storage_error")) {
+        if (!m_androidWidgetStorageError) {
+            m_androidWidgetStorageError = true;
+            emit androidWidgetStorageErrorChanged();
+        }
+        // Retain the last known-good entries. AndroidWidgetHost deliberately leaves
+        // unreadable preferences and allocated IDs untouched for a later recovery.
+        emit androidWidgetsChanged();
+        return;
+    }
+    if (!document.isArray()) {
+        qWarning() << "OmaApp: Android widget storage returned an invalid response";
+        if (!m_androidWidgetStorageError) {
+            m_androidWidgetStorageError = true;
+            emit androidWidgetStorageErrorChanged();
+        }
+        emit androidWidgetsChanged();
+        return;
+    }
+    QVariantList widgets;
+    QSet<int> knownIds;
+    QSet<QString> knownRecords;
+    if (document.isArray()) {
+        for (const QJsonValue &value : document.array()) {
+            if (!value.isObject() || widgets.size() >= 8)
+                continue;
+            const QJsonObject object = value.toObject();
+            const int id = object.value(QStringLiteral("id")).toInt(-1);
+            const QString recordId = object.value(QStringLiteral("recordId")).toString();
+            const QString provider = object.value(QStringLiteral("provider")).toString();
+            const QString name = object.value(QStringLiteral("label")).toString();
+            const int page = object.value(QStringLiteral("page")).toInt(-1);
+            const int order = object.value(QStringLiteral("order")).toInt(-1);
+            const int x = object.value(QStringLiteral("xDp")).toInt(-1);
+            const int y = object.value(QStringLiteral("yDp")).toInt(-1);
+            const int minWidth = object.value(QStringLiteral("minWidthDp")).toInt(-1);
+            const int minHeight = object.value(QStringLiteral("minHeightDp")).toInt(-1);
+            const int width = object.value(QStringLiteral("widthDp")).toInt(-1);
+            const int height = object.value(QStringLiteral("heightDp")).toInt(-1);
+            const QString state = object.value(QStringLiteral("state")).toString();
+            if (id < 0 || (id > 0 && knownIds.contains(id)) || recordId.isEmpty()
+                || recordId.size() > 64 || knownRecords.contains(recordId)
+                || provider.isEmpty() || provider.size() > 512
+                || name.isEmpty() || name.size() > 160 || page < 0 || page >= m_homePageCount
+                || order < 0 || order >= 8 || x < 0 || x > 3000 || y < 0 || y > 20000
+                || minWidth < 1 || minWidth > 1200 || minHeight < 1 || minHeight > 1200) {
+                continue;
+            }
+            if (width < minWidth || width > 1200 || height < minHeight || height > 1200
+                || (state != QStringLiteral("ready")
+                    && state != QStringLiteral("needs_rebind"))) {
+                continue;
+            }
+            if (id > 0)
+                knownIds.insert(id);
+            knownRecords.insert(recordId);
+            widgets.append(QVariantMap{
+                {QStringLiteral("id"), id},
+                {QStringLiteral("recordId"), recordId},
+                {QStringLiteral("provider"), provider},
+                {QStringLiteral("name"), name},
+                {QStringLiteral("page"), page},
+                {QStringLiteral("order"), order},
+                {QStringLiteral("xDp"), x},
+                {QStringLiteral("yDp"), y},
+                {QStringLiteral("minWidthDp"), minWidth},
+                {QStringLiteral("minHeightDp"), minHeight},
+                {QStringLiteral("widthDp"), width},
+                {QStringLiteral("heightDp"), height},
+                {QStringLiteral("state"), state},
+            });
+        }
+    }
+    std::sort(widgets.begin(), widgets.end(), [](const QVariant &left, const QVariant &right) {
+        const QVariantMap leftMap = left.toMap();
+        const QVariantMap rightMap = right.toMap();
+        if (leftMap.value(QStringLiteral("page")).toInt()
+            != rightMap.value(QStringLiteral("page")).toInt()) {
+            return leftMap.value(QStringLiteral("page")).toInt()
+                   < rightMap.value(QStringLiteral("page")).toInt();
+        }
+        return leftMap.value(QStringLiteral("order")).toInt()
+               < rightMap.value(QStringLiteral("order")).toInt();
+    });
+    if (m_androidWidgets != widgets)
+        m_androidWidgets = std::move(widgets);
+    if (m_androidWidgetStorageError) {
+        m_androidWidgetStorageError = false;
+        emit androidWidgetStorageErrorChanged();
+    }
+    emit androidWidgetsChanged();
+#endif
+}
+
+bool LauncherModel::addAndroidWidget()
+{
+    return addAndroidWidgetOnPage(0);
+}
+
+bool LauncherModel::addAndroidWidgetOnPage(int page)
+{
+#ifdef Q_OS_ANDROID
+    if (page < 0 || page >= m_homePageCount)
+        return false;
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "requestWidgetPicker", "(I)Z",
+        static_cast<jint>(page));
+#else
+    Q_UNUSED(page)
+    return false;
+#endif
+}
+
+bool LauncherModel::removeAndroidWidgetRecord(const QString &recordId)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject record = QJniObject::fromString(recordId);
+    const bool removed = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "removeWidgetRecord",
+        "(Landroid/content/Context;Ljava/lang/String;)Z", context.object<jobject>(),
+        record.object<jstring>());
+    if (removed)
+        refreshAndroidWidgets();
+    return removed;
+#else
+    Q_UNUSED(recordId)
+    return false;
+#endif
+}
+
+bool LauncherModel::rebindAndroidWidget(const QString &recordId)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64)
+        return false;
+    const QJniObject record = QJniObject::fromString(recordId);
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "requestWidgetRebind",
+        "(Ljava/lang/String;)Z", record.object<jstring>());
+#else
+    Q_UNUSED(recordId)
+    return false;
+#endif
+}
+
+bool LauncherModel::moveAndroidWidget(const QString &recordId, int page, int order)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64 || page < 0 || page >= m_homePageCount
+        || order < 0 || order >= 8)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject record = QJniObject::fromString(recordId);
+    const bool moved = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "moveWidgetRecord",
+        "(Landroid/content/Context;Ljava/lang/String;III)Z", context.object<jobject>(),
+        record.object<jstring>(), static_cast<jint>(page), static_cast<jint>(order),
+        static_cast<jint>(m_homePageCount));
+    if (moved)
+        refreshAndroidWidgets();
+    return moved;
+#else
+    Q_UNUSED(recordId)
+    Q_UNUSED(page)
+    Q_UNUSED(order)
+    return false;
+#endif
+}
+
+bool LauncherModel::placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64 || page < 0 || page >= m_homePageCount
+        || xDp < 0 || xDp > 3000 || yDp < 0 || yDp > 20000
+        || xDp % 24 != 0 || yDp % 24 != 0)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject record = QJniObject::fromString(recordId);
+    const bool placed = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "placeWidgetRecord",
+        "(Landroid/content/Context;Ljava/lang/String;IIII)Z", context.object<jobject>(),
+        record.object<jstring>(), static_cast<jint>(page), static_cast<jint>(xDp),
+        static_cast<jint>(yDp), static_cast<jint>(m_homePageCount));
+    if (placed)
+        refreshAndroidWidgets();
+    return placed;
+#else
+    Q_UNUSED(recordId)
+    Q_UNUSED(page)
+    Q_UNUSED(xDp)
+    Q_UNUSED(yDp)
+    return false;
+#endif
+}
+
+bool LauncherModel::resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp)
+{
+#ifdef Q_OS_ANDROID
+    if (recordId.isEmpty() || recordId.size() > 64 || widthDp < 1 || widthDp > 1200
+        || heightDp < 1 || heightDp > 1200)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject record = QJniObject::fromString(recordId);
+    const bool resized = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "resizeWidgetRecord",
+        "(Landroid/content/Context;Ljava/lang/String;II)Z", context.object<jobject>(),
+        record.object<jstring>(), static_cast<jint>(widthDp), static_cast<jint>(heightDp));
+    if (resized)
+        refreshAndroidWidgets();
+    return resized;
+#else
+    Q_UNUSED(recordId)
+    Q_UNUSED(widthDp)
+    Q_UNUSED(heightDp)
+    return false;
+#endif
+}
+
+bool LauncherModel::canRestoreAndroidWidgetBackup(const QString &json) const
+{
+#ifdef Q_OS_ANDROID
+    if (json.isEmpty() || json.size() > 32768)
+        return false;
+    const QJniObject backup = QJniObject::fromString(json);
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "canRestoreWidgetBackup",
+        "(Ljava/lang/String;)Z", backup.object<jstring>());
+#else
+    Q_UNUSED(json)
+    return false;
+#endif
+}
+
+bool LauncherModel::prepareAndroidWidgetBackupRestore(const QString &json)
+{
+#ifdef Q_OS_ANDROID
+    if (!canRestoreAndroidWidgetBackup(json))
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject backup = QJniObject::fromString(json);
+    const bool prepared = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "prepareWidgetBackupRestore",
+        "(Landroid/content/Context;Ljava/lang/String;)Z", context.object<jobject>(),
+        backup.object<jstring>());
+    if (prepared)
+        refreshAndroidWidgets();
+    return prepared;
+#else
+    Q_UNUSED(json)
+    return false;
+#endif
+}
+
+bool LauncherModel::commitAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool committed = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "commitWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
+    if (committed)
+        refreshAndroidWidgets();
+    return committed;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::rollbackAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool restored = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "rollbackWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
+    if (restored)
+        refreshAndroidWidgets();
+    return restored;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::recoverAndroidWidgetBackupRestore()
+{
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const bool recovered = QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "recoverWidgetBackupRestore",
+        "(Landroid/content/Context;)Z", context.object<jobject>());
+    if (recovered)
+        refreshAndroidWidgets();
+    return recovered;
+#else
+    return true;
+#endif
+}
+
+bool LauncherModel::restoreAndroidWidgetBackup(const QString &json)
+{
+#ifdef Q_OS_ANDROID
+    if (!prepareAndroidWidgetBackupRestore(json))
+        return false;
+    if (commitAndroidWidgetBackupRestore())
+        return true;
+    return false;
+#else
+    Q_UNUSED(json)
+    return false;
+#endif
+}
+
+bool LauncherModel::removeAndroidWidget(int widgetId)
+{
+#ifdef Q_OS_ANDROID
+    if (widgetId <= 0)
+        return false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    return QJniObject::callStaticMethod<jboolean>(
+        "app/omaapp/AndroidWidgetHost", "removeWidget",
+        "(Landroid/content/Context;I)Z", context.object<jobject>(),
+        static_cast<jint>(widgetId));
+#else
+    Q_UNUSED(widgetId)
+    return false;
+#endif
+}
+
+void LauncherModel::setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
+                                          qreal width, qreal height, qreal clipX, qreal clipY,
+                                          qreal clipWidth, qreal clipHeight, bool visible)
+{
+#ifdef Q_OS_ANDROID
+    if (widgetId <= 0 || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(width)
+        || !std::isfinite(height) || !std::isfinite(clipX) || !std::isfinite(clipY)
+        || !std::isfinite(clipWidth) || !std::isfinite(clipHeight)
+        || std::abs(x) > 10000.0 || std::abs(y) > 20000.0
+        || std::abs(clipX) > 10000.0 || std::abs(clipY) > 20000.0
+        || width < 0.0 || width > 3000.0 || height < 0.0 || height > 3000.0
+        || clipWidth < 0.0 || clipWidth > 3000.0 || clipHeight < 0.0 || clipHeight > 3000.0) {
+        return;
+    }
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "app/omaapp/AndroidWidgetHost", "updateFrame",
+        "(Landroid/content/Context;IFFFFFFFFZ)V", context.object<jobject>(),
+        static_cast<jint>(widgetId), static_cast<jfloat>(x), static_cast<jfloat>(y),
+        static_cast<jfloat>(width), static_cast<jfloat>(height),
+        static_cast<jfloat>(clipX), static_cast<jfloat>(clipY),
+        static_cast<jfloat>(clipWidth), static_cast<jfloat>(clipHeight),
+        static_cast<jboolean>(visible));
+#else
+    Q_UNUSED(widgetId)
+    Q_UNUSED(x)
+    Q_UNUSED(y)
+    Q_UNUSED(width)
+    Q_UNUSED(height)
+    Q_UNUSED(clipX)
+    Q_UNUSED(clipY)
+    Q_UNUSED(clipWidth)
+    Q_UNUSED(clipHeight)
+    Q_UNUSED(visible)
+#endif
 }
 
 bool LauncherModel::setFavoritePage(const QString &packageName, const QString &activityName, int page)
@@ -455,6 +894,114 @@ QString LauncherModel::exportLayout() const
     return QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 }
 
+QString LauncherModel::createLayoutBackup(const QString &owlWidgetBackup) const
+{
+    QJsonObject payload = QJsonDocument::fromJson(exportLayout().toUtf8()).object();
+    if (!owlWidgetBackup.isEmpty()) {
+        const QJsonDocument widgetDocument = QJsonDocument::fromJson(owlWidgetBackup.toUtf8());
+        if (!widgetDocument.isObject())
+            return {};
+        payload.insert(QStringLiteral("owlWidgets"), widgetDocument.object());
+    }
+#ifdef Q_OS_ANDROID
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject widgetBackup = QJniObject::callStaticObjectMethod(
+        "app/omaapp/AndroidWidgetHost", "exportWidgetBackup",
+        "(Landroid/content/Context;)Ljava/lang/String;", context.object<jobject>());
+    if (!widgetBackup.isValid() || widgetBackup.toString().isEmpty())
+        return {};
+    const QJsonDocument androidWidgetDocument = QJsonDocument::fromJson(
+        widgetBackup.toString().toUtf8());
+    if (!androidWidgetDocument.isObject())
+        return {};
+    payload.insert(QStringLiteral("androidWidgets"), androidWidgetDocument.object());
+#endif
+    const QString backup = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    return backup.toUtf8().size() <= maximumBackupBytes ? backup : QString();
+}
+
+QString LauncherModel::layoutRestoreJournalPhase() const
+{
+    QSettings settings;
+    const QString phaseKey = QStringLiteral("launcher/layoutRestoreJournalPhase");
+    const QString backupKey = QStringLiteral("launcher/layoutRestoreJournalBackup");
+    const bool hasPhase = settings.contains(phaseKey);
+    const bool hasBackup = settings.contains(backupKey);
+    if (!hasPhase && !hasBackup)
+        return {};
+    if (!hasPhase || !hasBackup)
+        return QStringLiteral("corrupt");
+    const QString phase = settings.value(phaseKey).toString();
+    const QString backup = settings.value(backupKey).toString();
+    if ((phase != QStringLiteral("applying") && phase != QStringLiteral("committed")) ||
+        backup.isEmpty() || backup.toUtf8().size() > maximumBackupBytes) {
+        return QStringLiteral("corrupt");
+    }
+    return phase;
+}
+
+QString LauncherModel::layoutRestoreJournalBackup() const
+{
+    if (layoutRestoreJournalPhase() == QStringLiteral("corrupt"))
+        return {};
+    QSettings settings;
+    return settings.value(QStringLiteral("launcher/layoutRestoreJournalBackup")).toString();
+}
+
+bool LauncherModel::beginLayoutRestoreJournal(const QString &rollbackBackup)
+{
+    const QByteArray payload = rollbackBackup.toUtf8();
+    if (payload.isEmpty() || payload.size() > maximumBackupBytes)
+        return false;
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload, &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject() ||
+        document.object().value(QStringLiteral("schema")).toInt(-1) != 1) {
+        return false;
+    }
+
+    const QString phaseKey = QStringLiteral("launcher/layoutRestoreJournalPhase");
+    const QString backupKey = QStringLiteral("launcher/layoutRestoreJournalBackup");
+    QSettings settings;
+    if (settings.contains(phaseKey) || settings.contains(backupKey))
+        return false;
+    settings.setValue(backupKey, rollbackBackup);
+    settings.setValue(phaseKey, QStringLiteral("applying"));
+    settings.sync();
+    if (settings.status() == QSettings::NoError)
+        return true;
+
+    settings.remove(phaseKey);
+    settings.remove(backupKey);
+    settings.sync();
+    return false;
+}
+
+bool LauncherModel::commitLayoutRestoreJournal()
+{
+    if (layoutRestoreJournalPhase() != QStringLiteral("applying"))
+        return false;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/layoutRestoreJournalPhase"),
+                      QStringLiteral("committed"));
+    settings.sync();
+    if (settings.status() == QSettings::NoError)
+        return true;
+    settings.setValue(QStringLiteral("launcher/layoutRestoreJournalPhase"),
+                      QStringLiteral("applying"));
+    settings.sync();
+    return false;
+}
+
+bool LauncherModel::clearLayoutRestoreJournal()
+{
+    QSettings settings;
+    settings.remove(QStringLiteral("launcher/layoutRestoreJournalPhase"));
+    settings.remove(QStringLiteral("launcher/layoutRestoreJournalBackup"));
+    settings.sync();
+    return settings.status() == QSettings::NoError;
+}
+
 bool LauncherModel::importLayout(const QString &json)
 {
     const QByteArray payload = json.toUtf8();
@@ -600,6 +1147,7 @@ bool LauncherModel::importLayout(const QString &json)
 
     m_gridColumns = grid;
     m_homePageCount = pageCount;
+    setSelectedHomePage(m_selectedHomePage);
     m_favoritePackages = std::move(favoriteKeys);
     m_favoritePages = std::move(pages);
     m_folders = std::move(folders);
@@ -625,15 +1173,8 @@ bool LauncherModel::copyLayoutBackup(const QString &owlWidgetBackup) const
     QClipboard *clipboard = QGuiApplication::clipboard();
     if (!clipboard)
         return false;
-    QJsonObject payload = QJsonDocument::fromJson(exportLayout().toUtf8()).object();
-    if (!owlWidgetBackup.isEmpty()) {
-        const QJsonDocument widgetDocument = QJsonDocument::fromJson(owlWidgetBackup.toUtf8());
-        if (!widgetDocument.isObject())
-            return false;
-        payload.insert(QStringLiteral("owlWidgets"), widgetDocument.object());
-    }
-    const QString backup = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
-    if (backup.toUtf8().size() > maximumBackupBytes)
+    const QString backup = createLayoutBackup(owlWidgetBackup);
+    if (backup.isEmpty())
         return false;
     clipboard->setText(backup, QClipboard::Clipboard);
     return true;
@@ -1127,6 +1668,41 @@ void LauncherModel::syncDynamicShortcuts() const
                              .arg(published);
 #endif
 }
+
+#ifdef Q_OS_ANDROID
+extern "C" JNIEXPORT void JNICALL
+Java_app_omaapp_OmaAppActivity_notifyNativeAndroidWidgetsChanged(JNIEnv *, jclass)
+{
+    const QPointer<LauncherModel> model = androidWidgetModel;
+    if (!model)
+        return;
+    QMetaObject::invokeMethod(model.data(), [model] {
+        if (model)
+            model->refreshAndroidWidgets();
+    }, Qt::QueuedConnection);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_app_omaapp_OmaAppActivity_notifyNativeAndroidWidgetResizeFinished(
+    JNIEnv *environment, jclass, jstring recordId, jint oldWidthDp, jint oldHeightDp,
+    jint newWidthDp, jint newHeightDp)
+{
+    const QPointer<LauncherModel> model = androidWidgetModel;
+    if (!model || !recordId)
+        return;
+    const QJniObject javaRecordId = QJniObject::fromLocalRef(environment->NewLocalRef(recordId));
+    const QString id = javaRecordId.toString();
+    if (id.isEmpty())
+        return;
+    QMetaObject::invokeMethod(model.data(), [model, id, oldWidthDp, oldHeightDp,
+                                             newWidthDp, newHeightDp] {
+        if (model) {
+            emit model->androidWidgetResizeFinished(id, oldWidthDp, oldHeightDp,
+                                                   newWidthDp, newHeightDp);
+        }
+    }, Qt::QueuedConnection);
+}
+#endif
 
 void LauncherModel::rebuildVisibleRows()
 {

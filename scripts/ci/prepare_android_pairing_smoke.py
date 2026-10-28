@@ -27,8 +27,7 @@ FIXTURE_QUERY = '        <package android:name="app.omaapp.launcherfixture" />\n
 WIDGET_PROVIDER = '''    <receiver
         android:name="app.omaapp.CiAppWidgetProvider"
         android:exported="true"
-        android:label="OmaApp CI widget"
-        android:permission="android.permission.BIND_APPWIDGET">
+        android:label="OmaApp CI widget">
         <intent-filter>
             <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
         </intent-filter>

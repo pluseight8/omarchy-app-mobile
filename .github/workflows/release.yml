@@ -218,7 +218,7 @@ jobs:
           sleep 8
           adb shell uiautomator dump --compressed /sdcard/omaapp-upgrade-seed.xml >/dev/null
           adb pull /sdcard/omaapp-upgrade-seed.xml "$RUNNER_TEMP/omaapp-upgrade-seed.xml" >/dev/null
-          settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$RUNNER_TEMP/omaapp-upgrade-seed.xml" 'Settings')"
+          settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$RUNNER_TEMP/omaapp-upgrade-seed.xml" 'Settings tab')"
           read -r settings_x settings_y <<< "$settings_target"
           adb shell input tap "$settings_x" "$settings_y"
           sleep 1
@@ -233,7 +233,7 @@ jobs:
           sleep 8
           adb shell uiautomator dump --compressed /sdcard/omaapp-after-upgrade-home.xml >/dev/null
           adb pull /sdcard/omaapp-after-upgrade-home.xml "$RUNNER_TEMP/omaapp-after-upgrade-home.xml" >/dev/null
-          settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$RUNNER_TEMP/omaapp-after-upgrade-home.xml" 'Settings')"
+          settings_target="$(python3 scripts/ci/android_accessibility_tap_target.py "$RUNNER_TEMP/omaapp-after-upgrade-home.xml" 'Settings tab')"
           read -r settings_x settings_y <<< "$settings_target"
           adb shell input tap "$settings_x" "$settings_y"
           sleep 1

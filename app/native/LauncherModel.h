@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QList>
+#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QVariantList>
@@ -19,7 +20,12 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
     Q_PROPERTY(int gridColumns READ gridColumns NOTIFY gridColumnsChanged)
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
+    Q_PROPERTY(int selectedHomePage READ selectedHomePage WRITE setSelectedHomePage
+               NOTIFY selectedHomePageChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
+    Q_PROPERTY(QVariantList androidWidgets READ androidWidgets NOTIFY androidWidgetsChanged)
+    Q_PROPERTY(bool androidWidgetStorageError READ androidWidgetStorageError
+               NOTIFY androidWidgetStorageErrorChanged)
     Q_PROPERTY(QVariantMap gestures READ gestures NOTIFY gesturesChanged)
     Q_PROPERTY(bool hapticFeedbackEnabled READ hapticFeedbackEnabled
                NOTIFY hapticFeedbackEnabledChanged)
@@ -35,6 +41,7 @@ public:
     Q_ENUM(Role)
 
     explicit LauncherModel(QObject *parent = nullptr);
+    ~LauncherModel() override;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
@@ -48,14 +55,36 @@ public:
     QVariantList folders() const;
     int gridColumns() const;
     int homePageCount() const;
+    int selectedHomePage() const;
     QVariantMap homeWidgets() const;
+    QVariantList androidWidgets() const;
+    bool androidWidgetStorageError() const;
     QVariantMap gestures() const;
     bool hapticFeedbackEnabled() const;
     void setFilter(const QString &filter);
 
     Q_INVOKABLE void refresh();
+    Q_INVOKABLE void refreshAndroidWidgets();
+    Q_INVOKABLE bool addAndroidWidget();
+    Q_INVOKABLE bool addAndroidWidgetOnPage(int page);
+    Q_INVOKABLE bool removeAndroidWidget(int widgetId);
+    Q_INVOKABLE bool removeAndroidWidgetRecord(const QString &recordId);
+    Q_INVOKABLE bool rebindAndroidWidget(const QString &recordId);
+    Q_INVOKABLE bool moveAndroidWidget(const QString &recordId, int page, int order);
+    Q_INVOKABLE bool placeAndroidWidget(const QString &recordId, int page, int xDp, int yDp);
+    Q_INVOKABLE bool resizeAndroidWidget(const QString &recordId, int widthDp, int heightDp);
+    Q_INVOKABLE bool canRestoreAndroidWidgetBackup(const QString &json) const;
+    Q_INVOKABLE bool prepareAndroidWidgetBackupRestore(const QString &json);
+    Q_INVOKABLE bool commitAndroidWidgetBackupRestore();
+    Q_INVOKABLE bool rollbackAndroidWidgetBackupRestore();
+    Q_INVOKABLE bool recoverAndroidWidgetBackupRestore();
+    Q_INVOKABLE bool restoreAndroidWidgetBackup(const QString &json);
+    Q_INVOKABLE void setAndroidWidgetFrame(int widgetId, qreal x, qreal y,
+                                           qreal width, qreal height, qreal clipX, qreal clipY,
+                                           qreal clipWidth, qreal clipHeight, bool visible);
     Q_INVOKABLE void setGridColumns(int columns);
     Q_INVOKABLE void setHomePageCount(int count);
+    void setSelectedHomePage(int page);
     Q_INVOKABLE QVariantList homePageApps(int page) const;
     Q_INVOKABLE bool setFavoritePage(const QString &packageName, const QString &activityName,
                                      int page);
@@ -66,7 +95,13 @@ public:
     Q_INVOKABLE bool setHapticFeedbackEnabled(bool enabled);
     Q_INVOKABLE void performHapticFeedback();
     Q_INVOKABLE QString exportLayout() const;
+    Q_INVOKABLE QString createLayoutBackup(const QString &owlWidgetBackup = QString()) const;
     Q_INVOKABLE bool importLayout(const QString &json);
+    Q_INVOKABLE QString layoutRestoreJournalPhase() const;
+    Q_INVOKABLE QString layoutRestoreJournalBackup() const;
+    Q_INVOKABLE bool beginLayoutRestoreJournal(const QString &rollbackBackup);
+    Q_INVOKABLE bool commitLayoutRestoreJournal();
+    Q_INVOKABLE bool clearLayoutRestoreJournal();
     Q_INVOKABLE bool copyLayoutBackup(const QString &owlWidgetBackup = QString()) const;
     Q_INVOKABLE QString clipboardText() const;
     Q_INVOKABLE void launch(int row);
@@ -89,10 +124,15 @@ signals:
     void foldersChanged();
     void gridColumnsChanged();
     void homePagesChanged();
+    void selectedHomePageChanged();
     void homeWidgetsChanged();
+    void androidWidgetsChanged();
+    void androidWidgetStorageErrorChanged();
     void gesturesChanged();
     void hapticFeedbackEnabledChanged();
     void systemFontScaleChanged();
+    void androidWidgetResizeFinished(const QString &recordId, int oldWidthDp, int oldHeightDp,
+                                    int newWidthDp, int newHeightDp);
 
 private:
     struct Entry {
@@ -115,7 +155,10 @@ private:
     QList<Folder> m_folders;
     int m_gridColumns = 4;
     int m_homePageCount = 1;
+    int m_selectedHomePage = 0;
     QVariantMap m_homeWidgets;
+    QVariantList m_androidWidgets;
+    bool m_androidWidgetStorageError = false;
     QVariantMap m_gestures;
     bool m_hapticFeedbackEnabled = false;
     mutable QHash<QString, QString> m_iconUrls;

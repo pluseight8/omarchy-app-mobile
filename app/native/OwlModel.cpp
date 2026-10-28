@@ -178,7 +178,8 @@ bool OwlModel::setWidgetInstalled(const QString &widgetId, bool installed)
         ids.append(widgetId);
     else
         ids.removeAll(widgetId);
-    saveStore(ids, customSources());
+    if (!saveStore(ids, customSources()))
+        return false;
     emit widgetsChanged();
     return true;
 }
@@ -193,7 +194,8 @@ bool OwlModel::moveWidget(const QString &widgetId, int destinationIndex)
         return true;
     ids.removeAt(sourceIndex);
     ids.insert(destinationIndex, widgetId);
-    saveStore(ids, customSources());
+    if (!saveStore(ids, customSources()))
+        return false;
     emit widgetsChanged();
     return true;
 }
@@ -216,7 +218,8 @@ QString OwlModel::createWidget(const QString &name)
     custom.insert(id, initial);
     QStringList installed = installedIds();
     installed.append(id);
-    saveStore(installed, custom);
+    if (!saveStore(installed, custom))
+        return {};
     emit widgetsChanged();
     return id;
 }
@@ -231,7 +234,8 @@ QString OwlModel::copyWidgetForEditing(const QString &widgetId)
     custom.insert(id, widgetSource);
     QStringList installed = installedIds();
     installed.append(id);
-    saveStore(installed, custom);
+    if (!saveStore(installed, custom))
+        return {};
     emit widgetsChanged();
     return id;
 }
@@ -244,7 +248,8 @@ bool OwlModel::saveWidget(const QString &widgetId, const QString &sourceText)
     if (!custom.contains(widgetId))
         return false;
     custom.insert(widgetId, sourceText);
-    saveStore(installedIds(), custom);
+    if (!saveStore(installedIds(), custom))
+        return false;
     emit widgetsChanged();
     return true;
 }
@@ -258,7 +263,8 @@ bool OwlModel::removeWidget(const QString &widgetId)
         return false;
     QStringList installed = installedIds();
     installed.removeAll(widgetId);
-    saveStore(installed, custom);
+    if (!saveStore(installed, custom))
+        return false;
     emit widgetsChanged();
     return true;
 }
@@ -348,7 +354,8 @@ bool OwlModel::importWidgetBackup(const QString &json)
     for (auto it = sources.constBegin(); it != sources.constEnd(); ++it)
         custom.insert(it.key(), it.value().toString());
 
-    saveStore(installed, custom);
+    if (!saveStore(installed, custom))
+        return false;
     emit widgetsChanged();
     return true;
 }
@@ -374,10 +381,11 @@ QString OwlModel::readResource(const QString &path) const
     return QString::fromUtf8(file.readAll());
 }
 
-void OwlModel::saveStore(const QStringList &installed, const QVariantMap &custom) const
+bool OwlModel::saveStore(const QStringList &installed, const QVariantMap &custom) const
 {
     QSettings settings;
     settings.setValue(QStringLiteral("launcher/owlInstalled"), installed);
     settings.setValue(QStringLiteral("launcher/owlSources"), custom);
     settings.sync();
+    return settings.status() == QSettings::NoError;
 }

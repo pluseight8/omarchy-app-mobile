@@ -100,7 +100,8 @@ class AndroidNavigationLayoutTests(unittest.TestCase):
         )
         end = qml.index("        }\n    }\n}", start)
         navigation = qml[start:end]
-        self.assertIn("Accessible.name: modelData.label", navigation)
+        self.assertIn("Accessible.name: modelData.page === 4", navigation)
+        self.assertIn('qsTr("Settings tab") : modelData.label', navigation)
         self.assertIn("Layout.minimumWidth: 0", navigation)
         self.assertIn("Layout.preferredWidth: 1", navigation)
         self.assertIn('appTranslations.language === "ru"', navigation)

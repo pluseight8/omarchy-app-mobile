@@ -71,6 +71,13 @@ class TranslationCatalogTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("tap_scrolling_label 'Russian' down", smoke)
         self.assertIn("tap_scrolling_label 'Английский' down", smoke)
+        visibility_helper = smoke.split("ensure_visible_settings_label() {", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn("android_accessibility_assert_visible.py", visibility_helper)
+        self.assertIn("adb shell input swipe 32 720 32 300 650", visibility_helper)
+        self.assertEqual(smoke.count("ensure_visible_settings_label 'Язык'"), 2)
+        self.assertIn("ensure_visible_settings_label 'Language'", smoke)
         self.assertIn("adb logcat -c", smoke)
         self.assertIn("adb logcat -d -v threadtime -t 30000", smoke)
         self.assertIn("trap restore_android_font_scale EXIT", smoke)
@@ -119,6 +126,26 @@ class TranslationCatalogTests(unittest.TestCase):
         self.assertIn("nativeEnglishStrings true", smoke)
         self.assertIn("stage=native_english_strings_passed", smoke)
 
+    def test_native_catalog_checks_execute_jni_on_the_application_main_thread(self):
+        instrumentation = (
+            Path(__file__).resolve().parents[2]
+            / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertIn("private String nativeStringsOnApplicationThread(", instrumentation)
+        self.assertIn("runOnMainSync(() ->", instrumentation)
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.get\(",
+        )
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.featureMessage\(",
+        )
+        self.assertRegex(
+            instrumentation,
+            r"nativeStringsOnApplicationThread\(\s*\(\) -> NativeStrings\.fileTransferError\(",
+        )
+
     def test_switching_language_refreshes_owl_metadata_and_transient_messages(self):
         qml = (Path(__file__).resolve().parents[2] / "app/qml/Main.qml").read_text(
             encoding="utf-8"
@@ -163,7 +190,8 @@ class TranslationCatalogTests(unittest.TestCase):
         navigation = qml.rsplit('model: [', 1)[1].split("            }", 1)[0]
         self.assertIn('appTranslations.language === "ru"', navigation)
         self.assertIn("modelData.compactLabel", navigation)
-        self.assertIn("Accessible.name: modelData.label", navigation)
+        self.assertIn("Accessible.name: modelData.page === 4", navigation)
+        self.assertIn('qsTr("Settings tab") : modelData.label', navigation)
         for label in (
             "Apps compact", "Devices compact", "Home compact",
             "Settings compact", "Style compact",

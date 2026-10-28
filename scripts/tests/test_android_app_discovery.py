@@ -15,7 +15,7 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
         )
         restart = smoke.index("adb shell am force-stop app.omaapp")
         restored_home = smoke.index(
-            'select_home_when_needed "$smoke_artifacts/window-after-restart-navigation.xml"',
+            "select_tab_when_needed 'Home' \"$smoke_artifacts/window-after-restart-navigation.xml\"",
             restart,
         )
         screenshot = smoke.index(
@@ -23,7 +23,9 @@ class AndroidAppDiscoveryTests(unittest.TestCase):
             restored_home,
         )
         self.assertLess(restored_home, screenshot)
-        self.assertNotIn("OmaApp: cached launcher icon for ", smoke[restart:])
+        cached_icon_check = smoke.rindex("OmaApp: cached launcher icon for ", restart, restored_home)
+        self.assertLess(cached_icon_check, restored_home)
+        self.assertIn("for attempt in {1..10}; do", smoke[restart:cached_icon_check])
 
     def test_renderer_log_uses_the_pid_after_translation_smoke_restart(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -153,6 +155,21 @@ esac
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("OmaApp: enumerated 11 launcher activities", completed.stdout)
         self.assertIn("OmaApp: enumerated 10 launcher activities", completed.stdout)
+
+    def test_launcher_icon_cache_uses_collision_resistant_keys(self):
+        bridge = (ROOT / "app/android/src/app/omaapp/LauncherBridge.java").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("cacheKey.hashCode()", bridge)
+        self.assertIn('String iconPrefix = sha256(cacheKey);', bridge)
+        self.assertIn('String fileName = iconPrefix + "-" + sha256(Long.toString(updatedAt)) + ".png";',
+                      bridge)
+        self.assertIn("synchronized (ICON_CACHE_LOCK)", bridge)
+        self.assertIn("File.createTempFile(", bridge)
+        self.assertIn("android.system.Os.rename(", bridge)
+        self.assertIn("file.getName().startsWith(iconPrefix + \"-\")", bridge)
+        self.assertIn("!file.equals(iconFile)", bridge)
+        self.assertIn('return "app-" + sha256(packageName + "/" + activityName);', bridge)
 
     def test_dns_sd_discovery_requires_saved_trust_and_pinned_tls_refresh(self):
         discovery = (ROOT / "app/android/src/app/omaapp/DeviceDiscovery.java").read_text(

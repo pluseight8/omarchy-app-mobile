@@ -27,7 +27,8 @@ ApplicationWindow {
     palette.placeholderText: Theme.muted
 
     property int selectedPage: 0
-    property int selectedHomePage: 0
+    property int selectedHomePage: launcher.selectedHomePage
+    onSelectedHomePageChanged: launcher.selectedHomePage = selectedHomePage
     property string selectedFolderId: ""
     property string selectedFolderName: ""
     property string deletingFolderId: ""
@@ -35,8 +36,63 @@ ApplicationWindow {
     property string layoutMessage: ""
     property string editingWidgetId: ""
     property string widgetMessage: ""
+    property string androidWidgetMessage: ""
+    property int pendingAndroidWidgetPage: -1
+    property string pendingAndroidWidgetRecordId: ""
+    property string draggingWidgetRecordId: ""
+    property string deletingAndroidWidgetRecordId: ""
+    property string deletingAndroidWidgetName: ""
+    property var androidWidgetLayoutUndo: null
+    property int androidWidgetDragPageDirection: 0
+    readonly property int androidWidgetGridStep: 24
+    readonly property int androidWidgetChromeHeight: 256
     property string openSourceNoticesText: ""
+    readonly property bool androidWidgetModalVisible: forgetDialog.visible || homeAppDialog.visible
+        || createFolderDialog.visible || folderDialog.visible || addFolderAppsDialog.visible
+        || deleteFolderDialog.visible || restoreLayoutDialog.visible || owlEditorDialog.visible
+        || openSourceNoticesDialog.visible || removeAndroidWidgetDialog.visible
     property bool languageSaveFailed: false
+    property bool layoutRestoreRecoveryFailed: false
+    property bool layoutRestoreCleanupPending: false
+
+    Timer {
+        id: androidWidgetUndoTimer
+        interval: 7000
+        onTriggered: window.androidWidgetLayoutUndo = null
+    }
+
+    Timer {
+        id: androidWidgetPickerLaunchTimer
+        interval: 50
+        onTriggered: {
+            const recordId = window.pendingAndroidWidgetRecordId
+            window.pendingAndroidWidgetRecordId = ""
+            const accepted = recordId.length > 0
+                    ? launcher.rebindAndroidWidget(recordId)
+                    : launcher.addAndroidWidgetOnPage(window.pendingAndroidWidgetPage)
+            window.pendingAndroidWidgetPage = -1
+            window.androidWidgetMessage = accepted
+                    ? "" : qsTr("Android widget picker could not be opened.")
+        }
+    }
+
+    Timer {
+        id: androidWidgetPageDragTimer
+        interval: 500
+        repeat: true
+        onTriggered: {
+            if (window.draggingWidgetRecordId.length === 0)
+                return
+            const nextPage = Math.max(0, Math.min(launcher.homePageCount - 1,
+                window.selectedHomePage + window.androidWidgetDragPageDirection))
+            if (nextPage === window.selectedHomePage) {
+                window.androidWidgetDragPageDirection = 0
+                stop()
+            } else {
+                window.selectedHomePage = nextPage
+            }
+        }
+    }
 
     Connections {
         target: appTranslations
@@ -49,8 +105,31 @@ ApplicationWindow {
 
     Connections {
         target: launcher
+        function onSelectedHomePageChanged() {
+            if (window.selectedHomePage !== launcher.selectedHomePage)
+                window.selectedHomePage = launcher.selectedHomePage
+        }
         function onSystemFontScaleChanged() {
             Theme.systemFontScale = launcher.systemFontScale
+        }
+        function onAndroidWidgetResizeFinished(recordId, oldWidthDp, oldHeightDp,
+                                               newWidthDp, newHeightDp) {
+            if (oldWidthDp === newWidthDp && oldHeightDp === newHeightDp)
+                return
+            const widget = launcher.androidWidgets.find(function(entry) {
+                return entry.recordId === recordId
+            })
+            if (!widget || Number(widget.widthDp) !== newWidthDp
+                    || Number(widget.heightDp) !== newHeightDp)
+                return
+            window.rememberAndroidWidgetLayout({
+                recordId: recordId,
+                page: widget.page,
+                xDp: widget.xDp,
+                yDp: widget.yDp,
+                widthDp: oldWidthDp,
+                heightDp: oldHeightDp
+            })
         }
     }
 
@@ -103,19 +182,234 @@ ApplicationWindow {
         owlEditorDialog.close()
     }
 
-    function restoreLayoutBackup(json) {
+    function inspectLayoutBackup(json) {
+        if (typeof json !== "string" || json.length === 0 || json.length > 2 * 1024 * 1024)
+            return null
         let parsed
         try {
             parsed = JSON.parse(json)
         } catch (error) {
-            return false
+            return null
         }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+            return null
         const owlBackup = parsed.owlWidgets === undefined ? "" : JSON.stringify(parsed.owlWidgets)
         if (owlBackup.length > 0 && !owl.canImportWidgetBackup(owlBackup))
+            return null
+        const androidWidgetBackup = parsed.androidWidgets === undefined
+                ? "" : JSON.stringify(parsed.androidWidgets)
+        if (androidWidgetBackup.length > 0 && launcher.platformSupported
+                && !launcher.canRestoreAndroidWidgetBackup(androidWidgetBackup))
+            return null
+        return { owlBackup: owlBackup, androidWidgetBackup: androidWidgetBackup }
+    }
+
+    function applyLayoutBackup(json, prepareAndroidWidgets) {
+        const components = inspectLayoutBackup(json)
+        if (!components)
             return false
         if (!launcher.importLayout(json))
             return false
-        return owlBackup.length === 0 || owl.importWidgetBackup(owlBackup)
+        if (components.owlBackup.length > 0 && !owl.importWidgetBackup(components.owlBackup))
+            return false
+        return !prepareAndroidWidgets || components.androidWidgetBackup.length === 0
+                || !launcher.platformSupported
+                || launcher.prepareAndroidWidgetBackupRestore(components.androidWidgetBackup)
+    }
+
+    function rollbackLayoutBackup(backup) {
+        const layoutRestored = applyLayoutBackup(backup, false)
+        const widgetsRestored = !launcher.platformSupported
+                || launcher.rollbackAndroidWidgetBackupRestore()
+        if (!layoutRestored || !widgetsRestored || !launcher.clearLayoutRestoreJournal()) {
+            layoutRestoreRecoveryFailed = true
+            return false
+        }
+        return true
+    }
+
+    function restoreLayoutBackup(json) {
+        if (layoutRestoreRecoveryFailed)
+            return false
+        if (layoutRestoreCleanupPending) {
+            if (!recoverLayoutBackupRestore() || layoutRestoreCleanupPending)
+                return false
+        }
+        const components = inspectLayoutBackup(json)
+        if (!components)
+            return false
+        const rollbackBackup = launcher.createLayoutBackup(owl.exportWidgetBackup())
+        if (rollbackBackup.length === 0)
+            return false
+        if (!launcher.beginLayoutRestoreJournal(rollbackBackup)) {
+            if (launcher.layoutRestoreJournalPhase().length > 0) {
+                layoutRestoreRecoveryFailed = true
+                layoutMessage = qsTr("An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.")
+            }
+            return false
+        }
+        if (!applyLayoutBackup(json, true)) {
+            rollbackLayoutBackup(rollbackBackup)
+            return false
+        }
+        if (!launcher.commitLayoutRestoreJournal()) {
+            rollbackLayoutBackup(rollbackBackup)
+            return false
+        }
+        if (launcher.platformSupported && !launcher.commitAndroidWidgetBackupRestore()) {
+            layoutRestoreCleanupPending = true
+            return true
+        }
+        if (!launcher.clearLayoutRestoreJournal()) {
+            layoutRestoreCleanupPending = true
+        } else {
+            layoutRestoreCleanupPending = false
+        }
+        return true
+    }
+
+    function recoverLayoutBackupRestore() {
+        const phase = launcher.layoutRestoreJournalPhase()
+        if (phase.length === 0) {
+            layoutRestoreCleanupPending = false
+            return !launcher.platformSupported || launcher.recoverAndroidWidgetBackupRestore()
+        }
+        if (phase === "committed") {
+            if (launcher.platformSupported && !launcher.commitAndroidWidgetBackupRestore()) {
+                layoutRestoreCleanupPending = true
+                return true
+            }
+            if (!launcher.clearLayoutRestoreJournal()) {
+                layoutRestoreCleanupPending = true
+                return true
+            }
+            layoutRestoreCleanupPending = false
+            return true
+        }
+        if (phase !== "applying")
+            return false
+        const rollbackBackup = launcher.layoutRestoreJournalBackup()
+        if (rollbackBackup.length === 0 || !applyLayoutBackup(rollbackBackup, false))
+            return false
+        const recovered = (!launcher.platformSupported || launcher.rollbackAndroidWidgetBackupRestore())
+                && launcher.clearLayoutRestoreJournal()
+        if (recovered)
+            layoutRestoreCleanupPending = false
+        return recovered
+    }
+
+    function widgetResizeStep() {
+        return Math.max(32, Math.round((homePageView.width / launcher.gridColumns) / 8) * 8)
+    }
+
+    function androidWidgetCanvasHeight(page) {
+        let bottom = 0
+        for (let index = 0; index < launcher.androidWidgets.length; ++index) {
+            const widget = launcher.androidWidgets[index]
+            if (widget.page === page)
+                bottom = Math.max(bottom, Number(widget.yDp) + Number(widget.heightDp)
+                                  + androidWidgetChromeHeight)
+        }
+        return Math.max(240, bottom + androidWidgetGridStep)
+    }
+
+    function rememberAndroidWidgetLayout(widget) {
+        androidWidgetLayoutUndo = {
+            recordId: widget.recordId,
+            page: Number(widget.page),
+            xDp: Number(widget.xDp),
+            yDp: Number(widget.yDp),
+            widthDp: Number(widget.widthDp),
+            heightDp: Number(widget.heightDp)
+        }
+        androidWidgetUndoTimer.restart()
+    }
+
+    function undoAndroidWidgetLayout() {
+        const previous = androidWidgetLayoutUndo
+        if (!previous)
+            return
+        const placed = launcher.placeAndroidWidget(previous.recordId, previous.page,
+            previous.xDp, previous.yDp)
+        const resized = placed && launcher.resizeAndroidWidget(previous.recordId,
+            previous.widthDp, previous.heightDp)
+        androidWidgetLayoutUndo = null
+        androidWidgetUndoTimer.stop()
+        androidWidgetMessage = placed && resized ? ""
+            : qsTr("Android widget layout could not be restored.")
+    }
+
+    function placeAndroidWidgetTo(recordId, page, xDp, yDp, availableWidthDp) {
+        const widget = launcher.androidWidgets.find(function(entry) {
+            return entry.recordId === recordId
+        })
+        if (!widget)
+            return
+        const canvasWidth = Math.max(0, Number(availableWidthDp) || 0)
+        const step = androidWidgetGridStep
+        const maxX = Math.max(0, canvasWidth - Math.max(280, Number(widget.widthDp)))
+        const maxY = Math.max(0, 20000 - Number(widget.heightDp) - androidWidgetChromeHeight)
+        const x = Math.floor(Math.max(0, Math.min(maxX, xDp)) / step) * step
+        const y = Math.floor(Math.max(0, Math.min(maxY, yDp)) / step) * step
+        rememberAndroidWidgetLayout(widget)
+        if (!launcher.placeAndroidWidget(recordId, page, x, y)) {
+            androidWidgetLayoutUndo = null
+            androidWidgetUndoTimer.stop()
+            androidWidgetMessage = qsTr("Android widget placement could not be saved.")
+        } else {
+            androidWidgetMessage = ""
+        }
+    }
+
+    function moveAndroidWidgetTo(recordId, page, order) {
+        const widget = launcher.androidWidgets.find(function(entry) {
+            return entry.recordId === recordId
+        })
+        if (!widget)
+            return
+        rememberAndroidWidgetLayout(widget)
+        if (!launcher.moveAndroidWidget(recordId, page, order)) {
+            androidWidgetLayoutUndo = null
+            androidWidgetUndoTimer.stop()
+            androidWidgetMessage = qsTr("Android widget placement could not be saved.")
+        } else {
+            androidWidgetMessage = ""
+        }
+    }
+
+    function updateAndroidWidgetDragPage(scenePosition) {
+        if (!draggingWidgetRecordId || !scenePosition)
+            return
+        const pointer = homePageView.mapFromItem(null, scenePosition.x, scenePosition.y)
+        const edge = Math.max(24, Math.min(48, homePageView.width * 0.12))
+        let direction = 0
+        if (pointer.x >= homePageView.width - edge
+                && selectedHomePage + 1 < launcher.homePageCount) {
+            direction = 1
+        } else if (pointer.x <= edge && selectedHomePage > 0) {
+            direction = -1
+        }
+        androidWidgetDragPageDirection = direction
+        if (direction !== 0 && !androidWidgetPageDragTimer.running)
+            androidWidgetPageDragTimer.start()
+        else if (direction === 0)
+            androidWidgetPageDragTimer.stop()
+    }
+
+    function resizeAndroidWidgetTo(recordId, widthDp, heightDp) {
+        const widget = launcher.androidWidgets.find(function(entry) {
+            return entry.recordId === recordId
+        })
+        if (!widget)
+            return
+        rememberAndroidWidgetLayout(widget)
+        if (!launcher.resizeAndroidWidget(recordId, widthDp, heightDp)) {
+            androidWidgetLayoutUndo = null
+            androidWidgetUndoTimer.stop()
+            androidWidgetMessage = qsTr("Android widget size could not be saved.")
+        } else {
+            androidWidgetMessage = ""
+        }
     }
 
     function openFolder(folderId, folderName) {
@@ -372,6 +666,33 @@ ApplicationWindow {
 
         Label {
             text: qsTr("This clears the saved key and cached theme on this phone. If the computer is offline, remove this phone from its OmaApp widget to revoke its saved token.")
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    Dialog {
+        id: removeAndroidWidgetDialog
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(window.width - 32, 420)
+        title: qsTr("Remove this Android widget?")
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            const removed = deletingAndroidWidgetRecordId.length > 0
+                    && launcher.removeAndroidWidgetRecord(deletingAndroidWidgetRecordId)
+            window.androidWidgetMessage = removed ? ""
+                : qsTr("Android widget could not be removed.")
+            deletingAndroidWidgetRecordId = ""
+            deletingAndroidWidgetName = ""
+        }
+        onRejected: {
+            deletingAndroidWidgetRecordId = ""
+            deletingAndroidWidgetName = ""
+        }
+
+        Label {
+            text: qsTr("Remove %1 from this Home page? The Android widget binding will be released.")
+                  .arg(window.deletingAndroidWidgetName)
             wrapMode: Text.WordWrap
         }
     }
@@ -734,7 +1055,9 @@ ApplicationWindow {
                 text: qsTr("Restore layout")
                 onClicked: {
                     if (restoreLayoutBackup(layoutBackupEditor.text)) {
-                        window.layoutMessage = qsTr("Home layout restored.")
+                        window.layoutMessage = window.layoutRestoreCleanupPending
+                                ? qsTr("Home layout restored. Android widget cleanup will retry when OmaApp starts.")
+                                : qsTr("Home layout restored.")
                         layoutRestoreError.visible = false
                         restoreLayoutDialog.close()
                     } else {
@@ -872,9 +1195,52 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        const startupRestorePhase = launcher.layoutRestoreJournalPhase()
+        if (!recoverLayoutBackupRestore()) {
+            console.error("OmaApp: Home restore recovery failed during startup (journal phase: "
+                         + (startupRestorePhase.length > 0 ? startupRestorePhase : "empty") + ")")
+            layoutRestoreRecoveryFailed = true
+            layoutMessage = qsTr("An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.")
+        }
         launcher.refresh()
         Theme.systemFontScale = launcher.systemFontScale
         applySyncedTheme()
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        z: 100000
+        visible: window.layoutRestoreRecoveryFailed
+        color: Theme.background
+        Column {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 48, 360)
+            spacing: Theme.space(14)
+            Text {
+                width: parent.width
+                text: qsTr("Home restore needs recovery")
+                color: Theme.foreground
+                font.pixelSize: Theme.fontSize(20)
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+            Text {
+                width: parent.width
+                text: qsTr("An interrupted Home restore could not be completed. Keep OmaApp installed; free device storage if it is low, then retry recovery.")
+                color: Theme.muted
+                font.pixelSize: Theme.fontSize(14)
+                wrapMode: Text.WordWrap
+            }
+            Button {
+                text: qsTr("Retry recovery")
+                onClicked: {
+                    if (window.recoverLayoutBackupRestore()) {
+                        window.layoutRestoreRecoveryFailed = false
+                        window.layoutMessage = ""
+                    }
+                }
+            }
+        }
     }
 
     Image {
@@ -973,10 +1339,13 @@ ApplicationWindow {
 
                 delegate: Item {
                     required property int index
+                    id: homePagePage
+                    property int pageIndex: index
                     width: homePageView.width
                     height: homePageView.height
 
                     Flickable {
+                        id: homePageFlickable
                         anchors.fill: parent
                         contentWidth: width
                         contentHeight: homeContent.implicitHeight
@@ -997,12 +1366,50 @@ ApplicationWindow {
                                     font.weight: Font.DemiBold
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text {
-                                    text: qsTr("%1 / %2").arg(index + 1).arg(launcher.homePageCount)
-                                    color: Theme.muted
-                                    font.pixelSize: Theme.fontSize(13)
-                                    Accessible.name: qsTr("Home page %1 of %2")
-                                                       .arg(index + 1).arg(launcher.homePageCount)
+                                RowLayout {
+                                    spacing: Theme.space(2)
+                                    ToolButton {
+                                        visible: index === homePageView.currentIndex && index > 0
+                                        text: "‹"
+                                        Accessible.name: qsTr("Previous Home page %1").arg(index + 1)
+                                        onClicked: homePageView.currentIndex = index - 1
+                                    }
+                                    Text {
+                                        text: qsTr("%1 / %2").arg(index + 1).arg(launcher.homePageCount)
+                                        color: Theme.muted
+                                        font.pixelSize: Theme.fontSize(13)
+                                        Accessible.name: homePageView.currentIndex === index
+                                            ? qsTr("Current Home page %1 of %2")
+                                                .arg(index + 1).arg(launcher.homePageCount)
+                                            : qsTr("Home page %1 of %2")
+                                                .arg(index + 1).arg(launcher.homePageCount)
+                                    }
+                                    ToolButton {
+                                        visible: index === homePageView.currentIndex
+                                                 && index + 1 < launcher.homePageCount
+                                        text: "›"
+                                        Accessible.name: qsTr("Next Home page %1").arg(index + 1)
+                                        onClicked: homePageView.currentIndex = index + 1
+                                    }
+                                }
+                                DropArea {
+                                    Layout.preferredWidth: window.draggingWidgetRecordId.length > 0 ? 96 : 0
+                                    Layout.preferredHeight: 36
+                                    visible: window.draggingWidgetRecordId.length > 0
+                                    onDropped: function(drop) {
+                                        const source = drop.source
+                                        if (source && source.widgetRecordId)
+                                            window.moveAndroidWidgetTo(source.widgetRecordId,
+                                                homePagePage.pageIndex, 7)
+                                    }
+                                    Text {
+                                        anchors.fill: parent
+                                        text: qsTr("Drop here")
+                                        color: Theme.accent
+                                        font.pixelSize: Theme.fontSize(11)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
                                 }
                             }
 
@@ -1172,6 +1579,421 @@ ApplicationWindow {
                                                 Accessible.name: qsTr("Next track on %1").arg(modelData.player)
                                                 enabled: pairing.connected && window.featureEnabled("media.control")
                                                 onClicked: pairing.mediaAction(modelData.player, "next")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: launcher.platformSupported
+                                Text {
+                                    text: qsTr("Android widgets")
+                                    color: Theme.foreground
+                                    font.pixelSize: Theme.fontSize(19)
+                                    font.weight: Font.DemiBold
+                                }
+                                Item { Layout.fillWidth: true }
+                                Button {
+                                    text: qsTr("Add widget")
+                                    Accessible.name: qsTr("Add Android widget to Home page %1")
+                                                         .arg(homePagePage.pageIndex + 1)
+                                    enabled: !launcher.androidWidgetStorageError
+                                             && launcher.androidWidgets.length < 8
+                                             && !androidWidgetPickerLaunchTimer.running
+                                    onClicked: {
+                                        window.androidWidgetMessage = ""
+                                        window.pendingAndroidWidgetPage = homePagePage.pageIndex
+                                        window.pendingAndroidWidgetRecordId = ""
+                                        androidWidgetPickerLaunchTimer.restart()
+                                    }
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: launcher.platformSupported && launcher.androidWidgetStorageError
+                                text: qsTr("Android widget data could not be read. Existing bindings were left untouched.")
+                                Accessible.name: text
+                                color: Theme.urgent
+                                font.pixelSize: Theme.fontSize(12)
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: window.androidWidgetMessage.length > 0
+                                text: window.androidWidgetMessage
+                                color: Theme.urgent
+                                font.pixelSize: Theme.fontSize(12)
+                                wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: window.androidWidgetLayoutUndo !== null
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Android widget layout changed.")
+                                    color: Theme.muted
+                                    wrapMode: Text.WordWrap
+                                }
+                                Button {
+                                    text: qsTr("Undo")
+                                    Accessible.name: qsTr("Undo Android widget layout change")
+                                    onClicked: window.undoAndroidWidgetLayout()
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: launcher.platformSupported
+                                         && launcher.androidWidgets.filter(function(widget) {
+                                             return widget.page === homePagePage.pageIndex
+                                         }).length === 0
+                                text: qsTr("Android widgets you add here stay on this phone and work offline.")
+                                Accessible.name: text
+                                color: Theme.muted
+                                font.pixelSize: Theme.fontSize(11)
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Item {
+                                id: androidWidgetCanvas
+                                property int pageIndex: homePagePage.pageIndex
+                                Layout.fillWidth: true
+                                implicitHeight: window.androidWidgetCanvasHeight(pageIndex)
+                                Layout.preferredHeight: implicitHeight
+                                clip: true
+
+                                Canvas {
+                                    anchors.fill: parent
+                                    onPaint: {
+                                        const context = getContext("2d")
+                                        context.clearRect(0, 0, width, height)
+                                        context.strokeStyle = "#20ffffff"
+                                        context.lineWidth = 1
+                                        for (let x = 0.5; x < width; x += window.androidWidgetGridStep) {
+                                            context.beginPath()
+                                            context.moveTo(x, 0)
+                                            context.lineTo(x, height)
+                                            context.stroke()
+                                        }
+                                        for (let y = 0.5; y < height; y += window.androidWidgetGridStep) {
+                                            context.beginPath()
+                                            context.moveTo(0, y)
+                                            context.lineTo(width, y)
+                                            context.stroke()
+                                        }
+                                    }
+                                }
+
+                                DropArea {
+                                    anchors.fill: parent
+                                    onDropped: function(drop) {
+                                        const source = drop.source
+                                        if (!source || !source.widgetRecordId)
+                                            return
+                                        const widget = launcher.androidWidgets.find(function(entry) {
+                                            return entry.recordId === source.widgetRecordId
+                                        })
+                                        if (!widget)
+                                            return
+                                        window.placeAndroidWidgetTo(widget.recordId,
+                                            androidWidgetCanvas.pageIndex,
+                                            drop.x - Math.max(280, Number(widget.widthDp)) / 2,
+                                            drop.y - (Number(widget.heightDp)
+                                                + window.androidWidgetChromeHeight) / 2,
+                                            androidWidgetCanvas.width)
+                                    }
+                                }
+
+                                Repeater {
+                                    model: launcher.androidWidgets
+                                    delegate: Item {
+                                        id: androidWidgetDelegate
+                                        required property var modelData
+                                        required property int index
+                                        property int nativeWidgetId: modelData && modelData.id !== undefined
+                                            ? modelData.id : 0
+                                        property int lastValidNativeWidgetId: 0
+                                        Component.onCompleted: {
+                                            if (nativeWidgetId > 0)
+                                                lastValidNativeWidgetId = nativeWidgetId
+                                        }
+                                        onNativeWidgetIdChanged: {
+                                            if (nativeWidgetId > 0)
+                                                lastValidNativeWidgetId = nativeWidgetId
+                                        }
+                                        readonly property int pageWidgetCount:
+                                            launcher.androidWidgets.filter(function(widget) {
+                                                return widget.page === modelData.page
+                                            }).length
+                                        readonly property int widgetWidthDp:
+                                            Math.max(1, Number(modelData.widthDp) || 400)
+                                        readonly property int widgetHeightDp:
+                                            Math.max(120, Number(modelData.heightDp) || 240)
+                                        visible: modelData.page === homePagePage.pageIndex
+                                        x: Number(modelData.xDp) || 0
+                                        y: Number(modelData.yDp) || 0
+                                        width: Math.max(280, widgetWidthDp)
+                                        height: widgetCardContent.implicitHeight
+                                        z: 10 + modelData.order
+
+                                        ColumnLayout {
+                                            id: widgetCardContent
+                                            width: parent.width
+                                            spacing: Theme.space(8)
+
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.name
+                                                    color: Theme.muted
+                                                    font.pixelSize: Theme.fontSize(12)
+                                                    elide: Text.ElideRight
+                                                }
+                                                Button {
+                                                    text: qsTr("Remove")
+                                                    Accessible.name: qsTr("Remove Android widget %1").arg(modelData.name)
+                                                    onClicked: {
+                                                        window.deletingAndroidWidgetRecordId = modelData.recordId
+                                                        window.deletingAndroidWidgetName = modelData.name
+                                                        removeAndroidWidgetDialog.open()
+                                                    }
+                                                }
+                                            }
+
+                                            Flow {
+                                                Layout.fillWidth: true
+                                                Layout.preferredHeight: implicitHeight
+                                                spacing: Theme.space(3)
+
+                                                Button {
+                                                    id: widgetDragHandle
+                                                    text: "⋮"
+                                                    property string widgetRecordId: modelData.recordId
+                                                    Accessible.name: qsTr("Drag Android widget %1").arg(modelData.name)
+                                                    Drag.active: false
+                                                    Drag.hotSpot.x: width / 2
+                                                    Drag.hotSpot.y: height / 2
+                                                    DragHandler {
+                                                        id: widgetDragHandler
+                                                        target: null
+                                                        onActiveChanged: {
+                                                            if (active) {
+                                                                window.draggingWidgetRecordId = modelData.recordId
+                                                                widgetDragHandle.Drag.active = true
+                                                                window.updateAndroidWidgetDragPage(
+                                                                    centroid.scenePosition)
+                                                            } else {
+                                                                widgetDragHandle.Drag.drop()
+                                                                widgetDragHandle.Drag.active = false
+                                                                window.draggingWidgetRecordId = ""
+                                                                window.androidWidgetDragPageDirection = 0
+                                                                androidWidgetPageDragTimer.stop()
+                                                            }
+                                                        }
+                                                        onTranslationChanged: {
+                                                            if (active)
+                                                                window.updateAndroidWidgetDragPage(
+                                                                    centroid.scenePosition)
+                                                        }
+                                                    }
+                                                }
+                                                Button {
+                                                    text: "↑"
+                                                    enabled: modelData.yDp > 0
+                                                    Accessible.name: qsTr("Move Android widget up")
+                                                    onClicked: window.placeAndroidWidgetTo(modelData.recordId,
+                                                        modelData.page, modelData.xDp,
+                                                        Math.max(0, modelData.yDp - window.androidWidgetGridStep),
+                                                        androidWidgetCanvas.width)
+                                                }
+                                                Button {
+                                                    text: "↓"
+                                                    Accessible.name: qsTr("Move Android widget down")
+                                                    Accessible.description: qsTr("Current Android widget position: %1, %2 dp")
+                                                                               .arg(modelData.xDp).arg(modelData.yDp)
+                                                    onClicked: window.placeAndroidWidgetTo(modelData.recordId,
+                                                        modelData.page, modelData.xDp,
+                                                        modelData.yDp + window.androidWidgetGridStep,
+                                                        androidWidgetCanvas.width)
+                                                }
+                                                Button {
+                                                    text: "←"
+                                                    enabled: modelData.page > 0
+                                                    Accessible.name: qsTr("Move Android widget to previous page")
+                                                    onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                        modelData.page - 1, 7)
+                                                }
+                                                Button {
+                                                    text: "→"
+                                                    enabled: modelData.page + 1 < launcher.homePageCount
+                                                    Accessible.name: qsTr("Move Android widget to next page")
+                                                    onClicked: window.moveAndroidWidgetTo(modelData.recordId,
+                                                        modelData.page + 1, 7)
+                                                }
+                                                Button {
+                                                    text: "−W"
+                                                    enabled: modelData.widthDp > modelData.minWidthDp
+                                                    Accessible.name: qsTr("Make Android widget narrower")
+                                                    onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                        Math.max(modelData.minWidthDp,
+                                                            modelData.widthDp - window.widgetResizeStep()),
+                                                        modelData.heightDp)
+                                                }
+                                                Button {
+                                                    text: "+W"
+                                                    enabled: modelData.widthDp < 1200
+                                                    Accessible.name: qsTr("Make Android widget wider")
+                                                    onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                        Math.min(1200, modelData.widthDp + window.widgetResizeStep()),
+                                                        modelData.heightDp)
+                                                }
+                                                Button {
+                                                    text: "−H"
+                                                    enabled: modelData.heightDp > modelData.minHeightDp
+                                                    Accessible.name: qsTr("Make Android widget shorter")
+                                                    onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                        modelData.widthDp, Math.max(modelData.minHeightDp,
+                                                            modelData.heightDp - window.widgetResizeStep()))
+                                                }
+                                                Button {
+                                                    text: "+H"
+                                                    enabled: modelData.heightDp < 1200
+                                                    Accessible.name: qsTr("Make Android widget taller")
+                                                    onClicked: window.resizeAndroidWidgetTo(modelData.recordId,
+                                                        modelData.widthDp, Math.min(1200,
+                                                            modelData.heightDp + window.widgetResizeStep()))
+                                                }
+                                            }
+
+                                            HyprlandSurface {
+                                                Layout.preferredWidth: widgetWidthDp
+                                                Layout.preferredHeight: widgetHeightDp
+                                                visible: modelData.state !== "ready"
+                                                fillColor: Theme.surface
+                                                borderStart: Theme.outline
+                                                borderEnd: Theme.outline
+                                                radius: Theme.defaultCornerRadius
+                                                borderWidth: 1
+                                                ColumnLayout {
+                                                    anchors.fill: parent
+                                                    anchors.margins: Theme.space(12)
+                                                    Text {
+                                                        Layout.fillWidth: true
+                                                        text: qsTr("This widget needs a fresh Android system binding.")
+                                                        color: Theme.muted
+                                                        wrapMode: Text.WordWrap
+                                                    }
+                                                    Button {
+                                                        text: qsTr("Rebind")
+                                                        Accessible.name: qsTr("Rebind Android widget %1").arg(modelData.name)
+                                                        enabled: !androidWidgetPickerLaunchTimer.running
+                                                        onClicked: {
+                                                            window.androidWidgetMessage = ""
+                                                            window.pendingAndroidWidgetRecordId = modelData.recordId
+                                                            androidWidgetPickerLaunchTimer.restart()
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Item {
+                                                id: nativeWidgetSlot
+                                                Layout.preferredWidth: widgetWidthDp
+                                                Layout.preferredHeight: widgetHeightDp
+                                                visible: modelData.state === "ready"
+                                                Accessible.name: modelData.name
+
+                                                function syncNativeWidgetFrame() {
+                                                    const widgetId = androidWidgetDelegate.nativeWidgetId
+                                                    if (!launcher.platformSupported || widgetId <= 0)
+                                                        return
+                                                    const widgetPoint = mapToItem(null, 0, 0)
+                                                    const scrollPoint = homePageFlickable.mapToItem(null, 0, 0)
+                                                    const pagePoint = homePageView.mapToItem(null, 0, 0)
+                                                    const clipX = Math.max(scrollPoint.x, pagePoint.x)
+                                                    const clipY = Math.max(scrollPoint.y, pagePoint.y)
+                                                    const clipRight = Math.min(scrollPoint.x + homePageFlickable.width,
+                                                                               pagePoint.x + homePageView.width)
+                                                    const clipBottom = Math.min(scrollPoint.y + homePageFlickable.height,
+                                                                                pagePoint.y + homePageView.height)
+                                                    const frameVisible = visible && window.selectedPage === 0
+                                                            && window.selectedHomePage === homePagePage.pageIndex
+                                                            && !window.androidWidgetModalVisible
+                                                    launcher.setAndroidWidgetFrame(widgetId,
+                                                        widgetPoint.x, widgetPoint.y, width, height,
+                                                        clipX, clipY, Math.max(0, clipRight - clipX),
+                                                        Math.max(0, clipBottom - clipY), frameVisible)
+                                                }
+
+                                                Timer {
+                                                    interval: 0
+                                                    Component.onCompleted: start()
+                                                    onTriggered: nativeWidgetSlot.syncNativeWidgetFrame()
+                                                }
+                                                onXChanged: syncNativeWidgetFrame()
+                                                onYChanged: syncNativeWidgetFrame()
+                                                onWidthChanged: syncNativeWidgetFrame()
+                                                onHeightChanged: syncNativeWidgetFrame()
+                                                onVisibleChanged: syncNativeWidgetFrame()
+                                                Component.onDestruction: {
+                                                    const widgetId = androidWidgetDelegate.lastValidNativeWidgetId
+                                                    if (widgetId > 0)
+                                                        launcher.setAndroidWidgetFrame(
+                                                            widgetId, 0, 0, 0, 0, 0, 0, 0, 0, false)
+                                                }
+
+                                                Connections {
+                                                    target: homePageFlickable
+                                                    function onContentYChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                }
+
+                                                Connections {
+                                                    target: homePagePage
+                                                    function onXChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                }
+
+                                                Connections {
+                                                    target: homePageView
+                                                    function onContentXChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                    function onCurrentIndexChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                }
+
+                                                Connections {
+                                                    target: window
+                                                    function onSelectedPageChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                    function onSelectedHomePageChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                    function onAndroidWidgetModalVisibleChanged() {
+                                                        nativeWidgetSlot.syncNativeWidgetFrame()
+                                                    }
+                                                }
+
+                                                Connections {
+                                                    target: launcher
+                                                    function onAndroidWidgetsChanged() {
+                                                        Qt.callLater(function() {
+                                                            nativeWidgetSlot.syncNativeWidgetFrame()
+                                                        })
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -3189,7 +4011,8 @@ ApplicationWindow {
                           ? modelData.compactLabel : modelData.label
                     checkable: true
                     checked: window.selectedPage === modelData.page
-                    Accessible.name: modelData.label
+                    Accessible.name: modelData.page === 4
+                                      ? qsTr("Settings tab") : modelData.label
                     onClicked: window.selectedPage = modelData.page
                     background: HyprlandSurface {
                         fillColor: parent.checked ? Theme.selectedSurface : Theme.controlSurface

@@ -121,6 +121,9 @@ class PairingServiceTests(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(self.state.pending[pending["requestId"]]["status"], "completed")
         self.assertNotIn("token", self.state.pending[pending["requestId"]])
+        self.assertNotIn("pendingConfirmation", self.state.devices[device_id])
+        restarted = service.ServiceState(Path(self.temp_dir.name), "127.0.0.1", 0)
+        self.assertIn(device_id, restarted.devices)
         retry_status, retry = self.post("/v1/pair/complete", {
             "requestId": pending["requestId"],
         }, headers=auth)
@@ -448,6 +451,31 @@ class PairingServiceTests(unittest.TestCase):
         self.assertNotIn("token", result)
         self.assertEqual(self.state.devices, {})
 
+    def test_new_pairing_keeps_an_approved_device_completable(self):
+        self.state.begin_pairing()
+        device_id = "phone_superseded_approval"
+        status, pending = self.post("/v1/pair/request", {
+            "pairSecret": self.state.pair_secret,
+            "deviceId": device_id,
+            "deviceName": "Superseded phone",
+        })
+        self.assertEqual(status, 202)
+        self.assertTrue(self.state.decide_pair_request(pending["requestId"], approve=True))
+        _, approved = self.get(f"/v1/pair/status/{pending['requestId']}")
+        auth = {
+            "X-OmaApp-Device": device_id,
+            "Authorization": f"Bearer {approved['token']}",
+        }
+
+        self.state.begin_pairing()
+
+        self.assertIn(device_id, self.state.devices)
+        self.assertEqual(self.get(f"/v1/pair/status/{pending['requestId']}")[0], 200)
+        self.assertEqual(self.post("/v1/pair/complete", {
+            "requestId": pending["requestId"],
+        }, headers=auth)[0], 200)
+        self.assertEqual(self.get("/v1/status", auth)[0], 200)
+
     def test_pairing_request_expires_and_cannot_be_approved_later(self):
         self.state.begin_pairing()
         request_status, pending = self.post("/v1/pair/request", {
@@ -764,6 +792,36 @@ class PairingServiceTests(unittest.TestCase):
             self.assertEqual(response.status, 400)
             self.assertEqual(invalid["error"], "invalid_file")
 
+    def test_android_file_updates_do_not_destroy_the_previous_copy(self):
+        bridge = (PLUGIN_ROOT.parent /
+                  "app/android/src/app/omaapp/PairingBridge.java").read_text(encoding="utf-8")
+        activity = (PLUGIN_ROOT.parent /
+                    "app/android/src/app/omaapp/FileTransferActivity.java").read_text(
+                        encoding="utf-8"
+                    )
+        wallpaper_update = bridge[
+            bridge.index("private static void downloadWallpaperIfNeeded"):
+            bridge.index("private static void downloadBytes")
+        ]
+        self.assertNotIn("destination.delete()", wallpaper_update)
+        self.assertIn("android.system.Os.rename(", wallpaper_update)
+        self.assertIn(".commit()", wallpaper_update)
+        self.assertNotIn(".apply()", wallpaper_update)
+        self.assertIn("!file.equals(destination)", wallpaper_update)
+        self.assertNotIn("previousId.equals(id)", wallpaper_update)
+
+        receive = activity[
+            activity.index("private void receiveFile"):
+            activity.index("private static String formatSize")
+        ]
+        self.assertIn('File.createTempFile("download-", ".tmp", getCacheDir())', receive)
+        self.assertIn("new FileOutputStream(temporary, false)", receive)
+        self.assertLess(
+            receive.index("new FileOutputStream(temporary, false)"),
+            receive.index('openOutputStream(destination, "wt")'),
+        )
+        self.assertIn("temporary.delete()", receive)
+
     def test_file_upload_and_listing_have_separate_grants(self):
         downloads = Path(self.temp_dir.name) / "downloads"
         with patch.dict(os.environ, {"XDG_DOWNLOAD_DIR": str(downloads)}):
@@ -810,6 +868,26 @@ class PairingServiceTests(unittest.TestCase):
         self.assertEqual(response.status, 503)
         self.assertEqual(result, {"error": "destination_unavailable"})
         self.assertEqual(list(outside.iterdir()), [])
+        self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
+
+    def test_file_send_rejects_symlink_source_directory(self):
+        auth = self.enable_device({"files.send": True})
+        downloads = Path(self.temp_dir.name) / "downloads"
+        downloads.mkdir()
+        outside = Path(self.temp_dir.name) / "outside"
+        outside.mkdir(mode=0o755)
+        (outside / "private.txt").write_text("must stay local", encoding="utf-8")
+        (downloads / "OmaApp").symlink_to(outside, target_is_directory=True)
+
+        with patch.dict(os.environ, {"XDG_DOWNLOAD_DIR": str(downloads)}):
+            status, listing = self.get("/v1/files", auth)
+            file_status, body, _content_type = self.get_bytes("/v1/files/private.txt", auth)
+
+        self.assertEqual(status, 503)
+        self.assertEqual(listing, {"error": "destination_unavailable"})
+        self.assertEqual(file_status, 503)
+        self.assertEqual(json.loads(body), {"error": "destination_unavailable"})
+        self.assertEqual((outside / "private.txt").read_text(encoding="utf-8"), "must stay local")
         self.assertEqual(outside.stat().st_mode & 0o777, 0o755)
 
     def test_user_commands_run_only_host_configured_argument_vectors(self):

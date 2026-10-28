@@ -141,6 +141,7 @@ class AndroidAccessibilityTapTargetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "window.xml"
             path.write_text(xml, encoding="utf-8")
+            self.assertTrue(is_checked(path, "Home"))
             self.assertFalse(is_checked(path, "Apps"))
 
 

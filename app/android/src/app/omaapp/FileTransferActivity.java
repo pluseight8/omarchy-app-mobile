@@ -18,6 +18,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URLEncoder;
@@ -245,11 +248,6 @@ public final class FileTransferActivity extends Activity {
             status.setText(NativeStrings.get("Choose a named file between 1 byte and 100 MiB."));
             return;
         }
-        try {
-            getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        } catch (SecurityException ignored) {
-            // The temporary chooser grant remains available while the transfer runs.
-        }
         status.setText(NativeStrings.format("Sending %1…", displayName));
         PairingBridge.uploadFile(this, uri, displayName, size);
     }
@@ -263,6 +261,7 @@ public final class FileTransferActivity extends Activity {
         status.setText(NativeStrings.format("Saving %1 to the selected location…", name));
         network.execute(() -> {
             HttpsURLConnection connection = null;
+            File temporary = null;
             try {
                 String encoded = URLEncoder.encode(name, "UTF-8").replace("+", "%20");
                 connection = PairingBridge.openConnection(credentials, "/v1/files/" + encoded,
@@ -272,20 +271,29 @@ public final class FileTransferActivity extends Activity {
                     throw new IllegalStateException(NativeStrings.format(
                             "Computer rejected the file request (HTTP %1).", code));
                 }
+                // Finish and size-check the network download before truncating a SAF destination.
+                temporary = File.createTempFile("download-", ".tmp", getCacheDir());
+                byte[] buffer = new byte[16 * 1024];
+                long total = 0;
+                int count;
                 try (InputStream input = connection.getInputStream();
-                     OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
-                    if (output == null) {
-                        throw new IllegalStateException(
-                                NativeStrings.get("Android could not open the selected destination."));
-                    }
-                    byte[] buffer = new byte[16 * 1024];
-                    long total = 0;
-                    int count;
+                     FileOutputStream output = new FileOutputStream(temporary, false)) {
                     while ((count = input.read(buffer)) != -1) {
                         total += count;
                         if (total > MAX_TRANSFER_BYTES) {
                             throw new IllegalArgumentException("The downloaded file exceeds 100 MiB.");
                         }
+                        output.write(buffer, 0, count);
+                    }
+                    output.getFD().sync();
+                }
+                try (InputStream input = new FileInputStream(temporary);
+                     OutputStream output = getContentResolver().openOutputStream(destination, "wt")) {
+                    if (output == null) {
+                        throw new IllegalStateException(
+                                NativeStrings.get("Android could not open the selected destination."));
+                    }
+                    while ((count = input.read(buffer)) != -1) {
                         output.write(buffer, 0, count);
                     }
                 }
@@ -295,6 +303,9 @@ public final class FileTransferActivity extends Activity {
                 runOnUiThread(() -> status.setText(
                         NativeStrings.fileTransferError(error.getMessage())));
             } finally {
+                if (temporary != null) {
+                    temporary.delete();
+                }
                 if (connection != null) {
                     connection.disconnect();
                 }

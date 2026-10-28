@@ -39,6 +39,10 @@
             <translation>Питание от сети / недоступно</translation>
         </message>
         <message>
+            <source>An interrupted Home restore needs recovery. Keep OmaApp installed and retry after checking device storage.</source>
+            <translation>Требуется восстановить прерванную раскладку. Не удаляйте OmaApp и повторите восстановление после проверки свободного места.</translation>
+        </message>
+        <message>
             <source>ANDROID</source>
             <translation>ANDROID</translation>
         </message>
@@ -149,6 +153,134 @@
         <message>
             <source>Android accessibility text scale: %1×</source>
             <translation>Масштаб текста Android для доступности: %1×</translation>
+        </message>
+        <message>
+            <source>Add Android widget to Home page %1</source>
+            <translation>Добавить виджет Android на страницу %1</translation>
+        </message>
+        <message>
+            <source>Add widget</source>
+            <translation>Добавить виджет</translation>
+        </message>
+        <message>
+            <source>Android widget could not be removed.</source>
+            <translation>Не удалось удалить виджет Android.</translation>
+        </message>
+        <message>
+            <source>Android widget layout changed.</source>
+            <translation>Расположение виджета Android изменено.</translation>
+        </message>
+        <message>
+            <source>Android widget layout could not be restored.</source>
+            <translation>Не удалось восстановить расположение виджета Android.</translation>
+        </message>
+        <message>
+            <source>Android widget picker could not be opened.</source>
+            <translation>Не удалось открыть выбор виджетов Android.</translation>
+        </message>
+        <message>
+            <source>Android widget placement could not be saved.</source>
+            <translation>Не удалось сохранить расположение виджета Android.</translation>
+        </message>
+        <message>
+            <source>Android widget size could not be saved.</source>
+            <translation>Не удалось сохранить размер виджета Android.</translation>
+        </message>
+        <message>
+            <source>Android widgets</source>
+            <translation>Виджеты Android</translation>
+        </message>
+        <message>
+            <source>Android widget data could not be read. Existing bindings were left untouched.</source>
+            <translation>Не удалось прочитать данные виджетов Android. Существующие системные привязки не изменены.</translation>
+        </message>
+        <message>
+            <source>Android widgets you add here stay on this phone and work offline.</source>
+            <translation>Добавленные здесь виджеты Android сохраняются на этом телефоне и работают без подключения.</translation>
+        </message>
+        <message>
+            <source>Drag Android widget %1</source>
+            <translation>Перетащить виджет Android %1</translation>
+        </message>
+        <message>
+            <source>Drop here</source>
+            <translation>Переместить сюда</translation>
+        </message>
+        <message>
+            <source>Make Android widget narrower</source>
+            <translation>Уменьшить ширину виджета Android</translation>
+        </message>
+        <message>
+            <source>Make Android widget shorter</source>
+            <translation>Уменьшить высоту виджета Android</translation>
+        </message>
+        <message>
+            <source>Make Android widget taller</source>
+            <translation>Увеличить высоту виджета Android</translation>
+        </message>
+        <message>
+            <source>Make Android widget wider</source>
+            <translation>Увеличить ширину виджета Android</translation>
+        </message>
+        <message>
+            <source>Current Android widget position: %1, %2 dp</source>
+            <translation>Текущая позиция виджета Android: %1, %2 dp</translation>
+        </message>
+        <message>
+            <source>Move Android widget down</source>
+            <translation>Переместить виджет Android ниже</translation>
+        </message>
+        <message>
+            <source>Move Android widget to next page</source>
+            <translation>Переместить виджет Android на следующую страницу</translation>
+        </message>
+        <message>
+            <source>Move Android widget to previous page</source>
+            <translation>Переместить виджет Android на предыдущую страницу</translation>
+        </message>
+        <message>
+            <source>Move Android widget up</source>
+            <translation>Переместить виджет Android выше</translation>
+        </message>
+        <message>
+            <source>Remove Android widget %1</source>
+            <translation>Удалить виджет Android %1</translation>
+        </message>
+        <message>
+            <source>Remove this Android widget?</source>
+            <translation>Удалить этот виджет Android?</translation>
+        </message>
+        <message>
+            <source>Remove %1 from this Home page? The Android widget binding will be released.</source>
+            <translation>Удалить %1 с этой страницы? Системная привязка виджета Android будет освобождена.</translation>
+        </message>
+        <message>
+            <source>Rebind</source>
+            <translation>Перепривязать</translation>
+        </message>
+        <message>
+            <source>Rebind Android widget %1</source>
+            <translation>Перепривязать виджет Android %1</translation>
+        </message>
+        <message>
+            <source>Resize Android widget</source>
+            <translation>Изменить размер виджета Android</translation>
+        </message>
+        <message>
+            <source>Undo</source>
+            <translation>Отменить</translation>
+        </message>
+        <message>
+            <source>Undo Android widget layout change</source>
+            <translation>Отменить изменение расположения виджета Android</translation>
+        </message>
+        <message>
+            <source>This widget needs a fresh Android system binding.</source>
+            <translation>Для этого виджета требуется новая системная привязка Android.</translation>
+        </message>
+        <message>
+            <source>Widget size was not changed.</source>
+            <translation>Размер виджета не изменён.</translation>
         </message>
         <message>
             <source>Choose the app language. System default follows the phone language; English and Russian are available offline.</source>
@@ -339,6 +471,10 @@
             <translation>Удерживайте, чтобы открепить</translation>
         </message>
         <message>
+            <source>Current Home page %1 of %2</source>
+            <translation>Текущая страница %1 из %2</translation>
+        </message>
+        <message>
             <source>Home</source>
             <translation>Главный экран</translation>
         </message>
@@ -353,6 +489,14 @@
         <message>
             <source>Home layout restored.</source>
             <translation>Раскладка главного экрана восстановлена.</translation>
+        </message>
+        <message>
+            <source>Home layout restored. Android widget cleanup will retry when OmaApp starts.</source>
+            <translation>Раскладка восстановлена. Очистка виджетов Android повторится при следующем запуске OmaApp.</translation>
+        </message>
+        <message>
+            <source>Home restore needs recovery</source>
+            <translation>Требуется восстановить раскладку</translation>
         </message>
         <message>
             <source>Home page %1 of %2</source>
@@ -499,6 +643,10 @@
             <translation>Далее</translation>
         </message>
         <message>
+            <source>Next Home page %1</source>
+            <translation>Следующая страница рабочего стола %1</translation>
+        </message>
+        <message>
             <source>Next track on %1</source>
             <translation>Следующий трек: %1</translation>
         </message>
@@ -565,6 +713,10 @@
         <message>
             <source>OmaApp layout backup JSON</source>
             <translation>JSON-копия раскладки OmaApp</translation>
+        </message>
+        <message>
+            <source>An interrupted Home restore could not be completed. Keep OmaApp installed; free device storage if it is low, then retry recovery.</source>
+            <translation>Не удалось завершить восстановление главного экрана. Не удаляйте OmaApp; при нехватке места освободите его и повторите восстановление.</translation>
         </message>
         <message>
             <source>Omarchy computer status</source>
@@ -649,6 +801,10 @@
         <message>
             <source>Play %1</source>
             <translation>Воспроизвести: %1</translation>
+        </message>
+        <message>
+            <source>Previous Home page %1</source>
+            <translation>Предыдущая страница рабочего стола %1</translation>
         </message>
         <message>
             <source>Power %1  •  Radius %2 px</source>
@@ -739,6 +895,10 @@
             <translation>Повторить подключение</translation>
         </message>
         <message>
+            <source>Retry recovery</source>
+            <translation>Повторить восстановление</translation>
+        </message>
+        <message>
             <source>Rounding power</source>
             <translation>Степень скругления</translation>
         </message>
@@ -817,6 +977,10 @@
         <message>
             <source>Settings compact</source>
             <translation>Настр.</translation>
+        </message>
+        <message>
+            <source>Settings tab</source>
+            <translation>Вкладка настроек</translation>
         </message>
         <message>
             <source>Show %1 on Home</source>

@@ -21,10 +21,19 @@ dump_ui() {
 tap_label() {
   local label="$1"
   local target x y
-  target="$(python3 scripts/ci/android_accessibility_tap_target.py \
-    "$artifacts/translation-ui.xml" "$label")"
-  read -r x y <<< "$target"
-  adb shell input tap "$x" "$y"
+  for attempt in {1..16}; do
+    dump_ui > /dev/null
+    if target="$(python3 scripts/ci/android_accessibility_tap_target.py \
+      "$artifacts/translation-ui.xml" "$label" 2>/dev/null)"; then
+      read -r x y <<< "$target"
+      adb shell input tap "$x" "$y"
+      return 0
+    fi
+    sleep 0.35
+  done
+  printf 'Could not find a clickable Android UI target: %s; accessibility snapshot: %s\n' \
+    "$label" "$artifacts/translation-ui.xml" >&2
+  return 1
 }
 
 find_scrolling_label() {
@@ -52,6 +61,24 @@ find_scrolling_label() {
   done
   adb exec-out screencap -p > "$artifacts/scroll-failure.png" 2>/dev/null || true
   printf 'Could not find visible Settings control %s.\n' "$label" >&2
+  return 1
+}
+
+ensure_visible_settings_label() {
+  local label="$1"
+  for attempt in {1..12}; do
+    dump_ui > /dev/null
+    if python3 scripts/ci/android_accessibility_assert_visible.py \
+      "$artifacts/translation-ui.xml" "$label" >/dev/null 2>&1; then
+      return 0
+    fi
+    # Language changes can reflow the Settings card while preserving its
+    # Flickable offset. Scroll the label into the viewport before asserting it.
+    adb shell input swipe 32 720 32 300 650
+    sleep 0.4
+  done
+  adb exec-out screencap -p > "$artifacts/visibility-failure.png" 2>/dev/null || true
+  printf 'Could not bring Settings label %s into view.\n' "$label" >&2
   return 1
 }
 
@@ -92,17 +119,27 @@ restart_app_for_persistence() {
     return 1
   fi
   adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
-  sleep 5
-  dump_ui
+  for attempt in {1..60}; do
+    dump_ui > /dev/null
+    if grep -Eq 'content-desc="(Settings tab|Вкладка настроек)"' "$artifacts/translation-ui.xml"; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  adb exec-out screencap -p > "$artifacts/launcher-readiness-failure.png" 2>/dev/null || true
+  printf 'OmaApp Home accessibility did not become ready after process restart. UI: %s\n' \
+    "$artifacts/translation-ui.xml" >&2
+  return 1
 }
 
 dump_ui
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Apps'
-tap_label 'Settings'
+tap_label 'Settings tab'
 sleep 1
 tap_scrolling_label 'Russian'
 sleep 2
+ensure_visible_settings_label 'Язык'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Язык'
@@ -128,22 +165,26 @@ adb exec-out screencap -p > "$artifacts/settings-russian.png"
 cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-russian.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-russian.png" "$artifacts/translation-ui-russian.xml" \
-  'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Настройки'
+  'Главный экран' 'Приложения' 'Устройства' 'Оформление' 'Вкладка настроек'
 
-# Native Android Activities query the Qt catalog selected in-app. Run this
-# check after choosing Russian, then verify that choice survives instrumentation
-# process teardown and an explicit process restart.
+# Native Android Activities query the Qt catalog selected in-app. Restart first
+# so the check covers loading the saved Russian catalog into a fresh Qt engine.
+restart_app_for_persistence
+ensure_settings_tab 'Вкладка настроек'
+python3 scripts/ci/android_accessibility_assert_checked.py \
+  "$artifacts/translation-ui.xml" 'Русский'
 native_translation_output="$(adb shell am instrument -w -e nativeQtTranslations true app.omaapp/app.omaapp.PairingTestInstrumentation)"
 printf '%s\n' "$native_translation_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_qt_translations_passed' \
   <<< "$native_translation_output"
 restart_app_for_persistence
-ensure_settings_tab 'Настройки'
+ensure_settings_tab 'Вкладка настроек'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'Русский'
 sleep 1
 tap_scrolling_label 'Английский' down
 sleep 2
+ensure_visible_settings_label 'Language'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Language'
@@ -151,7 +192,7 @@ adb exec-out screencap -p > "$artifacts/settings-english-after-switch.png"
 cp "$artifacts/translation-ui.xml" "$artifacts/translation-ui-english.xml"
 python3 scripts/ci/check_android_navigation_layout.py \
   "$artifacts/settings-english-after-switch.png" "$artifacts/translation-ui-english.xml" \
-  Home Apps Devices Style Settings
+  Home Apps Devices Style 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 
@@ -163,7 +204,7 @@ printf '%s\n' "$native_english_output"
 grep -F 'INSTRUMENTATION_STATUS: stage=native_english_strings_passed' \
   <<< "$native_english_output"
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 live_locale_process="$(adb shell pidof app.omaapp | tr -d '\r')"
@@ -173,6 +214,7 @@ test -n "$live_locale_process"
 # stale OWL labels and one-way translation bindings after several retranslate() calls.
 tap_scrolling_label 'Russian' down
 sleep 2
+ensure_visible_settings_label 'Язык'
 dump_ui
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Язык'
@@ -204,7 +246,7 @@ adb logcat -d -v threadtime -t 3000 > "$artifacts/haptic-feedback.log"
 grep -F 'OmaApp: Android haptic feedback request dispatched' \
   "$artifacts/haptic-feedback.log"
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 python3 scripts/ci/android_accessibility_assert_checked.py \
   "$artifacts/translation-ui.xml" 'English'
 sleep 1
@@ -220,7 +262,7 @@ if [[ ! "$original_font_scale" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
 fi
 adb shell settings put system font_scale 1.4
 restart_app_for_persistence
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 find_scrolling_label 'Android accessibility text scale: 1.4×' down > /dev/null
 python3 scripts/ci/android_accessibility_assert_visible.py \
   "$artifacts/translation-ui.xml" 'Android accessibility text scale: 1.4×'
@@ -233,7 +275,7 @@ sleep 1
 adb shell am start -W -n app.omaapp/app.omaapp.OmaAppActivity
 sleep 2
 dump_ui
-ensure_settings_tab 'Settings'
+ensure_settings_tab 'Settings tab'
 if grep -Fq 'Android accessibility text scale:' "$artifacts/translation-ui.xml"; then
   printf 'The Android accessibility scale indicator remained after restoring system text scale.\n' >&2
   exit 1
