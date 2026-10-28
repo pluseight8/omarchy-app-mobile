@@ -118,12 +118,13 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("protected AppWidgetHostView onCreateView(Context context, int appWidgetId,", host)
         self.assertIn("return new OmaAppWidgetHostView(context);", host)
         self.assertIn("class OmaAppWidgetHostView extends AppWidgetHostView", host)
-        self.assertIn("hasInteractiveTargetAt(\n                        this, event.getX(), event.getY())", host)
-        self.assertIn("if (!touchStartedInRemoteViews) {\n                    return false;", host)
-        self.assertIn("view.isClickable() || view.isLongClickable() || view.isContextClickable()", host)
-        self.assertIn("view.isScrollContainer()", host)
-        self.assertIn("view.canScrollVertically(1)", host)
-        self.assertIn("child.getHitRect(childBounds)", host)
+        self.assertIn("touchStartedInRemoteViews = super.dispatchTouchEvent(event);", host)
+        self.assertIn("if (!touchStartedInRemoteViews) {\n                return false;", host)
+        dispatch_start = host.index("class OmaAppWidgetHostView extends AppWidgetHostView")
+        dispatch = host[dispatch_start:]
+        self.assertNotIn("hasInteractiveTargetAt", dispatch)
+        self.assertNotIn("getHitRect", dispatch)
+        self.assertEqual(dispatch.count("super.dispatchTouchEvent(event)"), 2)
         self.assertIn("private static volatile boolean widgetTouchDiagnosticsEnabled;", host)
         self.assertIn("static void setWidgetTouchDiagnosticsEnabledForInstrumentation(boolean enabled)",
                       host)
@@ -583,7 +584,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertNotIn("getInstalledProviders()", widget_setup)
         self.assertIn("clickAccessibleControl(automation, providerLabel)", widget_setup)
         self.assertIn("&& (!configurationClicked || !widgetRecordSaved)", widget_setup)
-        self.assertIn("} else if (!configurationClicked) {\n                scrollSystemPicker", widget_setup)
+        self.assertIn("if (!providerChoiceClicked) {\n                scrollSystemPicker", widget_setup)
         for mode, stage in (
             ("setup", "android_widget_host_picker_bind_touch_passed"),
             ("restore", "android_widget_host_process_restore_passed"),
@@ -1113,6 +1114,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             ensure,
         )
         self.assertNotIn("runInputTap", instrumentation)
+        scroll_start = instrumentation.index("private static boolean scrollSettingsToHomePageControl")
         scroll_end = instrumentation.index("private void selectHomePage", scroll_start)
         settings_scroll = instrumentation[scroll_start:scroll_end]
         self.assertIn('hasOnDisplayClickableControl(automation, context, "Add a home page")',

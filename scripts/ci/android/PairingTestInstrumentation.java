@@ -1815,9 +1815,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     && clickAccessibleControl(automation, "CI_WIDGET_CONFIGURE")) {
                 configurationClicked = true;
                 reportStage("android_widget_host_configured");
-            } else if (!configurationClicked && clickAccessibleText(automation,
-                    "Add to home screen", "Add to Home screen", "Add widget", "Add", "Place widget")) {
-                providerChoiceClicked = true;
             } else if (!configurationClicked && clickAccessibleControl(automation, providerLabel)) {
                 providerChoiceClicked = true;
                 reportStage("android_widget_host_provider_selected");
@@ -2838,9 +2835,6 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (!configurationClicked
                     && clickAccessibleControl(automation, "CI_WIDGET_CONFIGURE")) {
                 configurationClicked = true;
-            } else if (!configurationClicked && clickAccessibleText(automation,
-                    "Add to home screen", "Add to Home screen", "Add widget", "Add", "Place widget")) {
-                providerChoiceClicked = true;
             } else if (!configurationClicked && clickAccessibleControl(automation, providerLabel)) {
                 providerChoiceClicked = true;
             } else if (providerChoiceClicked && !configurationClicked
@@ -3253,6 +3247,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
             Log.i(TAG, "Performing Android screen tap for RemoteViews widget " + widgetId + " at ("
                     + x + ", " + y + ") in " + bounds + "; " + diagnostics.get());
             inputTapOnScreen(automation, x, y);
+            Log.i(TAG, "Completed Android screen tap for RemoteViews widget " + widgetId
+                    + " at (" + x + ", " + y + "); awaiting provider broadcast evidence.");
         } finally {
             AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(false);
         }

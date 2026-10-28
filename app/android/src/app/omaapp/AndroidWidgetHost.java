@@ -1981,16 +1981,16 @@ public final class AndroidWidgetHost {
         public boolean dispatchTouchEvent(MotionEvent event) {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN) {
-                touchStartedInRemoteViews = hasInteractiveTargetAt(
-                        this, event.getX(), event.getY());
+                // Let Android resolve the real transformed/clipped RemoteViews hit target.
+                // A separate bounds-based walk can reject a valid restored button before
+                // the platform gets a chance to dispatch its PendingIntent click.
+                touchStartedInRemoteViews = super.dispatchTouchEvent(event);
                 if (widgetTouchDiagnosticsEnabled) {
                     Log.i(TAG, "RemoteViews touch dispatch route=down x=" + event.getX()
                             + " y=" + event.getY() + " source=" + event.getSource()
                             + " interactive=" + touchStartedInRemoteViews);
                 }
-                if (!touchStartedInRemoteViews) {
-                    return false;
-                }
+                return touchStartedInRemoteViews;
             } else if (!touchStartedInRemoteViews) {
                 return false;
             }
@@ -2006,37 +2006,5 @@ public final class AndroidWidgetHost {
             return handled;
         }
 
-        private static boolean hasInteractiveTargetAt(View view, float x, float y) {
-            if (view.getVisibility() != View.VISIBLE || !view.isEnabled()
-                    || view.getAlpha() <= 0f || x < 0f || y < 0f
-                    || x >= view.getWidth() || y >= view.getHeight()) {
-                return false;
-            }
-            if (view.isClickable() || view.isLongClickable() || view.isContextClickable()
-                    || view.isScrollContainer() || view.canScrollHorizontally(-1)
-                    || view.canScrollHorizontally(1) || view.canScrollVertically(-1)
-                    || view.canScrollVertically(1)) {
-                return true;
-            }
-            if (!(view instanceof ViewGroup)) {
-                return false;
-            }
-
-            ViewGroup group = (ViewGroup) view;
-            for (int index = group.getChildCount() - 1; index >= 0; index--) {
-                View child = group.getChildAt(index);
-                Rect childBounds = new Rect();
-                child.getHitRect(childBounds);
-                if (!childBounds.contains((int) x, (int) y)) {
-                    continue;
-                }
-                float childX = x - child.getLeft() + group.getScrollX();
-                float childY = y - child.getTop() + group.getScrollY();
-                if (hasInteractiveTargetAt(child, childX, childY)) {
-                    return true;
-                }
-            }
-            return false;
-        }
     }
 }
