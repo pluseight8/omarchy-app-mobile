@@ -127,6 +127,28 @@ private slots:
         QVERIFY(restored.homePageApps(1).isEmpty());
     }
 
+    void selectedHomePagePersistsAndFollowsPageCountBounds()
+    {
+        {
+            LauncherModel model;
+            model.setHomePageCount(3);
+            model.setSelectedHomePage(2);
+            QCOMPARE(model.selectedHomePage(), 2);
+        }
+
+        LauncherModel restored;
+        QCOMPARE(restored.selectedHomePage(), 2);
+        restored.setHomePageCount(2);
+        QCOMPARE(restored.selectedHomePage(), 1);
+        restored.setSelectedHomePage(99);
+        QCOMPARE(restored.selectedHomePage(), 1);
+        restored.setSelectedHomePage(-1);
+        QCOMPARE(restored.selectedHomePage(), 0);
+
+        LauncherModel saved;
+        QCOMPARE(saved.selectedHomePage(), 0);
+    }
+
     void gesturePreferencesPersistAndRejectUnknownActions()
     {
         {

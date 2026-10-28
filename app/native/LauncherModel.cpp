@@ -69,6 +69,8 @@ LauncherModel::LauncherModel(QObject *parent) : QAbstractListModel(parent)
     m_gridColumns = qBound(3, settings.value(QStringLiteral("launcher/gridColumns"), 4).toInt(), 5);
     m_homePageCount = qBound(1, settings.value(QStringLiteral("launcher/homePageCount"), 1).toInt(),
                              maximumHomePages);
+    m_selectedHomePage = qBound(0,
+        settings.value(QStringLiteral("launcher/selectedHomePage"), 0).toInt(), m_homePageCount - 1);
     m_favoritePages = settings.value(QStringLiteral("launcher/favoritePages")).toMap();
     for (auto it = m_favoritePages.begin(); it != m_favoritePages.end();) {
         const int page = it.value().toInt();
@@ -222,6 +224,11 @@ int LauncherModel::homePageCount() const
     return m_homePageCount;
 }
 
+int LauncherModel::selectedHomePage() const
+{
+    return m_selectedHomePage;
+}
+
 QVariantMap LauncherModel::homeWidgets() const
 {
     return m_homeWidgets;
@@ -287,7 +294,22 @@ void LauncherModel::setHomePageCount(int count)
     if (settings.status() != QSettings::NoError)
         qWarning() << "OmaApp: failed to save home page count" << settings.status();
     saveFavoritePages();
+    setSelectedHomePage(m_selectedHomePage);
     emit homePagesChanged();
+}
+
+void LauncherModel::setSelectedHomePage(int page)
+{
+    const int boundedPage = qBound(0, page, m_homePageCount - 1);
+    if (m_selectedHomePage == boundedPage)
+        return;
+    m_selectedHomePage = boundedPage;
+    QSettings settings;
+    settings.setValue(QStringLiteral("launcher/selectedHomePage"), m_selectedHomePage);
+    settings.sync();
+    if (settings.status() != QSettings::NoError)
+        qWarning() << "OmaApp: failed to save selected Home page" << settings.status();
+    emit selectedHomePageChanged();
 }
 
 QVariantList LauncherModel::homePageApps(int page) const
@@ -1125,6 +1147,7 @@ bool LauncherModel::importLayout(const QString &json)
 
     m_gridColumns = grid;
     m_homePageCount = pageCount;
+    setSelectedHomePage(m_selectedHomePage);
     m_favoritePackages = std::move(favoriteKeys);
     m_favoritePages = std::move(pages);
     m_folders = std::move(folders);

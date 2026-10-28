@@ -288,7 +288,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)", instrumentation)
         self.assertIn("injectAccessibleTap(automation, candidate)", instrumentation)
-        self.assertIn("node.getBoundsInScreen(bounds)", instrumentation)
+        self.assertIn("node.getBoundsInScreen(visibleBounds)", instrumentation)
         self.assertIn("automation.injectInputEvent(down, true)", instrumentation)
         self.assertIn("automation.injectInputEvent(up, true)", instrumentation)
 
@@ -429,6 +429,63 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Resize Android widget")', native)
         self.assertIn('QT_TRANSLATE_NOOP("Main", "Widget size was not changed.")', native)
 
+    def test_system_picker_scrolls_until_a_visible_provider_is_selected(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        self.assertGreaterEqual(
+            instrumentation.count("clickAccessibleControl(automation, providerLabel)"), 2)
+        self.assertGreaterEqual(
+            instrumentation.count('clickAccessibleControl(automation, "CI_WIDGET_CONFIGURE")'), 2)
+        picker_scroll = instrumentation[
+            instrumentation.index("private static void scrollSystemPicker"):
+            instrumentation.index("private static void scrollHome(")
+        ]
+        self.assertNotIn("containsAccessibleText", picker_scroll)
+        self.assertNotIn("if (!providerChoiceClicked && clickAccessibleText", instrumentation)
+        self.assertIn('return "ready".equals(widget.optString("state"))', instrumentation)
+        self.assertIn("reboundId <= 0 || reboundId == widgetId", instrumentation)
+
+    def test_home_return_rejects_offscreen_nodes_and_clicks_accessible_ancestors(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        visibility = instrumentation[
+            instrumentation.index("private static boolean isVisibleOnScreen"):
+            instrumentation.index("private static ArrayList<AccessibilityNodeInfo> appAccessibilityRoots")
+        ]
+        self.assertIn("Resources.getSystem().getDisplayMetrics()", visibility)
+        self.assertIn("visibleBounds.left < width", visibility)
+        self.assertIn("visibleBounds.top < height", visibility)
+        self.assertIn("node.getParent()", visibility)
+        self.assertIn("visibleBounds.intersect(parentBounds)", visibility)
+        control_click = instrumentation[
+            instrumentation.index("private static boolean clickAccessibleControl(UiAutomation"):
+            instrumentation.index("private static boolean clickAppAccessibleControl")
+        ]
+        self.assertIn("automation.getRootInActiveWindow()", control_click)
+        self.assertNotIn("accessibilityRoots(automation)", control_click)
+        readiness = instrumentation[
+            instrumentation.index("private static boolean awaitHomePageSelectionTarget"):
+            instrumentation.index("private static boolean awaitVisibleAccessibleText")
+        ]
+        self.assertNotIn("hasVisibleClickableControl", readiness)
+        self.assertIn("hasVisibleAccessibleControl", readiness)
+        self.assertIn("isVisibleOnScreen(node)", instrumentation)
+        self.assertIn("clickAppAccessibleControl(automation, context, navigationControl)",
+                      instrumentation)
+        self.assertIn("awaitVisibleAccessibleText(automation, context, expected", instrumentation)
+
+    def test_selected_home_page_is_restored_from_launcher_settings(self):
+        header = (ROOT / "app/native/LauncherModel.h").read_text(encoding="utf-8")
+        model = (ROOT / "app/native/LauncherModel.cpp").read_text(encoding="utf-8")
+        qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
+        self.assertIn("Q_PROPERTY(int selectedHomePage", header)
+        self.assertIn('settings.value(QStringLiteral("launcher/selectedHomePage")', model)
+        self.assertIn('settings.setValue(QStringLiteral("launcher/selectedHomePage")', model)
+        self.assertIn("property int selectedHomePage: launcher.selectedHomePage", qml)
+        self.assertIn("function onSelectedHomePageChanged()", qml)
+
     def test_accessible_widget_move_waits_for_the_refreshed_grid_position(self):
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         instrumentation = (
@@ -495,7 +552,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("android:configure=\"app.omaapp.widgetfixture.CiWidgetConfigureActivity\"", provider_info)
         self.assertIn("Activity.RESULT_OK", configure)
         self.assertIn("AppWidgetManager.EXTRA_APPWIDGET_ID", configure)
-        self.assertIn('clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")', (
+        self.assertIn('clickAccessibleControl(automation, "CI_WIDGET_CONFIGURE")', (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
         ).read_text(encoding="utf-8"))
         self.assertIn("new RemoteViews", provider)
@@ -524,9 +581,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         # InstalledProviders is package-visibility filtered for the host app;
         # validate the provider through the system picker and actual binding.
         self.assertNotIn("getInstalledProviders()", widget_setup)
-        self.assertIn("clickAccessibleText(automation, providerLabel)", widget_setup)
+        self.assertIn("clickAccessibleControl(automation, providerLabel)", widget_setup)
         self.assertIn("&& (!configurationClicked || !widgetRecordSaved)", widget_setup)
-        self.assertIn("if (!providerChoiceClicked) {\n                scrollSystemPicker", widget_setup)
+        self.assertIn("} else if (!configurationClicked) {\n                scrollSystemPicker", widget_setup)
         for mode, stage in (
             ("setup", "android_widget_host_picker_bind_touch_passed"),
             ("restore", "android_widget_host_process_restore_passed"),
@@ -690,8 +747,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         contains_end = instrumentation.index("private static String accessibilityTree", contains_start)
         contains = instrumentation[contains_start:contains_end]
         self.assertIn("if (isVisibleOnScreen(root)", contains)
-        self.assertIn('containsAccessibleText(automation, "OmaApp CI Interactive Widget")',
-                      instrumentation)
+        self.assertNotIn('containsAccessibleText(automation, "OmaApp CI Interactive Widget")',
+                         instrumentation)
+        self.assertIn('clickAccessibleControl(automation, providerLabel)', instrumentation)
         self.assertIn("executeSwipe(automation, context, 0.78f, 0.28f)", instrumentation)
 
         rebind_start = instrumentation.index('reportStage("android_widget_host_backup_placeholder_passed")')
@@ -972,7 +1030,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
                                              app_tree_start)
         app_tree = instrumentation[app_tree_start:app_tree_end]
         self.assertIn("isVisibleOnScreen(node)", app_tree)
-        self.assertIn("getBoundsInScreen(bounds)", instrumentation[
+        self.assertIn("getBoundsInScreen(visibleBounds)", instrumentation[
             instrumentation.index("private static boolean isVisibleOnScreen"):
             app_tree_start
         ])
@@ -1003,8 +1061,12 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             'reportStage("android_widget_host_second_page_placement_passed")'
         )
         ready_check = widget_setup.index('"CI_WIDGET_ACTION", "CI_WIDGET_READY",')
+        self.assertNotIn('selectHomePage(automation, context, 1);', widget_setup)
         self.assertLess(
-            widget_setup.index('selectHomePage(automation, context, 1);', placement_stage),
+            widget_setup.index(
+                'awaitVisibleAccessibleText(automation, context, "Current Home page 2 of 2"',
+                placement_stage,
+            ),
             ready_check,
         )
         self.assertIn("exportWidgetBackup(context)", instrumentation)

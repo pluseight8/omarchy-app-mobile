@@ -20,6 +20,8 @@ class LauncherModel : public QAbstractListModel
     Q_PROPERTY(QVariantList folders READ folders NOTIFY foldersChanged)
     Q_PROPERTY(int gridColumns READ gridColumns NOTIFY gridColumnsChanged)
     Q_PROPERTY(int homePageCount READ homePageCount NOTIFY homePagesChanged)
+    Q_PROPERTY(int selectedHomePage READ selectedHomePage WRITE setSelectedHomePage
+               NOTIFY selectedHomePageChanged)
     Q_PROPERTY(QVariantMap homeWidgets READ homeWidgets NOTIFY homeWidgetsChanged)
     Q_PROPERTY(QVariantList androidWidgets READ androidWidgets NOTIFY androidWidgetsChanged)
     Q_PROPERTY(bool androidWidgetStorageError READ androidWidgetStorageError
@@ -53,6 +55,7 @@ public:
     QVariantList folders() const;
     int gridColumns() const;
     int homePageCount() const;
+    int selectedHomePage() const;
     QVariantMap homeWidgets() const;
     QVariantList androidWidgets() const;
     bool androidWidgetStorageError() const;
@@ -81,6 +84,7 @@ public:
                                            qreal clipWidth, qreal clipHeight, bool visible);
     Q_INVOKABLE void setGridColumns(int columns);
     Q_INVOKABLE void setHomePageCount(int count);
+    void setSelectedHomePage(int page);
     Q_INVOKABLE QVariantList homePageApps(int page) const;
     Q_INVOKABLE bool setFavoritePage(const QString &packageName, const QString &activityName,
                                      int page);
@@ -120,6 +124,7 @@ signals:
     void foldersChanged();
     void gridColumnsChanged();
     void homePagesChanged();
+    void selectedHomePageChanged();
     void homeWidgetsChanged();
     void androidWidgetsChanged();
     void androidWidgetStorageErrorChanged();
@@ -150,6 +155,7 @@ private:
     QList<Folder> m_folders;
     int m_gridColumns = 4;
     int m_homePageCount = 1;
+    int m_selectedHomePage = 0;
     QVariantMap m_homeWidgets;
     QVariantList m_androidWidgets;
     bool m_androidWidgetStorageError = false;

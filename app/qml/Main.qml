@@ -27,7 +27,8 @@ ApplicationWindow {
     palette.placeholderText: Theme.muted
 
     property int selectedPage: 0
-    property int selectedHomePage: 0
+    property int selectedHomePage: launcher.selectedHomePage
+    onSelectedHomePageChanged: launcher.selectedHomePage = selectedHomePage
     property string selectedFolderId: ""
     property string selectedFolderName: ""
     property string deletingFolderId: ""
@@ -104,6 +105,10 @@ ApplicationWindow {
 
     Connections {
         target: launcher
+        function onSelectedHomePageChanged() {
+            if (window.selectedHomePage !== launcher.selectedHomePage)
+                window.selectedHomePage = launcher.selectedHomePage
+        }
         function onSystemFontScaleChanged() {
             Theme.systemFontScale = launcher.systemFontScale
         }

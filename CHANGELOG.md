@@ -24,5 +24,6 @@
 - Preserve approved pairing handshakes across new QR sessions, revoke unconfirmed credentials after a helper restart, replace cached wallpapers atomically before synchronously committing their preferences, and remove stale variants only after that commit.
 - Finish and size-check Android downloads in private temporary storage before truncating a SAF destination. A provider-side write failure can still leave a partial document because generic SAF has no atomic replacement operation.
 - Serialize launcher icon updates, use unique temporary files and collision-resistant versioned SHA-256 keys, and remove stale versions after successful replacement.
+- Persist the selected Home page across provider configuration and launcher recreation. Widget smoke now rejects off-screen or parent-clipped accessibility nodes, scopes clicks to the active window, and verifies fresh confirmed rebind IDs without automatically reselecting the page.
 
 CI APKs and smoke artifacts are debug builds, not a production-signed release. Physical Pixel/GrapheneOS testing and a real Android-to-Omarchy connection remain outstanding. See the repository README and GitHub Actions for current verification status.
