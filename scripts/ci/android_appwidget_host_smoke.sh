@@ -19,13 +19,18 @@ report_widget_failure() {
   local status=$?
   stop_logcat_capture
   if [[ "$status" -ne 0 ]]; then
-    local output line
+    local output excerpt
     for output in "$artifacts"/*-instrumentation.txt; do
       [[ -f "$output" ]] || continue
-      while IFS= read -r line; do
-        line="${line//'%'/'%25'}"
-        printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$line"
-      done < <(tail -n 25 "$output")
+      excerpt="$(grep -E 'INSTRUMENTATION_STATUS: stage=|Exception|Error|failed|did not|could not|blocked|Expected|timeout' \
+        "$output" | tail -n 12 || true)"
+      if [[ -z "$excerpt" ]]; then
+        excerpt="$(tail -n 3 "$output")"
+      fi
+      excerpt="${excerpt//'%'/'%25'}"
+      excerpt="${excerpt//$'\r'/'%0D'}"
+      excerpt="${excerpt//$'\n'/'%0A'}"
+      printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$excerpt"
     done
   fi
 }
