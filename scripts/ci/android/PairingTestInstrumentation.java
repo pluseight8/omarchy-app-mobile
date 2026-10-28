@@ -3368,8 +3368,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
     }
 
     private static void scrollHome(UiAutomation automation, Context context) {
-        // A wide RemoteViews can cover almost the full Home page. Keep this
-        // vertical gesture in the left screen gutter, outside the native overlay.
+        // A wide RemoteViews can cover almost the full Home page. The native host
+        // passes touches through blank widget regions so this safe interior x can scroll it.
         runHomeVerticalSwipe(automation, context, 0.84f, 0.38f);
     }
 
@@ -3403,14 +3403,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
         Activity activity = AndroidWidgetHost.currentActivityForInstrumentation();
         WindowInsets insets = activity == null || activity.getWindow() == null
                 ? null : activity.getWindow().getDecorView().getRootWindowInsets();
-        // Keep vertical drags outside Android's edge-back gesture strip.
+        // Keep a full edge-slop margin beyond Android's back gesture strip; otherwise
+        // x=31 can still be claimed by the system gesture monitor on emulator devices.
         if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             gestureInset = Math.max(edgeSlop,
                     insets.getInsets(WindowInsets.Type.systemGestures()).left);
         } else if (insets != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             gestureInset = Math.max(edgeSlop, insets.getSystemGestureInsets().left);
         }
-        int safeInset = Math.min(width - 3, gestureInset + 1);
+        int safeInset = Math.min(width - 3, gestureInset + edgeSlop + 1);
+        Log.i(TAG, "Home gesture insets: edgeSlop=" + edgeSlop
+                + " systemGestureInset=" + gestureInset + " safeX=" + safeInset);
         return Math.max(2, Math.min(width - 3, Math.max(safeInset,
                 Math.round(width * 0.02f))));
     }

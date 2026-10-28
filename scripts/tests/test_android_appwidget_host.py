@@ -618,6 +618,8 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("homeScrollGestureX(context, width)", home_scroll)
         self.assertIn("ViewConfiguration.get(context).getScaledEdgeSlop()", home_scroll)
         self.assertIn("Math.max(edgeSlop,", home_scroll)
+        self.assertIn("gestureInset + edgeSlop + 1", home_scroll)
+        self.assertIn("Home gesture insets: edgeSlop=", home_scroll)
         self.assertIn("insets.getInsets(WindowInsets.Type.systemGestures()).left", home_scroll)
         self.assertIn("insets.getSystemGestureInsets().left", home_scroll)
         self.assertIn("Home vertical scroll injection at x=", home_scroll)
