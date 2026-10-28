@@ -32,6 +32,14 @@ report_widget_failure() {
       excerpt="${excerpt//$'\n'/'%0A'}"
       printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$excerpt"
     done
+    if [[ -f "$artifacts/appwidget-host-logcat.txt" ]]; then
+      excerpt="$(grep -E 'OmaApp|AndroidRuntime|FATAL EXCEPTION|Fatal signal|qrc:|QtActivity|AccessibilityService' \
+        "$artifacts/appwidget-host-logcat.txt" | tail -n 40 || true)"
+      excerpt="${excerpt//'%'/'%25'}"
+      excerpt="${excerpt//$'\r'/'%0D'}"
+      excerpt="${excerpt//$'\n'/'%0A'}"
+      printf '::warning title=AppWidget smoke logcat::%s\n' "$excerpt"
+    fi
   fi
 }
 trap report_widget_failure EXIT
