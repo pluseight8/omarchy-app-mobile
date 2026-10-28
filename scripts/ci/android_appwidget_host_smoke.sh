@@ -33,7 +33,7 @@ report_widget_failure() {
       printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$excerpt"
     done
     if [[ -f "$artifacts/appwidget-host-logcat.txt" ]]; then
-      excerpt="$(grep -E 'OmaAppAppWidget|ActivityTaskManager|ActivityManager|AndroidRuntime|FATAL EXCEPTION|Fatal signal|qrc:|QtActivity|QtNative|AccessibilityService' \
+      excerpt="$(grep -E ' (ActivityTaskManager|ActivityManager): .*app\.omaapp|OmaAppAppWidget|AndroidRuntime|FATAL EXCEPTION|Fatal signal|qrc:|QtActivity|QtNative|AccessibilityService' \
         "$artifacts/appwidget-host-logcat.txt" | grep -v 'OmaAppPairingSmoke' | tail -n 40 || true)"
       excerpt="${excerpt//'%'/'%25'}"
       excerpt="${excerpt//$'\r'/'%0D'}"
