@@ -1,4 +1,6 @@
 from pathlib import Path
+import os
+import subprocess
 import xml.etree.ElementTree as ET
 import unittest
 
@@ -7,6 +9,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AndroidAppWidgetHostTests(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("ANDROID_JAR") or os.environ.get("ANDROID_SDK_ROOT")
+        or os.environ.get("ANDROID_HOME"),
+        "Android SDK is required for the real javac regression",
+    )
+    def test_instrumentation_java_compiles(self):
+        subprocess.run(
+            ["bash", str(ROOT / "scripts/ci/compile_android_instrumentation.sh")],
+            cwd=ROOT,
+            check=True,
+        )
+
     def test_widget_frame_cleanup_cannot_read_destroyed_model_data(self):
         qml = (ROOT / "app/qml/Main.qml").read_text(encoding="utf-8")
         smoke = (ROOT / "scripts/ci/android_appwidget_host_smoke.sh").read_text(

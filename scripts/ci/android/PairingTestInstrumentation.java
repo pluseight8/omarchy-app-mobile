@@ -937,6 +937,15 @@ public final class PairingTestInstrumentation extends Instrumentation {
         return clicked;
     }
 
+    private static boolean isWithinDisplayBounds(AccessibilityNodeInfo node, Context context) {
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        int width = context.getResources().getDisplayMetrics().widthPixels;
+        int height = context.getResources().getDisplayMetrics().heightPixels;
+        return !bounds.isEmpty() && bounds.left >= 0 && bounds.top >= 0
+                && bounds.right <= width && bounds.bottom <= height;
+    }
+
     private static boolean isVisibleOnScreen(AccessibilityNodeInfo node) {
         if (!node.isVisibleToUser()) {
             return false;
@@ -2327,6 +2336,8 @@ public final class PairingTestInstrumentation extends Instrumentation {
             }
         }
         return result;
+    }
+
     private static boolean hasVisibleAccessibleControl(UiAutomation automation, Context context,
             String expected) {
         return hasVisibleAccessibleControl(automation, context, expected, false);
