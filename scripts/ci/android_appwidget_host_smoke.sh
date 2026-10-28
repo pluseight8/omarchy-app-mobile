@@ -34,7 +34,7 @@ report_widget_failure() {
     done
     if [[ -f "$artifacts/appwidget-host-logcat.txt" ]]; then
       excerpt="$(grep -E ' (ActivityTaskManager|ActivityManager): .*app\.omaapp|OmaAppAppWidget|AndroidRuntime|FATAL EXCEPTION|Fatal signal|qrc:|QtActivity|QtNative|AccessibilityService' \
-        "$artifacts/appwidget-host-logcat.txt" | grep -v 'OmaAppPairingSmoke' | tail -n 40 || true)"
+        "$artifacts/appwidget-host-logcat.txt" | grep -v -E 'OmaAppPairingSmoke|dvm_lock_sample' | tail -n 40 || true)"
       excerpt="${excerpt//'%'/'%25'}"
       excerpt="${excerpt//$'\r'/'%0D'}"
       excerpt="${excerpt//$'\n'/'%0A'}"
