@@ -156,6 +156,14 @@ esac
         self.assertIn("OmaApp: enumerated 11 launcher activities", completed.stdout)
         self.assertIn("OmaApp: enumerated 10 launcher activities", completed.stdout)
 
+    def test_launcher_icon_cache_uses_collision_resistant_keys(self):
+        bridge = (ROOT / "app/android/src/app/omaapp/LauncherBridge.java").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("cacheKey.hashCode()", bridge)
+        self.assertIn('String fileName = sha256(cacheKey) + ".png";', bridge)
+        self.assertIn('return "app-" + sha256(packageName + "/" + activityName);', bridge)
+
     def test_dns_sd_discovery_requires_saved_trust_and_pinned_tls_refresh(self):
         discovery = (ROOT / "app/android/src/app/omaapp/DeviceDiscovery.java").read_text(
             encoding="utf-8"

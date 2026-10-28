@@ -268,7 +268,7 @@ public final class FileTransferActivity extends Activity {
                             "Computer rejected the file request (HTTP %1).", code));
                 }
                 try (InputStream input = connection.getInputStream();
-                     OutputStream output = getContentResolver().openOutputStream(destination, "w")) {
+                     OutputStream output = getContentResolver().openOutputStream(destination, "wt")) {
                     if (output == null) {
                         throw new IllegalStateException(
                                 NativeStrings.get("Android could not open the selected destination."));

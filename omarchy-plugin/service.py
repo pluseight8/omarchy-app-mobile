@@ -1369,7 +1369,10 @@ class ServiceState:
             address = self.advertised_address
             self.pair_secret = secrets.token_urlsafe(32)
             self.pair_expires = int(time.time()) + PAIRING_TTL_SECONDS
-            self.pending.clear()
+            self.pending = {
+                request_id: request for request_id, request in self.pending.items()
+                if request.get("status") == "approved"
+            }
             payload = {
                 "schema": PROTOCOL_VERSION,
                 "url": f"https://{address}:{self.port}",

@@ -1085,10 +1085,7 @@ public final class PairingBridge {
             temporary.delete();
             throw error;
         }
-        if (destination.exists() && !destination.delete()) {
-            temporary.delete();
-            throw new IllegalStateException("could not update wallpaper cache");
-        }
+        // Android rename(2) replaces the destination atomically; a failure keeps the old file.
         if (!temporary.renameTo(destination)) {
             temporary.delete();
             throw new IllegalStateException("could not install wallpaper cache");
@@ -1097,7 +1094,7 @@ public final class PairingBridge {
                 .putString(WALLPAPER_ID_KEY, id)
                 .putString(WALLPAPER_PATH_KEY, destination.getAbsolutePath())
                 .apply();
-        if (!previousId.isEmpty()) {
+        if (!previousId.isEmpty() && !previousId.equals(id)) {
             File[] cachedFiles = directory.listFiles();
             if (cachedFiles != null) {
                 for (File file : cachedFiles) {

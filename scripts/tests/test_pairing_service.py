@@ -448,6 +448,31 @@ class PairingServiceTests(unittest.TestCase):
         self.assertNotIn("token", result)
         self.assertEqual(self.state.devices, {})
 
+    def test_new_pairing_keeps_an_approved_device_completable(self):
+        self.state.begin_pairing()
+        device_id = "phone_superseded_approval"
+        status, pending = self.post("/v1/pair/request", {
+            "pairSecret": self.state.pair_secret,
+            "deviceId": device_id,
+            "deviceName": "Superseded phone",
+        })
+        self.assertEqual(status, 202)
+        self.assertTrue(self.state.decide_pair_request(pending["requestId"], approve=True))
+        _, approved = self.get(f"/v1/pair/status/{pending['requestId']}")
+        auth = {
+            "X-OmaApp-Device": device_id,
+            "Authorization": f"Bearer {approved['token']}",
+        }
+
+        self.state.begin_pairing()
+
+        self.assertIn(device_id, self.state.devices)
+        self.assertEqual(self.get(f"/v1/pair/status/{pending['requestId']}")[0], 200)
+        self.assertEqual(self.post("/v1/pair/complete", {
+            "requestId": pending["requestId"],
+        }, headers=auth)[0], 200)
+        self.assertEqual(self.get("/v1/status", auth)[0], 200)
+
     def test_pairing_request_expires_and_cannot_be_approved_later(self):
         self.state.begin_pairing()
         request_status, pending = self.post("/v1/pair/request", {
@@ -763,6 +788,22 @@ class PairingServiceTests(unittest.TestCase):
             connection.close()
             self.assertEqual(response.status, 400)
             self.assertEqual(invalid["error"], "invalid_file")
+
+    def test_android_file_updates_do_not_destroy_the_previous_copy(self):
+        bridge = (PLUGIN_ROOT.parent /
+                  "app/android/src/app/omaapp/PairingBridge.java").read_text(encoding="utf-8")
+        activity = (PLUGIN_ROOT.parent /
+                    "app/android/src/app/omaapp/FileTransferActivity.java").read_text(
+                        encoding="utf-8"
+                    )
+        wallpaper_update = bridge[
+            bridge.index("private static void downloadWallpaperIfNeeded"):
+            bridge.index("private static void downloadBytes")
+        ]
+        self.assertNotIn("destination.delete()", wallpaper_update)
+        self.assertIn("temporary.renameTo(destination)", wallpaper_update)
+        self.assertIn("if (!previousId.isEmpty() && !previousId.equals(id))", wallpaper_update)
+        self.assertIn('openOutputStream(destination, "wt")', activity)
 
     def test_file_upload_and_listing_have_separate_grants(self):
         downloads = Path(self.temp_dir.name) / "downloads"

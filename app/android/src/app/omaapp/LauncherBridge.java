@@ -111,7 +111,7 @@ public final class LauncherBridge {
         long updatedAt = activity.applicationInfo == null || activity.applicationInfo.sourceDir == null
                 ? 0 : new File(activity.applicationInfo.sourceDir).lastModified();
         String cacheKey = activity.packageName + "/" + activity.name + "/" + updatedAt;
-        String fileName = Integer.toUnsignedString(cacheKey.hashCode(), 16) + ".png";
+        String fileName = sha256(cacheKey) + ".png";
         File iconFile = new File(cacheDirectory, fileName);
         if (!iconFile.isFile()) {
             File temporary = new File(cacheDirectory, fileName + ".tmp");
@@ -245,11 +245,14 @@ public final class LauncherBridge {
     }
 
     private static String shortcutId(String packageName, String activityName) {
+        return "app-" + sha256(packageName + "/" + activityName);
+    }
+
+    private static String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest((packageName + "/" + activityName)
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            StringBuilder result = new StringBuilder("app-");
+            byte[] hash = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder();
             for (int index = 0; index < 12; ++index) {
                 result.append(String.format(Locale.ROOT, "%02x", hash[index]));
             }

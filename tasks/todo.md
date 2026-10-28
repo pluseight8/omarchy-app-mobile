@@ -53,7 +53,7 @@
 
 ## Environment limits at this checkpoint
 
-- This workspace has `adb`, `ninja`, and `qmllint`, but no CMake, JDK, Android SDK, emulator, or attached device. Android builds and provider selection must be verified in GitHub Actions.
+- This workspace has no CMake, Android SDK, emulator, or attached device. Android builds and provider selection must be verified in GitHub Actions.
 - Release signing secrets cannot be read through the available repository connector. Do not claim that a signed release is available until the release workflow succeeds.
 
 ## Candidate secure connection stages
