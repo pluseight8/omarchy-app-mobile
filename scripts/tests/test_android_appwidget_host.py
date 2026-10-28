@@ -137,6 +137,9 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("automation.injectInputEvent(up, true)", tap_helper)
         self.assertIn("ACTION_DOWN input.", tap_helper)
         self.assertIn("ACTION_UP input.", tap_helper)
+        self.assertIn("InputDevice.SOURCE_TOUCHSCREEN", tap_helper)
+        self.assertIn("down.setSource(InputDevice.SOURCE_TOUCHSCREEN)", tap_helper)
+        self.assertIn("up.setSource(InputDevice.SOURCE_TOUCHSCREEN)", tap_helper)
         self.assertIn("SystemClock.sleep(60L)", tap_helper)
         self.assertNotIn("sendPointerSync", tap_helper)
 

@@ -30,6 +30,7 @@ import android.os.PersistableBundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -3091,6 +3092,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
         long downTime = SystemClock.uptimeMillis();
         MotionEvent down = MotionEvent.obtain(downTime, downTime,
                 MotionEvent.ACTION_DOWN, x, y, 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
         try {
             if (!automation.injectInputEvent(down, true)) {
                 throw new IllegalStateException("Android rejected the RemoteViews ACTION_DOWN input.");
@@ -3098,6 +3100,7 @@ public final class PairingTestInstrumentation extends Instrumentation {
             SystemClock.sleep(60L);
             MotionEvent up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(),
                     MotionEvent.ACTION_UP, x, y, 0);
+            up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
             try {
                 if (!automation.injectInputEvent(up, true)) {
                     throw new IllegalStateException("Android rejected the RemoteViews ACTION_UP input.");
