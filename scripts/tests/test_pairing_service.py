@@ -121,6 +121,9 @@ class PairingServiceTests(unittest.TestCase):
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(self.state.pending[pending["requestId"]]["status"], "completed")
         self.assertNotIn("token", self.state.pending[pending["requestId"]])
+        self.assertNotIn("pendingConfirmation", self.state.devices[device_id])
+        restarted = service.ServiceState(Path(self.temp_dir.name), "127.0.0.1", 0)
+        self.assertIn(device_id, restarted.devices)
         retry_status, retry = self.post("/v1/pair/complete", {
             "requestId": pending["requestId"],
         }, headers=auth)
@@ -801,9 +804,23 @@ class PairingServiceTests(unittest.TestCase):
             bridge.index("private static void downloadBytes")
         ]
         self.assertNotIn("destination.delete()", wallpaper_update)
-        self.assertIn("temporary.renameTo(destination)", wallpaper_update)
-        self.assertIn("if (!previousId.isEmpty() && !previousId.equals(id))", wallpaper_update)
-        self.assertIn('openOutputStream(destination, "wt")', activity)
+        self.assertIn("android.system.Os.rename(", wallpaper_update)
+        self.assertIn(".commit()", wallpaper_update)
+        self.assertNotIn(".apply()", wallpaper_update)
+        self.assertIn("!file.equals(destination)", wallpaper_update)
+        self.assertNotIn("previousId.equals(id)", wallpaper_update)
+
+        receive = activity[
+            activity.index("private void receiveFile"):
+            activity.index("private static String formatSize")
+        ]
+        self.assertIn('File.createTempFile("download-", ".tmp", getCacheDir())', receive)
+        self.assertIn("new FileOutputStream(temporary, false)", receive)
+        self.assertLess(
+            receive.index("new FileOutputStream(temporary, false)"),
+            receive.index('openOutputStream(destination, "wt")'),
+        )
+        self.assertIn("temporary.delete()", receive)
 
     def test_file_upload_and_listing_have_separate_grants(self):
         downloads = Path(self.temp_dir.name) / "downloads"

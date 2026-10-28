@@ -29,6 +29,7 @@ import java.io.FileOutputStream;
 
 public final class LauncherBridge {
     private static final int MAX_DYNAMIC_SHORTCUTS = 4;
+    private static final Object ICON_CACHE_LOCK = new Object();
 
     private LauncherBridge() {}
 
@@ -105,40 +106,56 @@ public final class LauncherBridge {
         }
 
         File cacheDirectory = new File(context.getCacheDir(), "launcher-icons");
-        if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()) {
+        if (!cacheDirectory.isDirectory() && !cacheDirectory.mkdirs()
+                && !cacheDirectory.isDirectory()) {
             return "";
         }
         long updatedAt = activity.applicationInfo == null || activity.applicationInfo.sourceDir == null
                 ? 0 : new File(activity.applicationInfo.sourceDir).lastModified();
-        String cacheKey = activity.packageName + "/" + activity.name + "/" + updatedAt;
-        String fileName = sha256(cacheKey) + ".png";
+        String cacheKey = activity.packageName + "/" + activity.name;
+        String iconPrefix = sha256(cacheKey);
+        String fileName = iconPrefix + "-" + sha256(Long.toString(updatedAt)) + ".png";
         File iconFile = new File(cacheDirectory, fileName);
-        if (!iconFile.isFile()) {
-            File temporary = new File(cacheDirectory, fileName + ".tmp");
+        synchronized (ICON_CACHE_LOCK) {
+            File temporary = null;
             Bitmap bitmap = null;
-            try (FileOutputStream output = new FileOutputStream(temporary, false)) {
-                bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bitmap);
-                icon.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
-                icon.draw(canvas);
-                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                    return "";
+            try {
+                if (!iconFile.isFile()) {
+                    temporary = File.createTempFile(fileName + ".", ".tmp", cacheDirectory);
+                    try (FileOutputStream output = new FileOutputStream(temporary, false)) {
+                        bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
+                        Canvas canvas = new Canvas(bitmap);
+                        icon.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+                        icon.draw(canvas);
+                        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                            throw new IllegalStateException("could not encode launcher icon");
+                        }
+                        output.getFD().sync();
+                    }
+                    android.system.Os.rename(temporary.getAbsolutePath(), iconFile.getAbsolutePath());
+                    temporary = null;
                 }
-                output.getFD().sync();
+                File[] cachedFiles = cacheDirectory.listFiles();
+                if (cachedFiles != null) {
+                    for (File file : cachedFiles) {
+                        if (file.getName().startsWith(iconPrefix + "-")
+                                && file.getName().endsWith(".png") && !file.equals(iconFile)) {
+                            file.delete();
+                        }
+                    }
+                }
+                return Uri.fromFile(iconFile).toString();
             } catch (Exception error) {
-                temporary.delete();
                 return "";
             } finally {
+                if (temporary != null) {
+                    temporary.delete();
+                }
                 if (bitmap != null) {
                     bitmap.recycle();
                 }
             }
-            if (!temporary.renameTo(iconFile)) {
-                temporary.delete();
-                return "";
-            }
         }
-        return Uri.fromFile(iconFile).toString();
     }
 
     public static boolean launchApp(Context context, String packageName, String activityName) {

@@ -21,6 +21,8 @@
 - On HOME readiness timeout, retain the accessibility screenshot/hierarchy, Activity/Window dumps, thread list, bounded Android native and Java backtraces, and full logcat. Classify Android boot/crash, Qt Android startup, QML load, and later UI-readiness stages separately without inferring a root cause from a black screen.
 - Run Android native string checks after explicitly selecting their matching app language, then verify each language persists across instrumentation teardown and process restart.
 - Refresh both Android Settings visual baselines for the relocated OWL creation action without relaxing the 1.5% visual regression threshold.
-- Preserve approved pairing handshakes across new QR sessions, replace cached wallpapers atomically without deleting repeated IDs, truncate overwritten Android downloads, and use collision-resistant launcher icon cache keys.
+- Preserve approved pairing handshakes across new QR sessions, revoke unconfirmed credentials after a helper restart, replace cached wallpapers atomically before synchronously committing their preferences, and remove stale variants only after that commit.
+- Finish and size-check Android downloads in private temporary storage before truncating a SAF destination. A provider-side write failure can still leave a partial document because generic SAF has no atomic replacement operation.
+- Serialize launcher icon updates, use unique temporary files and collision-resistant versioned SHA-256 keys, and remove stale versions after successful replacement.
 
 CI APKs and smoke artifacts are debug builds, not a production-signed release. Physical Pixel/GrapheneOS testing and a real Android-to-Omarchy connection remain outstanding. See the repository README and GitHub Actions for current verification status.

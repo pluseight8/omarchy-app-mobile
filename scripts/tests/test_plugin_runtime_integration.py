@@ -78,6 +78,8 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
     def read_event(self, timeout=8):
         self.assertIsNotNone(self.process)
         readable, _, _ = select.select([self.process.stdout], [], [], timeout)
+        if not readable and self.process.poll() is not None:
+            self.fail("the plugin helper stopped: " + self.process.stderr.read())
         self.assertTrue(readable, "the plugin helper did not emit a lifecycle event")
         line = self.process.stdout.readline()
         self.assertTrue(line, "the plugin helper stopped before emitting its lifecycle event")
@@ -203,6 +205,53 @@ class PluginRuntimeIntegrationTests(unittest.TestCase):
                 self.assertEqual(event["devices"], [])
                 break
         self.assertEqual(self.request("/v1/status", self.auth())[0], 401)
+
+    def test_killing_helper_after_approval_revokes_the_unconfirmed_device(self):
+        (self.data_dir / "devices.json").unlink()
+        driver = f'''
+import json
+import sys
+import time
+from pathlib import Path
+sys.path.insert(0, {str(SERVICE.parent)!r})
+import service
+service._emit = lambda event: None
+state = service.ServiceState(Path({str(self.data_dir)!r}), "127.0.0.1", {self.port})
+state.start_server()
+state.begin_pairing()
+status, request = state.create_pair_request({{
+    "pairSecret": state.pair_secret,
+    "deviceId": {DEVICE_ID!r},
+    "deviceName": "Interrupted phone",
+}}, "integration-test")
+assert status == 202
+assert state.decide_pair_request(request["requestId"], approve=True)
+token = state.pending[request["requestId"]]["token"]
+print(json.dumps({{"event": "approved", "requestId": request["requestId"], "token": token}}), flush=True)
+while True:
+    time.sleep(1)
+'''
+        self.process = subprocess.Popen(
+            [sys.executable, "-c", driver], cwd=ROOT,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, bufsize=1,
+        )
+        while True:
+            approved = self.read_event()
+            if approved.get("event") == "approved":
+                break
+        saved = json.loads((self.data_dir / "devices.json").read_text(encoding="utf-8"))
+        self.assertIn(DEVICE_ID, saved)
+
+        self.process.kill()
+        self.process.wait(timeout=5)
+        self.stop_helper()
+        state = self.start_helper()
+
+        self.assertFalse(state["serverRunning"])
+        self.assertEqual(state["devices"], [])
+        self.assertEqual(
+            json.loads((self.data_dir / "devices.json").read_text(encoding="utf-8")), {})
 
     def test_abandoned_event_long_poll_does_not_log_disconnect_traceback(self):
         self.start_helper()

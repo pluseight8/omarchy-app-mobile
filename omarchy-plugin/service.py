@@ -1091,6 +1091,16 @@ class ServiceState:
         self.event_hub = EventHub()
         self.monitor_stop = threading.Event()
         self.monitor_threads: list[threading.Thread] = []
+        unconfirmed = [
+            device_id for device_id, device in self.devices.items()
+            if isinstance(device, dict) and device.get("pendingConfirmation") is True
+        ]
+        if unconfirmed:
+            for device_id in unconfirmed:
+                self.devices.pop(device_id, None)
+            # An approved handshake lives only in this process; its token cannot be completed
+            # after a restart, so do not leave the persisted credential valid indefinitely.
+            self.save_devices()
 
     @property
     def fingerprint(self) -> str:
@@ -1470,6 +1480,7 @@ class ServiceState:
                     "deviceName": request["deviceName"],
                     "tokenHash": hashlib.sha256(token.encode("ascii")).hexdigest(),
                     "createdAt": int(time.time()),
+                    "pendingConfirmation": True,
                 }
                 request["status"] = "approved"
                 request["token"] = token
@@ -1520,6 +1531,9 @@ class ServiceState:
                 return True
             if request.get("status") != "approved":
                 return False
+            device = self.devices.get(device_id)
+            if isinstance(device, dict) and device.pop("pendingConfirmation", None) is not None:
+                self.save_devices()
             request["status"] = "completed"
             request.pop("token", None)
             request["expiresAt"] = int(time.time()) + 120
