@@ -67,6 +67,7 @@ public final class AndroidWidgetHost {
     private static final float MAX_SIZE_DP = 3000f;
 
     private static WeakReference<OmaAppActivity> activityRef = new WeakReference<>(null);
+    private static volatile boolean widgetTouchDiagnosticsEnabled;
     private static OmaAppWidgetHost host;
     private static FrameLayout overlay;
     private static boolean listening;
@@ -84,6 +85,10 @@ public final class AndroidWidgetHost {
 
     static OmaAppActivity currentActivityForInstrumentation() {
         return activityRef.get();
+    }
+
+    static void setWidgetTouchDiagnosticsEnabledForInstrumentation(boolean enabled) {
+        widgetTouchDiagnosticsEnabled = enabled;
     }
 
     static View resizeHandleForInstrumentation(int widgetId) {
@@ -1978,6 +1983,11 @@ public final class AndroidWidgetHost {
             if (action == MotionEvent.ACTION_DOWN) {
                 touchStartedInRemoteViews = hasInteractiveTargetAt(
                         this, event.getX(), event.getY());
+                if (widgetTouchDiagnosticsEnabled) {
+                    Log.i(TAG, "RemoteViews touch dispatch route=down x=" + event.getX()
+                            + " y=" + event.getY() + " source=" + event.getSource()
+                            + " interactive=" + touchStartedInRemoteViews);
+                }
                 if (!touchStartedInRemoteViews) {
                     return false;
                 }
@@ -1986,6 +1996,10 @@ public final class AndroidWidgetHost {
             }
 
             boolean handled = super.dispatchTouchEvent(event);
+            if (widgetTouchDiagnosticsEnabled) {
+                Log.i(TAG, "RemoteViews touch dispatch result action=" + action
+                        + " source=" + event.getSource() + " handled=" + handled);
+            }
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 touchStartedInRemoteViews = false;
             }

@@ -3074,42 +3074,26 @@ public final class PairingTestInstrumentation extends Instrumentation {
                     + accessibilityTree(automation));
         }
 
-        float x = bounds.centerX();
-        float y = bounds.centerY();
+        int x = Math.round(bounds.centerX());
+        int y = Math.round(bounds.centerY());
         View target = actionTarget.get();
-        if (target != null) {
-            runOnMainSync(() -> target.setOnTouchListener((view, event) -> {
-                Rect currentBounds = new Rect();
-                boolean visible = view.isShown() && view.getGlobalVisibleRect(currentBounds);
-                Log.i(TAG, "RemoteViews target received touch action="
-                        + event.getActionMasked() + " x=" + event.getX() + " y=" + event.getY()
-                        + " globalBounds=" + currentBounds + " visible=" + visible);
-                return false;
-            }));
-        }
-        Log.i(TAG, "Injecting RemoteViews click for widget " + widgetId + " at ("
-                + x + ", " + y + ") in " + bounds + "; " + diagnostics.get());
-        long downTime = SystemClock.uptimeMillis();
-        MotionEvent down = MotionEvent.obtain(downTime, downTime,
-                MotionEvent.ACTION_DOWN, x, y, 0);
-        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(true);
         try {
-            if (!automation.injectInputEvent(down, true)) {
-                throw new IllegalStateException("Android rejected the RemoteViews ACTION_DOWN input.");
+            if (target != null) {
+                runOnMainSync(() -> target.setOnTouchListener((view, event) -> {
+                    Rect currentBounds = new Rect();
+                    boolean visible = view.isShown() && view.getGlobalVisibleRect(currentBounds);
+                    Log.i(TAG, "RemoteViews target received touch action="
+                            + event.getActionMasked() + " x=" + event.getX() + " y=" + event.getY()
+                            + " globalBounds=" + currentBounds + " visible=" + visible);
+                    return false;
+                }));
             }
-            SystemClock.sleep(60L);
-            MotionEvent up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(),
-                    MotionEvent.ACTION_UP, x, y, 0);
-            up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-            try {
-                if (!automation.injectInputEvent(up, true)) {
-                    throw new IllegalStateException("Android rejected the RemoteViews ACTION_UP input.");
-                }
-            } finally {
-                up.recycle();
-            }
+            Log.i(TAG, "Performing Android screen tap for RemoteViews widget " + widgetId + " at ("
+                    + x + ", " + y + ") in " + bounds + "; " + diagnostics.get());
+            inputTapOnScreen(automation, x, y);
         } finally {
-            down.recycle();
+            AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(false);
         }
     }
 
@@ -3445,6 +3429,17 @@ public final class PairingTestInstrumentation extends Instrumentation {
             byte[] buffer = new byte[128];
             while (output.read(buffer) != -1) {
                 // Wait for Android's input command to finish before injecting another gesture.
+            }
+        }
+    }
+
+    private static void inputTapOnScreen(UiAutomation automation, int x, int y) throws IOException {
+        String command = "input tap " + x + " " + y;
+        try (InputStream output = new ParcelFileDescriptor.AutoCloseInputStream(
+                automation.executeShellCommand(command))) {
+            byte[] buffer = new byte[128];
+            while (output.read(buffer) != -1) {
+                // Wait for Android's input command to deliver the tap before continuing.
             }
         }
     }

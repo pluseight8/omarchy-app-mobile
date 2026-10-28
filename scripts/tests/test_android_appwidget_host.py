@@ -124,6 +124,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("view.isScrollContainer()", host)
         self.assertIn("view.canScrollVertically(1)", host)
         self.assertIn("child.getHitRect(childBounds)", host)
+        self.assertIn("private static volatile boolean widgetTouchDiagnosticsEnabled;", host)
+        self.assertIn("static void setWidgetTouchDiagnosticsEnabledForInstrumentation(boolean enabled)",
+                      host)
+        self.assertIn("if (widgetTouchDiagnosticsEnabled)", host)
+        self.assertIn('"RemoteViews touch dispatch route=down x="', host)
 
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
@@ -133,14 +138,16 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
             "private static AppWidgetHostView findHostedWidgetView", tap_start
         )
         tap_helper = instrumentation[tap_start:tap_end]
-        self.assertIn("automation.injectInputEvent(down, true)", tap_helper)
-        self.assertIn("automation.injectInputEvent(up, true)", tap_helper)
-        self.assertIn("ACTION_DOWN input.", tap_helper)
-        self.assertIn("ACTION_UP input.", tap_helper)
-        self.assertIn("InputDevice.SOURCE_TOUCHSCREEN", tap_helper)
-        self.assertIn("down.setSource(InputDevice.SOURCE_TOUCHSCREEN)", tap_helper)
-        self.assertIn("up.setSource(InputDevice.SOURCE_TOUCHSCREEN)", tap_helper)
-        self.assertIn("SystemClock.sleep(60L)", tap_helper)
+        self.assertIn("AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(true)",
+                      tap_helper)
+        self.assertIn("AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(false)",
+                      tap_helper)
+        self.assertIn("inputTapOnScreen(automation, x, y)", tap_helper)
+        tap_start = instrumentation.index("private static void inputTapOnScreen")
+        tap_end = instrumentation.index("private static void transferFiles", tap_start)
+        screen_tap = instrumentation[tap_start:tap_end]
+        self.assertIn('String command = "input tap " + x + " " + y', screen_tap)
+        self.assertIn("automation.executeShellCommand(command)", screen_tap)
         self.assertNotIn("sendPointerSync", tap_helper)
 
     def test_android_widget_backup_prepare_rolls_back_without_releasing_live_ids(self):
@@ -537,7 +544,7 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("CI_WIDGET_ACTION", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED", instrumentation)
         self.assertIn("CI_WIDGET_UPDATED_TWICE", instrumentation)
-        self.assertIn("Injecting RemoteViews click", instrumentation)
+        self.assertIn("Performing Android screen tap for RemoteViews widget", instrumentation)
         self.assertIn("target.setOnTouchListener", instrumentation)
         self.assertIn("RemoteViews target received touch action=", instrumentation)
         self.assertIn("overlayZOrder={index=", instrumentation)
@@ -625,8 +632,11 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("Home vertical scroll injection at x=", home_scroll)
         self.assertIn("width * 0.02f", home_scroll)
         self.assertNotIn("0.92f", home_scroll)
-        self.assertIn("automation.injectInputEvent(down, true)", tap_helper)
-        self.assertIn("automation.injectInputEvent(up, true)", tap_helper)
+        self.assertIn("inputTapOnScreen(automation, x, y)", tap_helper)
+        self.assertIn("AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(true)",
+                      tap_helper)
+        self.assertIn("AndroidWidgetHost.setWidgetTouchDiagnosticsEnabledForInstrumentation(false)",
+                      tap_helper)
         self.assertIn("globalBounds=", tap_helper)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED"', instrumentation)
         self.assertIn('awaitAccessibilityText(automation, "CI_WIDGET_UPDATED_TWICE"', instrumentation)
