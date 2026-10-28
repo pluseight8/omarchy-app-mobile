@@ -15,7 +15,21 @@ stop_logcat_capture() {
     logcat_pid=""
   fi
 }
-trap stop_logcat_capture EXIT
+report_widget_failure() {
+  local status=$?
+  stop_logcat_capture
+  if [[ "$status" -ne 0 ]]; then
+    local output line
+    for output in "$artifacts"/*-instrumentation.txt; do
+      [[ -f "$output" ]] || continue
+      while IFS= read -r line; do
+        line="${line//'%'/'%25'}"
+        printf '::warning title=AppWidget smoke %s::%s\n' "$(basename "$output")" "$line"
+      done < <(tail -n 25 "$output")
+    done
+  fi
+}
+trap report_widget_failure EXIT
 adb logcat -b all -v threadtime > "$artifacts/appwidget-host-logcat.txt" &
 logcat_pid=$!
 
