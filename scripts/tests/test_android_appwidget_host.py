@@ -591,6 +591,28 @@ class AndroidAppWidgetHostTests(unittest.TestCase):
         self.assertIn("build_android_appwidget_fixture.sh", workflow)
         self.assertIn("android_appwidget_host_smoke.sh", workflow)
 
+    def test_widget_picker_config_wait_does_not_click_generic_add_in_resumed_home(self):
+        instrumentation = (
+            ROOT / "scripts/ci/android/PairingTestInstrumentation.java"
+        ).read_text(encoding="utf-8")
+        setup_method = instrumentation.index("private void runAndroidWidgetHostSetup")
+        setup_start = instrumentation.index(
+            'String providerLabel = "OmaApp CI Interactive Widget"', setup_method
+        )
+        setup_end = instrumentation.index("JSONObject selectedWidget", setup_start)
+        rebind_start = instrumentation.index(
+            'String rebindLabel = "Rebind Android widget', setup_end
+        )
+        rebind_end = instrumentation.index("JSONObject rebound", rebind_start)
+        for picker_flow in (
+            instrumentation[setup_start:setup_end],
+            instrumentation[rebind_start:rebind_end],
+        ):
+            self.assertIn('clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")', picker_flow)
+            self.assertNotIn('"Add to home screen"', picker_flow)
+            self.assertNotIn('"Add widget"', picker_flow)
+            self.assertNotIn('"Add"', picker_flow)
+
     def test_remoteviews_smoke_taps_the_real_hosted_android_button(self):
         instrumentation = (
             ROOT / "scripts/ci/android/PairingTestInstrumentation.java"

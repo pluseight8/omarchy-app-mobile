@@ -1785,14 +1785,10 @@ public final class PairingTestInstrumentation extends Instrumentation {
             if (!providerChoiceClicked && clickAccessibleText(automation, providerLabel)) {
                 providerChoiceClicked = true;
                 reportStage("android_widget_host_provider_selected");
-            } else if (providerChoiceClicked) {
-                if (!configurationClicked && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
-                    configurationClicked = true;
-                    reportStage("android_widget_host_configured");
-                } else {
-                    clickAccessibleText(automation, "Add to home screen", "Add to Home screen",
-                            "Add widget", "Add", "Place widget");
-                }
+            } else if (providerChoiceClicked && !configurationClicked
+                    && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
+                configurationClicked = true;
+                reportStage("android_widget_host_configured");
             }
             if (!providerChoiceClicked) {
                 scrollSystemPicker(automation, context);
@@ -2679,13 +2675,9 @@ public final class PairingTestInstrumentation extends Instrumentation {
                 && (!configurationClicked || !hasBoundWidgetRecord(context, expectedProvider))) {
             if (!providerChoiceClicked && clickAccessibleText(automation, providerLabel)) {
                 providerChoiceClicked = true;
-            } else if (providerChoiceClicked) {
-                if (!configurationClicked && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
-                    configurationClicked = true;
-                } else {
-                    clickAccessibleText(automation, "Add to home screen", "Add to Home screen",
-                            "Add widget", "Add", "Place widget");
-                }
+            } else if (providerChoiceClicked && !configurationClicked
+                    && clickAccessibleText(automation, "CI_WIDGET_CONFIGURE")) {
+                configurationClicked = true;
             }
             if (!providerChoiceClicked) {
                 scrollSystemPicker(automation, context);
